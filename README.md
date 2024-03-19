@@ -1,4 +1,4 @@
-# nd2viewer
+# limnd2
 
 ## prerequisites
 
@@ -21,7 +21,7 @@ code .
 
 Create `~/.pypirc`
 
-```ini
+```txt
     [distutils]
      index-servers =
        pypi
