@@ -1,0 +1,382 @@
+from __future__ import annotations
+
+import abc, io, itertools, re, struct, typing, zlib
+import numpy as np
+from .attributes import ImageAttributes, NumpyArrayLike
+from .binary import BinaryRleMetadata, BinaryRasterMetadata
+from .experiment import ExperimentLevel
+from .metadata import PictureMetadata 
+
+FileLikeObject: typing.TypeAlias = str|int|typing.BinaryIO
+ChunkMap: typing.TypeAlias = typing.Mapping[bytes, tuple]
+
+Nd2LoggerEnabld = False
+
+ND2_FILE_SIGNATURE:     typing.Final                    = b"ND2 FILE SIGNATURE CHUNK NAME01!" # len 32
+ND2_CHUNKMAP_SIGNATURE: typing.Final                    = b"ND2 CHUNK MAP SIGNATURE 0000001!" # len 32
+ND2_FILEMAP_SIGNATURE:  typing.Final                    = b"ND2 FILEMAP SIGNATURE NAME 0001!" # len 32
+ND2_CHUNK_MAGIC:        typing.Final                    = 0x0ABECEDA
+JP2_MAGIC:              typing.Final                    = 0x0C000000
+
+ND2_CHUNK_NAME_ImageAttributes                          = b'ImageAttributes!'
+ND2_CHUNK_NAME_ImageAttributesLV                        = b'ImageAttributesLV!'
+
+ND2_CHUNK_NAME_ImageMetadata                            = b'ImageMetadata!'
+ND2_CHUNK_NAME_ImageMetadataLV                          = b'ImageMetadataLV!'
+
+ND2_CHUNK_FORMAT_ImageMetadata_1p                       = b'ImageMetadataSeq|%u!' # |seq_index!
+ND2_CHUNK_RE_ImageMetadata_1p                           = re.compile(b'^ImageMetadataSeq\\|(\\d+)!$')
+
+ND2_CHUNK_FORMAT_ImageMetadataLV_1p                     = b'ImageMetadataSeqLV|%u!' # |seq_index!
+ND2_CHUNK_RE_ImageMetadataLV_1p                         = re.compile(b'^ImageMetadataSeqLV\\|(\\d+)!$')
+
+ND2_CHUNK_NAME_BinaryMetadata_v1                        = b'CustomDataVar|BinaryMetadata_v1!' # xml variant
+ND2_CHUNK_NAME_BinaryMetadata_v2                        = b'CustomData|BinaryMetadata_v2!'    # zipped json
+
+ND2_CHUNK_FORMAT_ImageDataSeq_1p                        = b'ImageDataSeq|%u!' # |seq_index!
+ND2_CHUNK_RE_ImageDataSeq_1p                            = re.compile(b'^ImageDataSeq\\|(\\d+)!$')
+
+ND2_CHUNK_FORMAT_DownsampledColorData_2p                = b'CustomDataSeq|DownsampledColorData_%u|%u!' # _size|seq_index!
+ND2_CHUNK_RE_DownsampledColorData_2p                    = re.compile(b'^CustomDataSeq\\|DownsampledColorData_(\\d+)\\|(\\d+)!$')
+
+ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p               = b'CustomDataSeq|TiledRasterBinaryData_%u_%u_%u|%u!' # _binid_ytile_xtile|seq_index!
+ND2_CHUNK_FORMAT_TiledRasterBinaryData_2p               = b'CustomDataSeq|TiledRasterBinaryData_%u|%u!' # _binid|seq_index! (only on S3 ZARR)
+ND2_CHUNK_RE_TiledRasterBinaryData_4p                   = re.compile(b'^CustomDataSeq\\|TiledRasterBinaryData_(\\d+)_(\\d+)_(\\d+)\\|(\\d+)!$')
+ND2_CHUNK_RE_TiledRasterBinaryData_2p                   = re.compile(b'^CustomDataSeq\\|TiledRasterBinaryData_(\\d+)\\|(\\d+)!$')
+
+ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p    = b'CustomDataSeq|DownsampledTiledRasterBinaryData_%u_%u_%u_%u|%u!' # _binid_size_ytile_xtile|seq_index!
+ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_3p    = b'CustomDataSeq|DownsampledTiledRasterBinaryData_%u_%u|%u!' # _binid_size|seq_index! (only on S3 ZARR)
+ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_5p        = re.compile(b'^CustomDataSeq\\|DownsampledTiledRasterBinaryData_(\\d+)_(\\d+)_(\\d+)_(\\d+)\\|(\\d+)!$')
+ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p        = re.compile(b'^CustomDataSeq\\|DownsampledTiledRasterBinaryData_(\\d+)_(\\d+)\\|(\\d+)!$')
+
+class NameNotInChunkmapError(Exception):
+    def __init__(self, name: bytes|str):
+        self.chunk_name = name if type(str) else bytes.decode('ascii')
+        self.message = f"Name not in Chunk Map: {self.chunk_name}"
+        super().__init__(self.message)
+
+class UnexpectedCallError(Exception):
+    def __init__(self, function_name: str, name: bytes|str):
+        self.function_name = function_name
+        self.chunk_name = name if type(str) else bytes.decode('ascii')
+        self.message = f"Unexpected call ({self.function_name}): {self.chunk_name}"
+        super().__init__(self.message)    
+
+class BaseChunker(abc.ABC):
+    def __init__(self, 
+                 *, 
+                 with_image_attributes: ImageAttributes|None = None,
+                 with_experiment: ExperimentLevel|None = None,
+                 with_picture_metadata: PictureMetadata|None = None,
+                 with_binary_rle_metadata: BinaryRleMetadata|None = None,
+                 with_binary_raster_metadata: BinaryRasterMetadata|None = None) -> None:
+        super().__init__()        
+        self._image_attributes: ImageAttributes|None = with_image_attributes
+        self._experiment: ExperimentLevel|None = with_experiment
+        self._picture_metadata: PictureMetadata|None = with_picture_metadata
+        self._binary_rle_metadata: BinaryRleMetadata|None = with_binary_rle_metadata
+        self._binary_tiled_raster_metadata: BinaryRasterMetadata|None = with_binary_raster_metadata
+
+    @abc.abstractproperty
+    def chunkername(self) -> str:
+        return ""
+    
+    @abc.abstractproperty
+    def is_readonly(self) -> bool:
+        pass
+
+    @abc.abstractproperty
+    def chunknames(self) -> list[bytes]:
+        pass
+    
+    @abc.abstractmethod
+    def chunk(self, name: bytes|str, asbytes: bool|None = None) -> bytes|memoryview|None:
+        pass
+
+    @abc.abstractmethod
+    def setChunk(self, name: bytes|str, data: bytes|memoryview) -> None:
+        pass
+
+    @abc.abstractmethod
+    def image(self, seqindex: int) -> NumpyArrayLike:
+        pass
+
+    @abc.abstractmethod
+    def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
+        pass
+
+    @abc.abstractmethod
+    def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
+        pass
+    
+    @abc.abstractmethod
+    def setDownsampledImage(self, seqindex: int, downsize: int, image: NumpyArrayLike) -> None:    
+        pass
+
+    @abc.abstractmethod
+    def binaryRasterData(self, binid: int, seqindex: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:        
+        pass
+
+    @abc.abstractmethod
+    def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, xtile:int|None = None, ytile:int|None = None) -> None:
+        pass
+
+    @abc.abstractmethod
+    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:
+        pass
+
+    @abc.abstractmethod    
+    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike, xtile:int|None = None, ytile:int|None = None) -> None:
+        pass
+
+    @abc.abstractmethod    
+    def finalize(self) -> None:
+        pass
+
+    @abc.abstractmethod    
+    def rollback(self) -> None:
+        pass
+
+    @property
+    def imageAttributes(self) -> ImageAttributes:
+        if self._image_attributes is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_ImageAttributesLV)) is not None:
+                self._image_attributes = ImageAttributes.from_lv(data)
+            elif (data := self.chunk(ND2_CHUNK_NAME_ImageAttributes)) is not None:
+                self._image_attributes = ImageAttributes.from_var(data)
+            else:
+                raise RuntimeError("Missing ImageAttributes")
+        return self._image_attributes
+    
+    @imageAttributes.setter
+    def imageAttributes(self, val: ImageAttributes) -> None:
+        if self.is_readonly:
+            raise PermissionError("Cannot set ImageAttributes to readonly chunker")
+        data = val.to_lv()
+        self.setChunk(ND2_CHUNK_NAME_ImageAttributesLV, data)
+
+    @property
+    def pictureMetadata(self) -> PictureMetadata:
+        if self._picture_metadata is None:
+            if (data := self.chunk(ND2_CHUNK_FORMAT_ImageMetadataLV_1p % (0))) is not None:
+                self._picture_metadata = PictureMetadata.from_lv(data)
+            elif (data := self.chunk(ND2_CHUNK_FORMAT_ImageMetadata_1p % (0))) is not None:
+                self._picture_metadata = PictureMetadata.from_var(data)                
+            else:
+                raise RuntimeError("Missing PictureMetadata")            
+            if not self._picture_metadata.valid:
+                self._picture_metadata.makeValid(self.imageAttributes.componentCount)
+        return self._picture_metadata
+    
+    @property
+    def experiment(self) -> ExperimentLevel|None:
+        if self._experiment is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_ImageMetadataLV)) is not None:
+                self._experiment = ExperimentLevel.from_lv(data)
+            elif (data := self.chunk(ND2_CHUNK_NAME_ImageMetadata)) is not None:
+                self._experiment = ExperimentLevel.from_var(data)                
+            else:
+                return None
+        return self._experiment    
+
+    @property
+    def binaryRleMetadata(self) -> BinaryRleMetadata:
+        if self._binary_rle_metadata is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_BinaryMetadata_v1)) is not None:
+                self._binary_rle_metadata = BinaryRleMetadata.from_var(data)
+            else:
+                self._binary_rle_metadata = BinaryRleMetadata([])
+        return self._binary_rle_metadata
+    
+    @property
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
+        if self._binary_tiled_raster_metadata is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_BinaryMetadata_v2)) is not None:
+                self._binary_tiled_raster_metadata = BinaryRasterMetadata.from_json(data)
+            else:
+                self._binary_tiled_raster_metadata = BinaryRasterMetadata([])
+        return self._binary_tiled_raster_metadata
+    
+    @property
+    def hasDownsampledImages(self) -> bool:
+        attrs = self.imageAttributes
+        chnames = self.chunknames
+        for seqindex in range(attrs.frameCount):
+            for downsize in attrs.lowerPowSizeList:
+                chname = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
+                if chname not in chnames:
+                    return False
+        return True
+    
+    @property
+    def hasDownsampledBinaryRasterData(self) -> bool:
+        attrs, binmeta = self.imageAttributes, self.binaryRasterMetadata
+        chnames = self.chunknames
+        if not binmeta:
+            return False
+        for binmetaitem in binmeta:
+            h, w = binmetaitem.shape
+            th, tw = binmetaitem.tileShape
+            alltiles = itertools.product(list(range(0, h//th, 1)), list(range(0, w//tw, 1)))
+            for seqindex in range(attrs.frameCount):
+                for downsize in attrs.lowerPowSizeList:
+                    chname = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_3p % (binmetaitem.id, downsize, seqindex)
+                    if chname not in chnames:
+                        for tile in alltiles:
+                            chname = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binmetaitem.id, downsize, tile[0], tile[1], seqindex)
+                            if chname not in chnames:
+                                return False
+        return True        
+    
+    def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
+        src_attrs, src_image = self.imageAttributes, image
+        while ImageAttributes.MinDownsampledSie < src_attrs.powSize:
+            downsampled_attrs = src_attrs.makeDownsampled()
+            downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
+            _downsample_2x_linear(downsampled_image, src_image)
+            self.setDownsampledImage(seqindex=seqindex, downsize=downsampled_attrs.powSize, image=downsampled_image.astype(dtype=downsampled_attrs.dtype))
+            src_attrs, src_image = downsampled_attrs, downsampled_image
+
+    def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, xtile:int|None = None, ytile:int|None = None) -> None:
+        src_attrs, src_binimage = self.imageAttributes, binimage
+        while ImageAttributes.MinDownsampledSie < src_attrs.powSize:
+            downsampled_attrs = src_attrs.makeDownsampled()
+            downsampled_image = np.zeros(shape=downsampled_attrs.shape[:2], dtype=np.uint32)
+            _downsample_2x_00(downsampled_image, src_binimage)
+            self.setDownsampledBinaryRasterData(binid=binid, seqindex=seqindex, downsize=downsampled_attrs.powSize, binimage=downsampled_image)
+            src_attrs, src_binimage = downsampled_attrs, downsampled_image
+
+    def sacle_2xN_down_linear(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
+        src_attrs = self.imageAttributes
+        while n:
+            downsampled_attrs = src_attrs.makeDownsampled()
+            downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
+            _downsample_2x_linear(downsampled_image, img)
+            src_attrs, img = downsampled_attrs, downsampled_image.astype(dtype=downsampled_attrs.dtype)
+            n -= 1
+        return img
+    
+    def sacle_2xN_down_00(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
+        src_attrs = self.imageAttributes
+        while n:
+            downsampled_attrs = src_attrs.makeDownsampled()
+            downsampled_image = np.zeros(shape=downsampled_attrs.shape[:2], dtype=np.uint32)
+            _downsample_2x_00(downsampled_image, img)
+            src_attrs, img = downsampled_attrs, downsampled_image
+            n -= 1
+        return img    
+
+    
+    def _set_metadata(self, name: bytes, data: bytes) -> None:
+        if ND2_CHUNK_NAME_ImageAttributesLV == name:
+            self._image_attributes = ImageAttributes.from_lv(data)
+        elif ND2_CHUNK_NAME_BinaryMetadata_v1 == name:
+            self._binary_rle_metadata = BinaryRleMetadata.from_var(data)
+        elif ND2_CHUNK_NAME_BinaryMetadata_v2 == name:
+            self._binary_tiled_raster_metadata = BinaryRasterMetadata.from_json(data)
+    
+    @staticmethod
+    def _is_chunk_data(chunkname: bytes) -> bool:
+        return not (
+            ND2_CHUNK_RE_ImageDataSeq_1p.fullmatch(chunkname)
+            or ND2_CHUNK_RE_DownsampledColorData_2p.fullmatch(chunkname)
+            or ND2_CHUNK_RE_TiledRasterBinaryData_2p.fullmatch(chunkname)            
+            or ND2_CHUNK_RE_TiledRasterBinaryData_4p.fullmatch(chunkname)            
+            or ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p.fullmatch(chunkname)
+            or ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_5p.fullmatch(chunkname))
+    
+    @staticmethod
+    def isSkipChunk(chunkname: bytes) -> bool:
+        return chunkname in (ND2_FILE_SIGNATURE, ND2_CHUNKMAP_SIGNATURE, ND2_FILEMAP_SIGNATURE)
+    
+    def isBinaryRleMetadata(chunkname: bytes) -> bool:
+        return ND2_CHUNK_NAME_BinaryMetadata_v1 == chunkname
+    
+    @staticmethod
+    def isImageChunk(chunkname: bytes) -> dict[str, int]|None:
+        if match := ND2_CHUNK_RE_ImageDataSeq_1p.fullmatch(chunkname):
+            return dict(seqindex=int(match.group(1)))
+        return None
+    
+    @staticmethod
+    def isDownsampledImageChunk(chunkname: bytes) -> dict[str, int]|None:
+        if match := ND2_CHUNK_RE_DownsampledColorData_2p.fullmatch(chunkname):
+            return dict(seqindex=int(match.group(2)), downsize=int(match.group(1)))
+        return None
+    
+    @staticmethod
+    def isBinaryRleDataChunk(regex_dict: dict[int, re.Pattern], chunkname: bytes) -> dict[str, int]|None:
+        for binid, regex in regex_dict.items():
+            if match := regex.fullmatch(chunkname):
+                return dict(binid=binid, seqindex=int(match.group(1)))
+        return None
+    
+    @staticmethod
+    def isBinaryRasterData(chunkname: bytes) -> dict[str, int]|None:
+        if match := ND2_CHUNK_RE_TiledRasterBinaryData_2p.fullmatch(chunkname):
+            return dict(binid=int(match.group(1)), seqindex=int(match.group(2)), ytile=0, xtile=0)
+        elif match := ND2_CHUNK_RE_TiledRasterBinaryData_4p.fullmatch(chunkname):
+            return dict(binid=int(match.group(1)), seqindex=int(match.group(4)), ytile=int(match.group(2)), xtile=int(match.group(3)))
+        return None
+    
+    @staticmethod
+    def isDownsampledBinaryRasterData(chunkname: bytes) -> dict[str, int]|None:
+        if match := ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p.fullmatch(chunkname):
+            return dict(binid=int(match.group(1)), seqindex=int(match.group(3)), downsize=int(match.group(2)), ytile=0, xtile=0)
+        elif match := ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_5p.fullmatch(chunkname):
+            return dict(binid=int(match.group(1)), seqindex=int(match.group(5)), downsize=int(match.group(2)), ytile=int(match.group(3)), xtile=int(match.group(4)))
+        return None
+    
+    def rleChunkToArray(self, data: bytes|memoryview, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
+        if len(data) < 4:
+            return np.zeros(shape=self.imageAttributes.shape[:2], dtype=np.uint32), {}
+        (_uncompressed_size, ) = struct.unpack_from("<I", data)
+        stream = io.BytesIO(zlib.decompress(data[4:]))
+        rle_header = struct.Struct("<IIIIIII")
+        rle_object = struct.Struct("<IIIIIIIII")
+        rle_seg = rle_row = struct.Struct("<II")
+        def _unpack(stream: io.BufferedIOBase, strct: struct.Struct) -> tuple:
+            return strct.unpack(stream.read(strct.size))        
+        (version, width, height, obj_count, _nbytes, _last_object_offset, _custom_data_size) = _unpack(stream, rle_header)
+        if version != 3:
+            raise NotImplementedError()
+        ret_obj_info_dict = {}
+        ret_binimage = np.zeros(shape=(height, width), dtype=np.uint32)    
+        for _i in range(obj_count):
+            (obj_id, left, top, right, bottom, _nbytes, nrows, _last_row_offset, obj_status) = _unpack(stream, rle_object)
+            if not no_obj_info:
+                obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
+                ret_obj_info_dict[obj_id] = obj_info
+                for j in range(nrows):                        
+                    (y, nsegments) = _unpack(stream, rle_row)
+                    for k in range(nsegments):
+                        (x, n) = _unpack(stream, rle_seg)
+                        if 0 == j and 0 == k:
+                            obj_info["seed"] = (x, y)
+                        ret_binimage[y, x : x + n] = obj_id
+                        pxls += n
+                        xx += sum(range(x, x+n))
+                        yy += n*y
+                obj_info["pixels"] = pxls
+                obj_info["center"] = (xx // pxls, yy // pxls)
+            else:
+                ret_obj_info_dict[obj_id] = None
+                for _j in range(nrows):                    
+                    (y, nsegments) = _unpack(stream, rle_row)
+                    for _k in range(nsegments):
+                        (x, n) = _unpack(stream, rle_seg)
+                        ret_binimage[y, x : x + n] = obj_id
+        return (ret_binimage, ret_obj_info_dict)    
+        
+def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
+    s0, s1 = dst.shape[0:2]
+    dst += src[0:2*s0:2, 0:2*s1:2]
+    dst += src[1:2*s0:2, 0:2*s1:2]
+    dst += src[0:2*s0:2, 1:2*s1:2]
+    dst += src[1:2*s0:2, 1:2*s1:2]
+    dst //= 4
+
+def _downsample_2x_00(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
+    s0, s1 = dst.shape[0:2]
+    np.copyto(dst, src[0:2*s0:2, 0:2*s1:2])
+

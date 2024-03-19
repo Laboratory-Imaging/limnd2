@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "limnd2"
+version = "0.2.0"
+dependencies = [
+    "numpy",
+    'importlib-metadata; python_version<="3.12"',
+]
+
+[tool.setuptools.packages.find]
+# All the following settings are optional:
+include = ["limnd2"]  # ["*"] by default
+exclude = ["tst*"]  # empty by default
+namespaces = false
