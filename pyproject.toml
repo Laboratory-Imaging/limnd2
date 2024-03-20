@@ -4,7 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "limnd2"
-version = "0.2.0"
+version = "0.3.0"
+authors = [
+    {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
+]
 dependencies = [
     "numpy",
     'importlib-metadata; python_version<="3.12"',
