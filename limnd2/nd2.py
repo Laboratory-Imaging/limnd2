@@ -1,15 +1,23 @@
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabld, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
-from .factory import create_chunker
+from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
 
 if Nd2LoggerEnabld:
     import logging
     logger = logging.getLogger("limnd2")
 
-class Nd2Reader:
+class Nd2Reader:    
+    def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
+        kwargs["readonly"] = True
+        return _create_chunker(*args, **kwargs)
+
     def __init__(self, file : FileLikeObject, *, chunker_kwargs:dict = {}) -> None:
-        self._chunker = create_chunker(file, readonly=True, chunker_kwargs=chunker_kwargs)
+        self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
+
+    @property
+    def version(self) -> tuple[int, int]:
+        return self._chunker.fileVersion
 
     @property
     def is3d(self) -> bool:
@@ -99,8 +107,16 @@ class Nd2Reader:
         return self._chunker.finalize()    
 
 class Nd2Writer:
+    def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
+        kwargs["readonly"] = False
+        return _create_chunker(*args, **kwargs)
+        
     def __init__(self, file : FileLikeObject, *, append : bool|None = None, chunker_kwargs:dict = {}) -> None:
-        self._chunker = create_chunker(file, readonly=False, append=append, chunker_kwargs=chunker_kwargs)
+        self._chunker = self.create_chunker(file, append=append, chunker_kwargs=chunker_kwargs)
+
+    @property
+    def version(self) -> tuple[int, int]:
+        return self._chunker.fileVersion        
 
     @property
     def imageAttributes(self) -> ImageAttributes:
@@ -122,3 +138,25 @@ class Nd2Writer:
     
     def rollback(self) -> None:
         return self._chunker.rollback()
+    
+def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs:dict = {}):
+    import os
+    if type(file) == str:
+        if readonly:
+            mode = "rb"
+        else:
+            if append is None:
+                append = os.path.isfile(file)
+            mode = "rb+" if append else "wb"
+
+        fh = open(file, mode)
+        chunker_kwargs.update(dict(filename=file))
+        return LimBinaryIOChunker(fh, **chunker_kwargs)
+        
+    elif (hasattr(file, "read") or hasattr(file, "write")) and hasattr(file, "seek") and hasattr(file, "tell") and hasattr(file, "mode"):
+        if readonly and "rb" != file.mode:
+            raise ValueError("File handle passed to LimNd2Reader must have \"rb\" mode")
+        elif not readonly and file.mode not in ("rb+", "wb"):
+            raise ValueError("File handle passed to LimNd2Wrtier must have \"rb+\" or \"wb\" mode")
+        return LimBinaryIOChunker(file, **chunker_kwargs)
+

@@ -22,20 +22,19 @@ code .
 Create `~/.pypirc`
 
 ```txt
-    [distutils]
-     index-servers =
-       pypi
-       local
+[distutils]
+  index-servers =
+    pypi
+    local
 
-    [pypi]
-     username:<your_pypi_username>
-     password:<your_pypi_passwd>
+[pypi]
+  username: <your_pypi_username>
+  password: <your_pypi_passwd>
 
-     [local]
-     repository: http://gaexec:9500
-     username:
-     password:
-
+[local]
+  repository: http://gaexec:9500
+  username:
+  password:
 ```
 
 Build and upload

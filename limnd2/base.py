@@ -78,6 +78,10 @@ class BaseChunker(abc.ABC):
         self._binary_tiled_raster_metadata: BinaryRasterMetadata|None = with_binary_raster_metadata
 
     @abc.abstractproperty
+    def fileVersion(self) -> tuple[int, int]:
+        pass
+
+    @abc.abstractproperty
     def chunkername(self) -> str:
         return ""
     

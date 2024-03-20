@@ -80,6 +80,10 @@ class LimBinaryIOChunker(BaseChunker):
                 self._chunkmap = collections.OrderedDict()
 
     @property
+    def fileVersion(self) -> tuple[int, int]:
+        return self._version
+
+    @property
     def chunkername(self) -> str:
         return "file"
 
