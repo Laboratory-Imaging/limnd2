@@ -11,6 +11,9 @@ FileLikeObject: typing.TypeAlias = str|int|typing.BinaryIO
 ChunkMap: typing.TypeAlias = typing.Mapping[bytes, tuple]
 
 Nd2LoggerEnabld = False
+if Nd2LoggerEnabld:
+    import logging
+    logger = logging.getLogger("limnd2")
 
 ND2_FILE_SIGNATURE:     typing.Final                    = b"ND2 FILE SIGNATURE CHUNK NAME01!" # len 32
 ND2_CHUNKMAP_SIGNATURE: typing.Final                    = b"ND2 CHUNK MAP SIGNATURE 0000001!" # len 32
@@ -49,11 +52,19 @@ ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_3p    = b'CustomDataSeq|Downsa
 ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_5p        = re.compile(b'^CustomDataSeq\\|DownsampledTiledRasterBinaryData_(\\d+)_(\\d+)_(\\d+)_(\\d+)\\|(\\d+)!$')
 ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p        = re.compile(b'^CustomDataSeq\\|DownsampledTiledRasterBinaryData_(\\d+)_(\\d+)\\|(\\d+)!$')
 
+
+
 class NameNotInChunkmapError(Exception):
     def __init__(self, name: bytes|str):
         self.chunk_name = name if type(str) else bytes.decode('ascii')
         self.message = f"Name not in Chunk Map: {self.chunk_name}"
         super().__init__(self.message)
+
+class BinaryIdNotFountError(Exception):
+    def __init__(self, id: int):
+        self.binid = id
+        self.message = f"Binary Id not found: {self.binid}"
+        super().__init__(self.message)    
 
 class UnexpectedCallError(Exception):
     def __init__(self, function_name: str, name: bytes|str):
@@ -110,7 +121,7 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def readDownsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
         pass
     
     @abc.abstractmethod
@@ -118,19 +129,19 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def binaryRasterData(self, binid: int, seqindex: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:        
+    def binaryRasterData(self, binid: int, seqindex: int) -> NumpyArrayLike:        
         pass
 
     @abc.abstractmethod
-    def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, xtile:int|None = None, ytile:int|None = None) -> None:
+    def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
         pass
 
     @abc.abstractmethod
-    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:
+    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod    
-    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike, xtile:int|None = None, ytile:int|None = None) -> None:
+    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
         pass
 
     @abc.abstractmethod    
@@ -230,7 +241,37 @@ class BaseChunker(abc.ABC):
                             chname = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binmetaitem.id, downsize, tile[0], tile[1], seqindex)
                             if chname not in chnames:
                                 return False
-        return True        
+        return True
+    
+    def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
+        img = None        
+        denomPowBase = 0
+        while downsize < self.imageAttributes.powSize:
+            try:
+                img = self.readDownsampledImage(seqindex, downsize)
+                break
+            except NameNotInChunkmapError:
+                if Nd2LoggerEnabld:
+                    logger.debug(f"Downsampled (downsize={downsize}) image (index={seqindex}) not found!")                
+                denomPowBase += 1
+                downsize *= 2
+        img = self.image(seqindex) if img is None else img
+        return self.sacle_2xN_down_linear(img, denomPowBase) if img is not None else img
+    
+    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int) -> NumpyArrayLike:
+        img = None     
+        denomPowBase = 0
+        while downsize < self.imageAttributes.powSize:
+            try:
+                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsize)
+                break
+            except BinaryIdNotFountError or NameNotInChunkmapError:
+                if Nd2LoggerEnabld:
+                    logger.debug(f"Downsampled (downsize={downsize}) binary (binid={binid}) at (index={seqindex}) not found!")
+                denomPowBase += 1
+                downsize *= 2
+        img = self.binaryRasterData(binid, seqindex) if img is None else img
+        return self.sacle_2xN_down_00(img, denomPowBase) if img is not None else img
     
     def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
         src_attrs, src_image = self.imageAttributes, image
@@ -241,7 +282,7 @@ class BaseChunker(abc.ABC):
             self.setDownsampledImage(seqindex=seqindex, downsize=downsampled_attrs.powSize, image=downsampled_image.astype(dtype=downsampled_attrs.dtype))
             src_attrs, src_image = downsampled_attrs, downsampled_image
 
-    def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, xtile:int|None = None, ytile:int|None = None) -> None:
+    def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
         src_attrs, src_binimage = self.imageAttributes, binimage
         while ImageAttributes.MinDownsampledSie < src_attrs.powSize:
             downsampled_attrs = src_attrs.makeDownsampled()

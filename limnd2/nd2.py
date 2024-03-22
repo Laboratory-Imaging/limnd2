@@ -77,12 +77,15 @@ class Nd2Reader:
             return self.experiment.generateLoopIndexes(named=named)
     
     @property
-    def binaryRleMetadata(self) -> BinaryRleMetadata|None:
+    def binaryRleMetadata(self) -> BinaryRleMetadata:
         return self._chunker.binaryRleMetadata
     
     @property
-    def binaryRasterMetadata(self) -> BinaryRasterMetadata|None:
-        return self._chunker.binaryRasterMetadata
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
+        if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(self._chunker.binaryRleMetadata):
+            return self._chunker.binaryRleMetadata.makeRasterMetadata(self.imageAttributes.width, self.imageAttributes.height)
+        else:
+            return self._chunker.binaryRasterMetadata
 
     @property
     def chunker(self):
