@@ -2,6 +2,7 @@ from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabld, BinaryRleMeta
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
+from .textinfo import ImageTextInfo, AppInfo
 
 if Nd2LoggerEnabld:
     import logging
@@ -44,6 +45,10 @@ class Nd2Reader:
         return self._chunker.experiment
     
     @property
+    def imageTextInfo(self) -> ImageTextInfo:
+        return self._chunker.imageTextInfo
+    
+    @property
     def wellplateDesc(self) -> WellplateDesc|None:
         data = self.chunk(b'CustomData|WellPlateDesc_0!')
         return WellplateDesc.from_lv(data) if data is not None else None
@@ -52,6 +57,15 @@ class Nd2Reader:
     def wellplateFrameInfo(self) -> WellplateFrameInfo|None:
         data = self.chunk(b'CustomData|WellPlateFrameInfoZJSON!')
         return WellplateFrameInfo.from_json(data) if data is not None else None
+    
+    @property
+    def appInfo(self) -> AppInfo:
+        data = self.chunk(b'CustomDataVar|AppInfo_V1_0!')
+        return AppInfo.from_var(data)
+    
+    @property
+    def software(self) -> str:
+        return self.appInfo.software
     
     def generateLoopIndexes(self, named: bool = False) -> list:
         exp = self.experiment

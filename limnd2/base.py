@@ -5,7 +5,8 @@ import numpy as np
 from .attributes import ImageAttributes, NumpyArrayLike
 from .binary import BinaryRleMetadata, BinaryRasterMetadata
 from .experiment import ExperimentLevel
-from .metadata import PictureMetadata 
+from .metadata import PictureMetadata
+from .textinfo import ImageTextInfo
 
 FileLikeObject: typing.TypeAlias = str|int|typing.BinaryIO
 ChunkMap: typing.TypeAlias = typing.Mapping[bytes, tuple]
@@ -26,6 +27,9 @@ ND2_CHUNK_NAME_ImageAttributesLV                        = b'ImageAttributesLV!'
 
 ND2_CHUNK_NAME_ImageMetadata                            = b'ImageMetadata!'
 ND2_CHUNK_NAME_ImageMetadataLV                          = b'ImageMetadataLV!'
+
+ND2_CHUNK_NAME_ImageTextInfo                            = b'ImageTextInfo!'
+ND2_CHUNK_NAME_ImageTextInfoLV                          = b'ImageTextInfoLV!'
 
 ND2_CHUNK_FORMAT_ImageMetadata_1p                       = b'ImageMetadataSeq|%u!' # |seq_index!
 ND2_CHUNK_RE_ImageMetadata_1p                           = re.compile(b'^ImageMetadataSeq\\|(\\d+)!$')
@@ -80,27 +84,33 @@ class BaseChunker(abc.ABC):
                  with_experiment: ExperimentLevel|None = None,
                  with_picture_metadata: PictureMetadata|None = None,
                  with_binary_rle_metadata: BinaryRleMetadata|None = None,
-                 with_binary_raster_metadata: BinaryRasterMetadata|None = None) -> None:
+                 with_binary_raster_metadata: BinaryRasterMetadata|None = None,
+                 with_image_text_info: ImageTextInfo|None = None) -> None:
         super().__init__()        
         self._image_attributes: ImageAttributes|None = with_image_attributes
         self._experiment: ExperimentLevel|None = with_experiment
         self._picture_metadata: PictureMetadata|None = with_picture_metadata
         self._binary_rle_metadata: BinaryRleMetadata|None = with_binary_rle_metadata
         self._binary_tiled_raster_metadata: BinaryRasterMetadata|None = with_binary_raster_metadata
+        self._image_text_info: ImageTextInfo|None = with_image_text_info
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def fileVersion(self) -> tuple[int, int]:
         pass
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def chunkername(self) -> str:
         return ""
     
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod
     def is_readonly(self) -> bool:
         pass
 
-    @abc.abstractproperty
+    @property
+    @abc.abstractmethod    
     def chunknames(self) -> list[bytes]:
         pass
     
@@ -192,8 +202,19 @@ class BaseChunker(abc.ABC):
                 self._experiment = ExperimentLevel.from_var(data)                
             else:
                 return None
-        return self._experiment    
-
+        return self._experiment
+    
+    @property
+    def imageTextInfo(self) -> ImageTextInfo:
+        if self._image_text_info is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_ImageTextInfoLV)) is not None:
+                self._image_text_info = ImageTextInfo.from_lv(data)
+            elif (data := self.chunk(ND2_CHUNK_NAME_ImageTextInfo)) is not None:
+                self._image_text_info = ImageTextInfo.from_var(data)                
+            else:
+                return None
+        return self._image_text_info
+    
     @property
     def binaryRleMetadata(self) -> BinaryRleMetadata:
         if self._binary_rle_metadata is None:
