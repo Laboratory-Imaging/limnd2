@@ -54,20 +54,20 @@ class ImageTextInfo:
     
     def to_dict(self) -> dict[str, str]:
         return dict(
-            sImageID=self.sImageID,
-            sType=self.sType,
-            sGroup=self.sGroup,
-            sSampleID=self.sSampleID,
-            sAuthor=self.sAuthor,
-            sDescription=self.sDescription,
-            sCapturing=self.sCapturing,
-            sSampling=self.sSampling,
-            sLocation=self.sLocation,
-            sDate=self.sDate,
-            sConclusion=self.sConclusion,
-            sInfo1=self.sInfo1,
-            sInfo2=self.sInfo2, 
-            sOptics=self.sOptics)
+            imageId=self.sImageID,
+            type=self.sType,
+            group=self.sGroup,
+            sampleId=self.sSampleID,
+            author=self.sAuthor,
+            description=self.sDescription,
+            capturing=self.sCapturing,
+            sampling=self.sSampling,
+            location=self.sLocation,
+            date=self.sDate,
+            conclusion=self.sConclusion,
+            info1=self.sInfo1,
+            info2=self.sInfo2, 
+            optics=self.sOptics)
 
     @staticmethod
     def from_lv(data: bytes|memoryview) -> ImageTextInfo:
