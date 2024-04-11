@@ -15,3 +15,6 @@ print("Objective Name:", f.imageTextInfo.sOptics)
 print("Software:", f.software)
 print("Channel Info:", [f"{ch.sDescription} (Em: {ch.emissionWavelengthNm:.0f}nm, Ex: {ch.excitationWavelengthNm:.0f}nm)" for ch in f.pictureMetadata.channels])
 #print(f.experiment)
+
+print(" x ".join(f"{l.name} ({l.uLoopPars.uiCount})" for l in f.experiment if not l.isLambda))
+print(f.filename)

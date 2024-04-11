@@ -96,6 +96,11 @@ class BaseChunker(abc.ABC):
 
     @property
     @abc.abstractmethod
+    def filename(self) -> str|None:
+        pass
+
+    @property
+    @abc.abstractmethod
     def fileVersion(self) -> tuple[int, int]:
         pass
 

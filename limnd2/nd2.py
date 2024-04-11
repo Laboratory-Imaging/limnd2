@@ -17,6 +17,10 @@ class Nd2Reader:
         self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
 
     @property
+    def filename(self) -> str|None:
+        return self._chunker.filename
+
+    @property
     def version(self) -> tuple[int, int]:
         return self._chunker.fileVersion
 

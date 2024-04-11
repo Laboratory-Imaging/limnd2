@@ -80,6 +80,10 @@ class LimBinaryIOChunker(BaseChunker):
                 self._chunkmap = collections.OrderedDict()
 
     @property
+    def filename(self) -> str|None:
+        return None if self._filename is None else os.path.abspath(self._filename)
+
+    @property
     def fileVersion(self) -> tuple[int, int]:
         return self._version
 

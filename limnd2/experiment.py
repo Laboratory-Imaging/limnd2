@@ -445,6 +445,20 @@ class WellplateFrameInfo(collections.UserList):
         return WellplateFrameInfo(decoded)        
 
 
+class ExperimentIterator:
+    def __init__(self, explevels: list[ExperimentLevel]):
+        self.explevels: list[ExperimentLevel] = explevels
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            return self.explevels.pop()
+        except IndexError:
+            raise StopIteration
+
+
 @dataclass(init=False, frozen=True)
 class ExperimentLevel:
     eType: ExperimentLoopType       = ExperimentLoopType.eEtUnknown     # Type of the current loop, determines the union member to be used
@@ -558,6 +572,9 @@ class ExperimentLevel:
         object.__setattr__(self, 'sParallelExperiment', sParallelExperiment)
         object.__setattr__(self, 'pExternalData', pExternalData)
 
+    def __iter__(self):
+        return ExperimentIterator(self._allLevels())
+
     @property
     def valid(self) -> bool:
         return (
@@ -566,8 +583,16 @@ class ExperimentLevel:
             and all(exp.valid for exp in self.ppNextLevelEx)
         )
     
+    @property
+    def isLambda(self) -> bool:
+        return self.eType == ExperimentLoopType.eEtSpectLoop
+    
+    @property
+    def name(self) -> bool:
+        return ExperimentLoopType.toName(self.eType)
+    
     def loopTypes(self, *, skipSpectralLoop: bool = True) -> tuple[ExperimentLoopType]:
-        ret = tuple() if self.eType == ExperimentLoopType.eEtSpectLoop and skipSpectralLoop else (self.eType, ) 
+        ret = tuple() if self.isLambda and skipSpectralLoop else (self.eType, ) 
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].loopTypes(skipSpectralLoop=skipSpectralLoop)
         return ret
@@ -585,19 +610,19 @@ class ExperimentLevel:
         return None
     
     def ndim(self, skipSpectralLoop: bool = True) -> int:
-        ret = 0 if self.eType == ExperimentLoopType.eEtSpectLoop and skipSpectralLoop else 1
+        ret = 0 if self.isLambda and skipSpectralLoop else 1
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].ndim(skipSpectralLoop=skipSpectralLoop)
         return ret
 
     def shape(self, *, skipSpectralLoop: bool = True) -> tuple[int]:
-        ret = tuple() if self.eType == ExperimentLoopType.eEtSpectLoop and skipSpectralLoop else (len([item for item in self.pItemValid if item]) if self.pItemValid is not None else self.uLoopPars.uiCount,)
+        ret = tuple() if self.isLambda and skipSpectralLoop else (len([item for item in self.pItemValid if item]) if self.pItemValid is not None else self.uLoopPars.uiCount,)
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].shape(skipSpectralLoop=skipSpectralLoop)
         return ret
     
     def dimnames(self, *, skipSpectralLoop: bool = True) -> tuple[str]:
-        ret = tuple() if self.eType == ExperimentLoopType.eEtSpectLoop and skipSpectralLoop else (ExperimentLoopType.toName(self.eType),)
+        ret = tuple() if self.isLambda and skipSpectralLoop else (ExperimentLoopType.toName(self.eType),)
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].dimnames(skipSpectralLoop=skipSpectralLoop)
         return tuple(ret)    
@@ -610,6 +635,12 @@ class ExperimentLevel:
             return [ dict(zip(names, item)) for item in loopindexes]
         else:            
             return list(loopindexes)
+        
+    def _allLevels(self) -> list[ExperimentLevel]:
+        ret = [ self ]
+        if 0 < len(nl := self._nextLevels()):
+            ret += nl[0]._allLevels()
+        return ret
     
     def _nextLevels(self) -> list[ExperimentLevel]:
         ret = []
