@@ -51,6 +51,23 @@ class ImageTextInfo:
         object.__setattr__(self, 'sInfo1', TextInfoItem_11)
         object.__setattr__(self, 'sInfo2', TextInfoItem_12)
         object.__setattr__(self, 'sOptics', TextInfoItem_13)
+    
+    def to_dict(self) -> dict[str, str]:
+        return dict(
+            sImageID=self.sImageID,
+            sType=self.sType,
+            sGroup=self.sGroup,
+            sSampleID=self.sSampleID,
+            sAuthor=self.sAuthor,
+            sDescription=self.sDescription,
+            sCapturing=self.sCapturing,
+            sSampling=self.sSampling,
+            sLocation=self.sLocation,
+            sDate=self.sDate,
+            sConclusion=self.sConclusion,
+            sInfo1=self.sInfo1,
+            sInfo2=self.sInfo2, 
+            sOptics=self.sOptics)
 
     @staticmethod
     def from_lv(data: bytes|memoryview) -> ImageTextInfo:
