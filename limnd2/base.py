@@ -34,6 +34,16 @@ ND2_CHUNK_NAME_ImageTextInfoLV                          = b'ImageTextInfoLV!'
 ND2_CHUNK_FORMAT_ImageMetadata_1p                       = b'ImageMetadataSeq|%u!' # |seq_index!
 ND2_CHUNK_RE_ImageMetadata_1p                           = re.compile(b'^ImageMetadataSeq\\|(\\d+)!$')
 
+ND2_CHUNK_NAME_AcqTimesCache                            = b'CustomData|AcqTimesCache!'
+ND2_CHUNK_NAME_AcqTimes2Cache                           = b'CustomData|AcqTimes2Cache!'
+ND2_CHUNK_NAME_AcqFramesCache                           = b'CustomData|AcqFramesCache!'
+ND2_CHUNK_NAME_TimeSourceCache                          = b'CustomData|TimeSourceCache!'
+ND2_CHUNK_NAME_FloatRangeCache                          = b'CustomData|FloatRangeCache!'
+ND2_CHUNK_FORMAT_FloatCompRangeCache_1p                 = b'CustomData|FloatCompRangeCache%u!'
+
+ND2_CHUNK_NAME_CustomDataVar                            = b'CustomDataVar|CustomDataV2_0!'
+ND2_CHUNK_NAME_CustomDataVarLI                          = b'CustomDataVar|CustomDataV2_0LI!'
+
 ND2_CHUNK_FORMAT_ImageMetadataLV_1p                     = b'ImageMetadataSeqLV|%u!' # |seq_index!
 ND2_CHUNK_RE_ImageMetadataLV_1p                         = re.compile(b'^ImageMetadataSeqLV\\|(\\d+)!$')
 
@@ -93,6 +103,10 @@ class BaseChunker(abc.ABC):
         self._binary_rle_metadata: BinaryRleMetadata|None = with_binary_rle_metadata
         self._binary_tiled_raster_metadata: BinaryRasterMetadata|None = with_binary_raster_metadata
         self._image_text_info: ImageTextInfo|None = with_image_text_info
+        self._acq_times: np.ndarray|None = None
+        self._acq_times2: np.ndarray|None = None
+        self._acq_frames: np.ndarray|None = None
+        self._comp_range: np.ndarray|None = None
 
     @property
     @abc.abstractmethod
@@ -345,6 +359,66 @@ class BaseChunker(abc.ABC):
             self._binary_rle_metadata = BinaryRleMetadata.from_var(data)
         elif ND2_CHUNK_NAME_BinaryMetadata_v2 == name:
             self._binary_tiled_raster_metadata = BinaryRasterMetadata.from_json(data)
+
+    @property
+    def acqTimes(self) -> np.ndarray:
+        if self._acq_times is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_AcqTimesCache)) is not None:
+                self._acq_times = np.ndarray(
+                    buffer=data, dtype=np.float64,       
+                    shape=(self.imageAttributes.uiSequenceCount, ),
+                    strides=(8, ))
+            else:
+                self._acq_times = np.array([i*10.0 for i in range(self.imageAttributes.uiSequenceCount) ])
+        return self._acq_times
+    
+    @property
+    def acqTimes2(self) -> np.ndarray:
+        if self._acq_times is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_AcqTimes2Cache)) is not None:
+                self._acq_times = np.ndarray(
+                    buffer=data, dtype=np.float64,       
+                    shape=(self.imageAttributes.uiSequenceCount, ),
+                    strides=(8, ))
+        return self._acq_times2
+    
+
+    
+    @property
+    def acqFrames(self) -> np.ndarray:
+        if self._acq_times is None:
+            if (data := self.chunk(ND2_CHUNK_NAME_AcqFramesCache)) is not None:
+                self._acq_times = np.ndarray(
+                    buffer=data, dtype=np.uint32,       
+                    shape=(self.imageAttributes.uiSequenceCount, ),
+                    strides=(4, ))
+        return self._acq_frames
+    
+    @property
+    def compFrameRange(self) -> np.ndarray:
+        if self._comp_range is None:
+            self._comp_range = np.zeros((self.imageAttributes.uiComp, 2, self.imageAttributes.uiSequenceCount))
+            for comp in range(self.imageAttributes.uiComp):
+                if (data := self.chunk(ND2_CHUNK_FORMAT_FloatCompRangeCache_1p % (comp))) is not None:
+                    pairs = np.ndarray(
+                        buffer=data, dtype=np.float64,
+                        shape=(self.imageAttributes.uiSequenceCount, 2),
+                        strides=(2*8, 8))
+                    self._comp_range[comp, :, :] = np.moveaxis(pairs, 1, 0)
+                else:
+                    self._comp_range[comp, 0, :] = 0
+                    self._comp_range[comp, 1, :] = (1 << self.imageAttributes.uiBpcInMemory) - 1
+        return self._comp_range
+    
+    @property
+    def compRange(self) -> np.ndarray:
+        ret = np.zeros((self.imageAttributes.uiComp, 2))
+        for comp in range(self.imageAttributes.uiComp):
+            ret[comp, 0] = np.min(self.compFrameRange[comp, 0, :])
+            ret[comp, 1] = np.max(self.compFrameRange[comp, 1, :])
+        return ret
+            
+
     
     @staticmethod
     def _is_chunk_data(chunkname: bytes) -> bool:

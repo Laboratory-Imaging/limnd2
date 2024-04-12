@@ -93,5 +93,8 @@ class AppInfo:
         return f"{self.m_SWNameString} {self.m_VersionString}"
 
     def from_var(data: bytes|memoryview) -> AppInfo:
-        decoded = decode_var(data)
-        return AppInfo(**decoded[0])
+        try:
+            decoded = decode_var(data)
+            return AppInfo(**decoded[0])
+        except:
+            return AppInfo()

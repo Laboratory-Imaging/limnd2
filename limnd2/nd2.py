@@ -1,8 +1,12 @@
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabld, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
+from .customdata import RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo, AppInfo
+from .variant import decode_var
+
+import numpy as np
 
 if Nd2LoggerEnabld:
     import logging
@@ -70,6 +74,50 @@ class Nd2Reader:
     @property
     def software(self) -> str:
         return self.appInfo.software
+    
+    @property
+    def acqFrames(self) -> NumpyArrayLike:
+        return self._chunker.acqFrames
+    
+    @property
+    def acqTimes(self) -> NumpyArrayLike|None:
+        return self._chunker.acqTimes
+
+    @property
+    def acqTimes2(self) -> NumpyArrayLike|None:
+        return self._chunker.acqTimes2
+    
+    @property
+    def compFrameRange(self) -> NumpyArrayLike:
+        return self._chunker.compFrameRange
+    
+    @property
+    def compRange(self) -> NumpyArrayLike:
+        return self._chunker.compRange
+    
+    @property
+    def recordedData(self) -> RecordedData:
+        recData = RecordedData()
+        if self.acqTimes is not None:
+            strings = []
+            for ms in self.acqTimes:
+                ss = int((ms/1000)%60)
+                mm = int((ms/(60*1000))%60)
+                hh = int(ms/(60*60*1000))
+                ms -= (60*60*1000)*hh + (60*1000)*mm + 60*ss
+                strings.append("%d:%02d:%02d.%03d" % (hh, mm, ss, ms % 1000))
+            recData.append(RecordedDataItem(ID='$ACQTIME', Desc='Time', Unit='h:m:s', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
+        data = self.chunk(b'CustomDataVar|CustomDataV2_0!')
+        decoded = decode_var(data)
+        desc = decoded.get('CustomTagDescription_v1.0', {})
+        for i in range(len(desc)):
+            itemDesc = desc.get(f"Tag{i}", None)
+            if itemDesc is not None:
+                colData = self.chunk(b'CustomData|%s!' % (itemDesc.get('ID').encode('utf-8')))
+                recData.append(RecordedDataItem.from_desc_and_data(itemDesc, colData))
+        recData.insert(0, RecordedDataItem(ID='$INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(recData.rowCount)))
+        recData.sort()
+        return recData
     
     def generateLoopIndexes(self, named: bool = False) -> list:
         exp = self.experiment
