@@ -40,7 +40,11 @@ class RecordedDataItem:
                     buffer=data, dtype=np.float64,
                     shape=(size, ),
                     strides=(8, ),                    
-                    ))        
+                    ))
+        
+    @property
+    def data(self) -> np.ndarray:
+        return self.Data.astype(object) if self.Type == RecordedDataType.eInt else self.Data
 
 class RecordedData(collections.UserList):
     def __init__(self, iterable = []):
@@ -57,7 +61,7 @@ class RecordedData(collections.UserList):
         return max(col.Size for col in self.data)
     
     def sort(self) -> None:
-        order = ['$INDEX', '$ACQTIME', 'X', 'Y', 'Z', 'Z1', 'Z2', 'PFS_OFFSET', 'PFS_STATUS']
+        order = ['INDEX', 'ACQTIME', 'X', 'Y', 'Z', 'Z1', 'Z2', 'PFS_OFFSET', 'PFS_STATUS']
         for id in reversed(order):
             if 0 < (index := self.findById(id)):
                 self.data.insert(0, self.data.pop(index))

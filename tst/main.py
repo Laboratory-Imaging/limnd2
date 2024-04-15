@@ -1,4 +1,4 @@
-import os, sys
+import json, os, sys
 
 sys.path.append(os.getcwd())
 import limnd2 as nd2
@@ -17,5 +17,5 @@ print("Channel Info:", [f"{ch.sDescription} (Em: {ch.emissionWavelengthNm:.0f}nm
 #print(f.experiment)
 
 print(f.acqTimes.shape)
-print(f.recordedData)
+print(json.dumps([item for item in f.recordedData[0].data]))
 print(f.compRange)
