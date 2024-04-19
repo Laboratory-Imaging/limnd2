@@ -108,15 +108,17 @@ class Nd2Reader:
                 strings.append("%d:%02d:%02d.%03d" % (hh, mm, ss, ms % 1000))
             recData.append(RecordedDataItem(ID='ACQTIME', Desc='Time', Unit='h:m:s.ms', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
         data = self.chunk(b'CustomDataVar|CustomDataV2_0!')
-        decoded = decode_var(data)
-        desc = decoded.get('CustomTagDescription_v1.0', {})
-        for i in range(len(desc)):
-            itemDesc = desc.get(f"Tag{i}", None)
-            if itemDesc is not None:
-                colData = self.chunk(b'CustomData|%s!' % (itemDesc.get('ID').encode('utf-8')))
-                recData.append(RecordedDataItem.from_desc_and_data(itemDesc, colData))
-        recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
-        recData.sort()
+        if data is not None:
+            decoded = decode_var(data)
+            desc = decoded.get('CustomTagDescription_v1.0', {})
+            for i in range(len(desc)):
+                itemDesc = desc.get(f"Tag{i}", None)
+                if itemDesc is not None:
+                    colData = self.chunk(b'CustomData|%s!' % (itemDesc.get('ID').encode('utf-8')))
+                    recData.append(RecordedDataItem.from_desc_and_data(itemDesc, colData))
+        if 0 < len(recData):
+            recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
+            recData.sort()
         return recData
     
     def generateLoopIndexes(self, named: bool = False) -> list:
