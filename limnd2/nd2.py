@@ -101,12 +101,12 @@ class Nd2Reader:
         if self.acqTimes is not None:
             strings = []
             for ms in self.acqTimes:
-                ss = int((ms/1000)%60)
-                mm = int((ms/(60*1000))%60)
-                hh = int(ms/(60*60*1000))
-                ms -= (60*60*1000)*hh + (60*1000)*mm + 60*ss
+                ss = int((ms/1_000)%60)
+                mm = int((ms/(60_000))%60)
+                hh = int(ms/(3_600_000))
+                ms -= (3_600_000)*hh + (60_000)*mm + 60*ss
                 strings.append("%d:%02d:%02d.%03d" % (hh, mm, ss, ms % 1000))
-            recData.append(RecordedDataItem(ID='ACQTIME', Desc='Time', Unit='h:m:s', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
+            recData.append(RecordedDataItem(ID='ACQTIME', Desc='Time', Unit='h:m:s.ms', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
         data = self.chunk(b'CustomDataVar|CustomDataV2_0!')
         decoded = decode_var(data)
         desc = decoded.get('CustomTagDescription_v1.0', {})
@@ -115,7 +115,7 @@ class Nd2Reader:
             if itemDesc is not None:
                 colData = self.chunk(b'CustomData|%s!' % (itemDesc.get('ID').encode('utf-8')))
                 recData.append(RecordedDataItem.from_desc_and_data(itemDesc, colData))
-        recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(recData.rowCount)))
+        recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
         recData.sort()
         return recData
     

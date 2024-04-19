@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import collections, enum, itertools, json, math, zlib
 from dataclasses import dataclass, field
-from .litevariant import decode_lv
 from .metadata import PictureMetadataPicturePlanes
+from .litevariant import decode_lv
 from .variant import decode_var
 
 class ExperimentLoopType(enum.IntEnum):
@@ -23,6 +23,16 @@ class ExperimentLoopType(enum.IntEnum):
     def toName(eType: ExperimentLoopType|int):
         names = [ '?', 't', 'm', 'm', 'z', '!', 's', 'c', 't', '!', '!' ]
         return names[eType]
+    
+    @staticmethod
+    def toLongName(eType: ExperimentLoopType|int):
+        names = [ 'Unknown', 'Time', 'Multipoint', 'Multipoint', 'Z-Stack', 'Polar', 'Spectral', 'Custom', 'Time', 'Time', 'Z-Stack' ]
+        return names[eType]
+    
+    @staticmethod
+    def toShortName(eType: ExperimentLoopType|int):
+        names = [ '?', 'T', 'XY', 'XY', 'Z', 'P', 'λ', 'C', 'T', 'T', 'Z' ]
+        return names[eType]    
 
 class ExperimentType(enum.IntFlag):
     eEtDefault              = 0,
@@ -30,6 +40,21 @@ class ExperimentType(enum.IntFlag):
     eEtBleaching            = 2,
     eEtIncubation           = 2048,
     eEtLiquidHandling       = 4096
+
+def _format_time(ms) -> str:
+    # whole seconds
+    if 0 == (ms % 1_000) and (seconds := (ms / 1_000)) < 60:
+        return f"{seconds:.0f} sec"    
+    if 0 == (ms % 60_000) and (minutes := (ms / 60_000)) < 60:
+        return f"{minutes:.0f} min"
+    elif 0 == (ms % 3_600_000) and (hours := (ms / 3_600_000)) < 60:
+        return f"{hours:.0f} hr"
+    else:
+        ss = int((ms/1_000)%60)
+        mm = int((ms/(60_000))%60)
+        hh = int(ms/(3_600_000))
+        ms -= (3_600_000)*hh + (60_000)*mm + 60*ss
+        return "%d:%02d:%02d.%03d" % (hh, mm, ss, ms % 1000)    
 
 @dataclass(frozen=True, kw_only=True)
 class ExperimentLoop:
@@ -114,6 +139,18 @@ class ExperimentTimeLoop(ExperimentLoop):
         object.__setattr__(self, 'uiTreatment', uiTreatment)
         object.__setattr__(self, 'dIncubationDuration', dIncubationDuration)
 
+    @property
+    def formattedInterval(self) -> str:
+        return _format_time(self.dPeriod) if 0.0 < self.dPeriod else 'No Delay'
+    
+    @property
+    def formattedDuration(self) -> str:
+        return _format_time(self.dDuration) if 0.0 < self.dDuration else 'Continuous'    
+
+    @property
+    def info(self) -> list[dict[str, any]]:
+        return [ dict(Phase='#1', Interval=self.formattedInterval, Duration=self.formattedDuration, Loops=self.uiCount) ]
+
 @dataclass(init=False, frozen=True)
 class ExperimentNonEqdistTimeLoop(ExperimentLoop):
     uiPeriodCount: int                  = 0
@@ -192,6 +229,10 @@ class ExperimentNonEqdistTimeLoop(ExperimentLoop):
         object.__setattr__(self, 'wsCommandAfterPeriod', wsCommandAfterPeriod)
         object.__setattr__(self, 'pPeriodValid', pPeriodValid)
 
+    @property
+    def info(self) -> list[dict[str, any]]:
+        return [ period.info[0] for period in self.pPeriod ]
+
 class ZStackType(enum.IntEnum):
     zstBottomToTopFixedTop                  = 0 # Bottom -> Top stack with fixed Top position
     zstBottomToTopFixedBottom               = 1 # Bottom -> Top stack with fixed Bottom position
@@ -265,21 +306,50 @@ class ExperimentZStackLoop(ExperimentLoop):
     @property
     def homeIndex(self):
         tol = 0.05
-        range = math.abs(self.dZHigh - self.dZLow)
-        homeRangeF = math.abs(self.dZLow - self.dZHome)
-        homeRangeI = math.abs(self.dZHigh - self.dZHome)
+        range = abs(self.dZHigh - self.dZLow)
+        homeRangeF = abs(self.dZLow - self.dZHome)
+        homeRangeI = abs(self.dZHigh - self.dZHome)
         if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop):
             if self.dZStep <= 0.0:
                 return min(int((self.uiCount - 1) * (homeRangeI if self.bZInverted else homeRangeF) / range), self.uiCount - 1)
             else:
-                return min(int(math.abs(math.ceil(((homeRangeI if self.bZInverted else homeRangeF) - tol*self.dZStep) / self.dZStep))), self.uiCount - 1)        
+                return min(int(abs(math.ceil(((homeRangeI if self.bZInverted else homeRangeF) - tol*self.dZStep) / self.dZStep))), self.uiCount - 1)        
         elif self.iType in (ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
             if self.dZStep <= 0.0:
                 return min(int((self.uiCount - 1) * (homeRangeF if self.bZInverted else homeRangeI) / range), self.uiCount - 1)
             else:
-                return min(int(math.abs(math.ceil(((homeRangeF if self.bZInverted else homeRangeI) - tol*self.dZStep) / self.dZStep))), self.uiCount - 1)
+                return min(int(abs(math.ceil(((homeRangeF if self.bZInverted else homeRangeI) - tol*self.dZStep) / self.dZStep))), self.uiCount - 1)
         else:
-            return (self.uiCount - 1) // 2;
+            return (self.uiCount - 1) // 2
+
+    @property
+    def step(self):
+        dStep = self.dZStep
+        uiCount = max(self.uiCount, 2)
+        uiHome = self.homeIndex
+        if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
+            dStep = abs(self.dZHome - self.dZLow) / uiHome if 0 < uiHome else 0
+        else:
+            dStep = abs(self.dZHigh - self.dZLow) / (uiCount - 1)
+        return dStep
+    
+    @property
+    def top(self):
+         if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
+            return self.dZHigh - self.dZHome
+         else:
+            return -self.dZLow + self.dReferencePosition if self.bZInverted else self.dZHigh + self.dReferencePosition
+    
+    @property
+    def bottom(self):
+         if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
+            return self.dZLow - self.dZHome
+         else:
+            return -self.dZHigh + self.dReferencePosition if self.bZInverted else self.dZLow + self.dReferencePosition
+
+    @property
+    def info(self) -> list[dict[str, any]]:
+        return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice) ]
 
 @dataclass(init=False, frozen=True)
 class ExperimentSpectralLoop(ExperimentLoop):
@@ -329,6 +399,15 @@ class ExperimentSpectralLoop(ExperimentLoop):
         object.__setattr__(self, 'bMergeCameras', bMergeCameras)
         object.__setattr__(self, 'bWaitForPFS', bWaitForPFS)
         object.__setattr__(self, 'bAskForFilter', bAskForFilter)
+
+    @property
+    def info(self) -> list[dict[str, any]]:
+        ret = []
+        for i, plane in enumerate(self.pPlanes.sPlane):
+            idx = f'#{i+1}'
+            ocs = self.pPlanes.sSampleSetting[plane.uiSampleIndex].sOpticalConfigs if plane.uiSampleIndex < len(self.pPlanes.sSampleSetting) else []
+            ret.append(dict(Index=idx, Name=plane.sDescription, OC=', '.join([oc.sOpticalConfigName for oc in ocs]), Color=plane.colorAsHtmlString))
+        return ret
         
 
 @dataclass(init=False, frozen=True)
@@ -404,6 +483,17 @@ class ExperimentXYPosLoop(ExperimentLoop):
         object.__setattr__(self, 'sZDevice', sZDevice)
         object.__setattr__(self, 'sAutoFocusBeforeCapture', sAutoFocusBeforeCapture)
 
+    @property
+    def info(self) -> list[dict[str, any]]:
+        ret = []
+        for i in range(self.uiCount):
+            name = self.pPosName[i] if i < len(self.pPosName) and self.pPosName[i] else f"#{i}"
+            d = dict(Name=name, X=self.dPosX[i], Y=self.dPosY[i])
+            if self.bUseZ and self.uiCount == len(self.dPosZ):
+                d['Z'] = self.dPosZ[i]
+            ret.append(d)
+        return ret
+
 
 @dataclass(frozen=True, kw_only=True)
 class WellplateDesc:
@@ -454,7 +544,7 @@ class ExperimentIterator:
 
     def __next__(self):
         try:
-            return self.explevels.pop()
+            return self.explevels.pop(0)
         except IndexError:
             raise StopIteration
 
@@ -588,8 +678,16 @@ class ExperimentLevel:
         return self.eType == ExperimentLoopType.eEtSpectLoop
     
     @property
-    def name(self) -> bool:
-        return ExperimentLoopType.toName(self.eType)
+    def name(self) -> str:
+        return ExperimentLoopType.toLongName(self.eType)
+    
+    @property
+    def shortName(self) -> str:
+        return ExperimentLoopType.toShortName(self.eType)
+    
+    @property
+    def typeName(self) -> str:
+        return ExperimentLoopType.toName(self.eType)    
     
     def loopTypes(self, *, skipSpectralLoop: bool = True) -> tuple[ExperimentLoopType]:
         ret = tuple() if self.isLambda and skipSpectralLoop else (self.eType, ) 

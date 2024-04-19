@@ -657,6 +657,27 @@ class PicturePlaneDesc:
     @property
     def modalityList(self) -> list[str]:
         return PicturePlaneModalityFlags.to_str_list(self.uiModalityMask)
+    
+    @property
+    def colorAsTuple(self):
+        b = (self.uiColor >> 16) & 0xFF
+        g = (self.uiColor >> 8) & 0xFF
+        r = self.uiColor & 0xFF
+        return (r, g, b)
+    
+    @property
+    def colorAsClampedTuple(self):
+        b = ((self.uiColor >> 16) & 0xFF) / 255.0
+        g = ((self.uiColor >> 8) & 0xFF) / 255.0
+        r = (self.uiColor & 0xFF) / 255.0
+        return (r, g, b)    
+    
+    @property
+    def colorAsHtmlString(self):
+        b = (self.uiColor >> 16) & 0xFF
+        g = (self.uiColor >> 8) & 0xFF
+        r = self.uiColor & 0xFF
+        return f'#{r:02x}{g:02x}{b:02x}'
 
 
 @dataclass(frozen=True)
