@@ -1,5 +1,5 @@
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabld, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
-from .customdata import RecordedData, RecordedDataItem, RecordedDataType
+from .customdata import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
@@ -120,6 +120,14 @@ class Nd2Reader:
             recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
             recData.sort()
         return recData
+    
+    @property
+    def customDescription(self) -> CustomDescription|None:
+        data = self.chunk(b'CustomData|CustomDescriptionV1_0!')
+        if data is None:
+            return None
+        return CustomDescription.from_lv(data)
+
     
     def generateLoopIndexes(self, named: bool = False) -> list:
         exp = self.experiment

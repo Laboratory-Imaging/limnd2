@@ -685,10 +685,24 @@ class SampleSettingsOC:
         uiOCTypeKey: int = 0
         sOpticalConfigName: str = ""
 
+@dataclass(frozen=True, kw_only=True)
+class ObjectiveSetting:
+    wsObjectiveName: str = ""
+    wsObjectiveCode: str = ""
+    dObjectiveMag: float = 0.0
+    dObjectiveNA: float = 0.0
+    dRefractIndex: float = 0.0
+    bTiltingNosepiece: bool = False
+    dHorizontalAngle: float = 0.0
+    dVerticalAngle: float = 0.0
+    dOpticalAxis: float = 0.0
+
+
 @dataclass(init=False, frozen=True)
 class SampleSettings:
     pCameraSetting: dict = field(default_factory=dict)
     pDeviceSetting: dict = field(default_factory=dict)
+    pObjectiveSetting: ObjectiveSetting = field(default_factory=ObjectiveSetting)
     sOpticalConfigs: list[SampleSettingsOC] = field(default_factory=list)
     sSpecSettings: str = ""
     uiModeFQ: int = 0
@@ -703,6 +717,7 @@ class SampleSettings:
                     *,
                     pCameraSetting: dict = {},
                     pDeviceSetting: dict = {},
+                    pObjectiveSetting: dict = {},
                     sOpticalConfigs: list = [], 
                     sSpecSettings: str = "",
                     uiModeFQ: int = 0,
@@ -716,7 +731,12 @@ class SampleSettings:
         
         object.__setattr__(self, 'pCameraSetting', pCameraSetting)
         object.__setattr__(self, 'pDeviceSetting', pDeviceSetting)
-        
+
+        if type(pObjectiveSetting) == dict:
+            object.__setattr__(self, 'pObjectiveSetting', ObjectiveSetting(**pObjectiveSetting))
+        elif isinstance(pObjectiveSetting, ObjectiveSetting):
+            object.__setattr__(self, 'pObjectiveSetting', pObjectiveSetting)
+
         sOpticalConfigs_: list = []
         if type(sOpticalConfigs) == dict:
             for _, item in sOpticalConfigs.items():
@@ -741,6 +761,26 @@ class SampleSettings:
     @property
     def microscopeName(self) -> str:
         return self.pDeviceSetting['m_sMicroscopeFullName']
+    
+    @property
+    def objectiveName(self) -> str:
+        return self.pObjectiveSetting.wsObjectiveName
+
+    @property
+    def objectiveCode(self) -> str:
+        return self.pObjectiveSetting.wsObjectiveCode
+    
+    @property
+    def objectiveMagnification(self) -> float:
+        return self.pObjectiveSetting.dObjectiveMag
+
+    @property
+    def objectiveNumericAperture(self) -> float:
+        return self.pObjectiveSetting.dObjectiveNA
+    
+    @property
+    def refractiveIndex(self) -> float:
+        return self.pObjectiveSetting.dRefractIndex
     
     @property
     def opticalConfigurations(self) -> list[str]:
@@ -1010,7 +1050,13 @@ class PictureMetadata:
         try:
             return self.sampleSettings(plane).microscopeName
         except KeyError or IndexError:
-            return ""    
+            return ""
+        
+    def objectiveName(self, plane: int = 0) -> str:
+        try:
+            return self.sampleSettings(plane).objectiveName
+        except KeyError or IndexError:
+            return ""        
 
     def opticalConfigurations(self, plane: int = 0) -> list[str]:
         try:        

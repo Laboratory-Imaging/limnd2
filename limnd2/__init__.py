@@ -4,7 +4,7 @@ __all__ = [
     "ImageAttributesCompression", "ImageAttributesPixelType", "ImageAttributes",
     "Nd2LoggerEnabld", "NumpyArrayLike", "FileLikeObject", "NameNotInChunkmapError", "UnexpectedCallError", "BaseChunker",
     "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata",
-    "RecordedData", "RecordedDataItem", "RecordedDataType",
+    "CustomDescription", "RecordedData", "RecordedDataItem", "RecordedDataType",
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNonEqdistTimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
     "Nd2Reader", "Nd2Writer",
     "ImageTextInfo"
@@ -13,7 +13,7 @@ __all__ = [
 from .attributes import ImageAttributesCompression, ImageAttributesPixelType, ImageAttributes
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabld, NameNotInChunkmapError, UnexpectedCallError, BaseChunker
 from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadataItem, BinaryRleMetadata, BinaryRasterMetadataItem, BinaryRasterMetadata
-from .customdata import RecordedData, RecordedDataItem, RecordedDataType
+from .customdata import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNonEqdistTimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .nd2 import Nd2Reader, Nd2Writer
 from .textinfo import ImageTextInfo

@@ -2,6 +2,7 @@ import io
 import struct
 import zlib
 from typing import Any, Callable, Final, cast
+from collections import UserList
 
 strctBB = struct.Struct("BB")  # 2x uint8_t
 strctIQ = struct.Struct("<IQ")  # 1x uint32_t, 1x uint64_t
@@ -129,7 +130,7 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
         if data_type == ELxLiteVariantType.COMPRESS:
             stream.seek(10, 1)
             deflated = zlib.decompress(stream.read())
-            return _decode_lv(deflated)
+            return _decode_lv(deflated, 1)
 
         if data_type == -1:
             # never seen this, but it's in the sdk
@@ -160,6 +161,13 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
             if not isinstance(output[name], list):
                 output[name] = [output[name]]
             cast(list, output[name]).append(value)
+        elif name in output:
+            i = 1
+            uname = f'{name}#{i}'
+            while uname in output:
+                i += 1
+                uname = f'{name}#{i}'
+            output[uname] = value
         else:
             output[name] = value
     return output
