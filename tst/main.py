@@ -3,7 +3,8 @@ import json, os, sys
 sys.path.append(os.getcwd())
 import limnd2 as nd2
 
-f = nd2.Nd2Reader("tst_data/06_Translocation_v01.nd2")
+#f = nd2.Nd2Reader("tst_data/06_Translocation_v01.nd2")
+f = nd2.Nd2Reader("\\\\cork\images\Timelapse_For_SE\\Dal72.nd2")
 print("limnd2 is imported from: ", nd2.__file__)
 
 #print("File version:", f.version)
@@ -26,5 +27,6 @@ print("limnd2 is imported from: ", nd2.__file__)
 #desc = f.customDescription
 #print('\n'.join(f'{item.name}: {item.valueAsText}' for item in desc))
 
+li = f.generateLoopIndexes()
 ss = f.pictureMetadata.sampleSettings()
 print(ss)

@@ -508,7 +508,7 @@ class WellplateDesc:
         decoded = decode_lv(data)
         return WellplateDesc(**decoded.get('PlateDesc', {}))    
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(init=False, frozen=True)
 class WellplateFrameInfoItem:
     plateIndex: int = 0
     plateUuid: str = ""
@@ -517,6 +517,27 @@ class WellplateFrameInfoItem:
     wellName: str = ""
     wellColIndex: int = 0
     wellRowIndex: int = 0
+
+    def __init__(self,
+        *,
+        plateIndex: int = 0,
+        plateUuid: str = "",
+        seqIndex: int = 0,
+        wellIndex: int = 0,
+        wellName: str = "",
+        wellColIndex: int = 0,
+        wellRowIndex: int = 0,
+        **kwargs):
+            object.__setattr__(self, 'plateIndex', plateIndex)
+            object.__setattr__(self, 'plateUuid', plateUuid)
+            object.__setattr__(self, 'seqIndex', seqIndex)
+            object.__setattr__(self, 'wellIndex', wellIndex)
+            object.__setattr__(self, 'wellName', wellName)
+            object.__setattr__(self, 'wellColIndex', wellColIndex)
+            object.__setattr__(self, 'wellRowIndex', wellRowIndex)
+            if 'wellCompactName' in kwargs and not self.wellName:
+                object.__setattr__(self, 'wellName', kwargs['wellCompactName'])
+                
 
 
 class WellplateFrameInfo(collections.UserList):
