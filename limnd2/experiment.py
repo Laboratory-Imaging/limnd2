@@ -62,6 +62,7 @@ class ExperimentLoop:
 
     @staticmethod
     def createExperimentLoop(eType, uLoopPars):
+        uLoopPars = uLoopPars[0] if type(uLoopPars) == list else uLoopPars
         if eType == ExperimentLoopType.eEtTimeLoop:
             return ExperimentTimeLoop(**uLoopPars)
         if eType == ExperimentLoopType.eEtNETimeLoop:
@@ -789,10 +790,15 @@ class ExperimentLevel:
                     level = level['SLxExperiment']
                 levels.append(ExperimentLevel(**level))
             return levels
+        elif type(ppNextLevelEx) == list and all(type(item) == dict for item in ppNextLevelEx):
+            levels = []
+            for exp in ppNextLevelEx:
+                levels.append(ExperimentLevel(**exp))
+            return levels    
         elif type(ppNextLevelEx) == list and all(isinstance(item, ExperimentLevel) for item in ppNextLevelEx):
             return ppNextLevelEx
         else:
-            raise TypeError()        
+            raise TypeError("Unexpected type")        
     
     @staticmethod
     def from_lv(data: bytes|memoryview) -> ExperimentLevel:
@@ -802,4 +808,4 @@ class ExperimentLevel:
     @staticmethod
     def from_var(data: bytes|memoryview) -> ExperimentLevel:
         decoded = decode_var(data)
-        return ExperimentLevel(**decoded.get('SLxExperiment', {}))
+        return ExperimentLevel(**decoded[0])

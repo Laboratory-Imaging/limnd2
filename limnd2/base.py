@@ -256,8 +256,11 @@ class BaseChunker(abc.ABC):
     def hasDownsampledImages(self) -> bool:
         attrs = self.imageAttributes
         chnames = self.chunknames
+        downsizes = attrs.lowerPowSizeList
+        if len(downsizes) == 0:
+            return False
         for seqindex in range(attrs.frameCount):
-            for downsize in attrs.lowerPowSizeList:
+            for downsize in downsizes:
                 chname = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
                 if chname not in chnames:
                     return False
@@ -364,11 +367,13 @@ class BaseChunker(abc.ABC):
     def acqTimes(self) -> np.ndarray:
         if self._acq_times is None:
             if (data := self.chunk(ND2_CHUNK_NAME_AcqTimesCache)) is not None:
-                self._acq_times = np.ndarray(
+                acq_times = np.ndarray(
                     buffer=data, dtype=np.float64,       
                     shape=(self.imageAttributes.uiSequenceCount, ),
                     strides=(8, ))
-            else:
+                if np.all(np.diff(acq_times) > 0):
+                    self._acq_times = acq_times
+            if self._acq_times is None:
                 self._acq_times = np.array([i*10.0 for i in range(self.imageAttributes.uiSequenceCount) ])
         return self._acq_times
     

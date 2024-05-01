@@ -163,5 +163,5 @@ class ImageAttributes:
     @staticmethod
     def from_var(data: bytes|memoryview) -> ImageAttributes:
         decoded = decode_var(data)
-        return ImageAttributes(**decoded.get('SLxImageAttributes', {}))    
+        return ImageAttributes(**decoded[0])    
     

@@ -76,7 +76,7 @@ class ImageTextInfo:
     @staticmethod
     def from_var(data: bytes|memoryview) -> ImageTextInfo:
         decoded = decode_var(data)
-        return ImageTextInfo(**decoded.get('SLxImageTextInfo', {}))
+        return ImageTextInfo(**decoded[0])
     
 
 @dataclass(frozen=True, kw_only=True)

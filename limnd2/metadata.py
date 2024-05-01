@@ -116,7 +116,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
     @staticmethod
     def from_modality(mod: PicturePlaneModality) -> PicturePlaneModalityFlags:
         return {
-            PicturePlaneModality.eModWidefieldFluo:     PicturePlaneModalityFlags.modModFluorescence|PicturePlaneModalityFlags.modCamera,
+            PicturePlaneModality.eModWidefieldFluo:     PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modCamera,
             PicturePlaneModality.eModBrightfield:       PicturePlaneModalityFlags.modBrightfield|PicturePlaneModalityFlags.modCamera,
             PicturePlaneModality.eModLaserScanConfocal: PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal,
             PicturePlaneModality.eModSpinDiskConfocal:  PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modSpinDiskConfocal,
@@ -577,8 +577,8 @@ class PicturePlaneDesc:
     iChannelSeriesIndex: int = -1           # channel series index
     iCapturedPlaneIndex: int = -1           # index of picture plane at the capture time,
                                             #   used to access correct camerasettings items corresponding to this picture plane
-    emissionWavelengthNm: float|None = field(init=False, default=None)
-    excitationWavelengthNm: float|None = field(init=False, default=None)
+    emissionWavelengthNm: float = 0
+    excitationWavelengthNm: float = 0
     
     def __init__(   self,
                     *,
@@ -756,11 +756,11 @@ class SampleSettings:
 
     @property
     def cameraName(self) -> str:
-        return self.pCameraSetting["CameraUserName"]
+        return self.pCameraSetting.get("CameraUserName", "")
 
     @property
     def microscopeName(self) -> str:
-        return self.pDeviceSetting['m_sMicroscopeFullName']
+        return self.pDeviceSetting.get("m_sMicroscopeFullName", "")
     
     @property
     def objectiveName(self) -> str:
@@ -1037,31 +1037,34 @@ class PictureMetadata:
                 ret.append(color_as_tuple(plane.uiColor))
         return ret
 
-    def sampleSettings(self, plane: int = 0) -> SampleSettings:
-        return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlane[plane].uiSampleIndex]
+    def sampleSettings(self, plane: int = 0) -> SampleSettings|None:
+        try:
+            return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlane[plane].uiSampleIndex]
+        except (AttributeError, IndexError) as _:
+            return None
     
     def cameraName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).cameraName
-        except KeyError or IndexError:
+        except (AttributeError, IndexError) as _:
             return ""
     
     def microscopeName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).microscopeName
-        except KeyError or IndexError:
+        except (AttributeError, IndexError):
             return ""
         
     def objectiveName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).objectiveName
-        except KeyError or IndexError:
+        except (AttributeError, IndexError):
             return ""        
 
     def opticalConfigurations(self, plane: int = 0) -> list[str]:
         try:        
             return self.sampleSettings(plane).opticalConfigurations
-        except KeyError or IndexError:
+        except (AttributeError, IndexError):
             return []        
       
     def to_lv(self) -> bytes:
@@ -1075,4 +1078,4 @@ class PictureMetadata:
     @staticmethod
     def from_var(data: bytes|memoryview) -> PictureMetadata:
         decoded = decode_var(data)
-        return PictureMetadata(**decoded.get('SLxPictureMetadata', {}))
+        return PictureMetadata(**decoded[0])

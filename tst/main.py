@@ -4,20 +4,21 @@ sys.path.append(os.getcwd())
 import limnd2 as nd2
 
 #f = nd2.Nd2Reader("tst_data/06_Translocation_v01.nd2")
-f = nd2.Nd2Reader("\\\\cork\images\Timelapse_For_SE\\Dal72.nd2")
+f = nd2.Nd2Reader("d:\\10x eating 2.tmp.nd2")
 print("limnd2 is imported from: ", nd2.__file__)
 
-#print("File version:", f.version)
-#print("TextInfo:", f.imageTextInfo)
-#print(f.imageAttributes)
-#print("Camera Name:", f.pictureMetadata.cameraName())
-#print("Microscope Name:", f.pictureMetadata.microscopeName())
-#print("Objective Name:", f.imageTextInfo.sOptics)
-#print("Software:", f.software)
-#print("Channel Info:", [f"{ch.sDescription} (Em: {ch.emissionWavelengthNm:.0f}nm, Ex: {ch.excitationWavelengthNm:.0f}nm)" for ch in f.pictureMetadata.channels])
-#print(f.experiment)
+print("File version:", f.version)
+print("TextInfo:", f.imageTextInfo)
+print(f.imageAttributes)
+print("Camera Name:", f.pictureMetadata.cameraName())
+print("Microscope Name:", f.pictureMetadata.microscopeName())
+print("Objective Name:", f.pictureMetadata.objectiveName())
+print("Software:", f.software)
+print("Channel Info:", [f"{ch.sDescription} (Em: {ch.emissionWavelengthNm:.0f}nm, Ex: {ch.excitationWavelengthNm:.0f}nm)" for ch in f.pictureMetadata.channels])
+print(f.experiment)
+print(f.chunker.hasDownsampledImages)
 
-#print(f.acqTimes.shape)
+print(f.acqTimes)
 #print(f.compRange)
 
 # for exp in f.experiment:
@@ -27,6 +28,3 @@ print("limnd2 is imported from: ", nd2.__file__)
 #desc = f.customDescription
 #print('\n'.join(f'{item.name}: {item.valueAsText}' for item in desc))
 
-li = f.generateLoopIndexes()
-ss = f.pictureMetadata.sampleSettings()
-print(ss)
