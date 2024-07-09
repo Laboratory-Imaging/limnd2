@@ -45,4 +45,16 @@ twine upload -r local dist\*
 
 ## to install package
 
+```bat
 pip install --trusted-host gaexec --index-url http://gaexec:9500/simple/ limnd2
+```
+
+or create `~/.pip/pip.conf` with the following content:
+```toml
+[global]
+extra-index-url = http://gaexec:9500/simple/
+
+[install]
+trusted-host =
+    gaexec
+```
