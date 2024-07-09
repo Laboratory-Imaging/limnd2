@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import collections, enum, numpy as np, datetime
 from dataclasses import dataclass, field
-from .litevariant import decode_lv
+from .lite_variant import decode_lv
 
 class RecordedDataType(enum.IntEnum):
     eUnknown = 0
