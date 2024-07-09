@@ -1,11 +1,9 @@
 import json, os, sys
+import limnd2
 
-sys.path.append(os.getcwd())
-import limnd2 as nd2
-
-#f = nd2.Nd2Reader("tst_data/06_Translocation_v01.nd2")
-f = nd2.Nd2Reader("d:\\10x eating 2.tmp.nd2")
-print("limnd2 is imported from: ", nd2.__file__)
+f = limnd2.Nd2Reader("tst_data/06_Translocation_v01.nd2")
+#f = limnd2.Nd2Reader("d:\\10x eating 2.tmp.nd2")
+print("limnd2 is imported from: ", limnd2.__file__)
 
 print("File version:", f.version)
 print("TextInfo:", f.imageTextInfo)
