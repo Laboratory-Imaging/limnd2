@@ -651,6 +651,8 @@ class ExperimentLevel:
             pass
         if type(pItemValid) == bytes:
             pItemValid = [ item != 0 for item in pItemValid ]
+        if pItemValid == {}:
+            pItemValid = None
         object.__setattr__(self, 'eType', ExperimentLoopType(eType) if type(eType) == int else eType)
         object.__setattr__(self, 'wsApplicationDesc', wsApplicationDesc)
         object.__setattr__(self, 'wsUserDesc', wsUserDesc)
