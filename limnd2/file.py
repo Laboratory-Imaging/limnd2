@@ -1,5 +1,6 @@
 import collections, mmap, os, struct, typing
 from .base import *
+from .attributes import ImageAttributesCompression
 
 if Nd2LoggerEnabled:
     import logging
@@ -274,17 +275,33 @@ class LimBinaryIOChunker(BaseChunker):
 
     def image(self, seqindex: int) -> NumpyArrayLike:        
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
+        pos = None
         try:
             pos = self._chunk_pos(name)
-            buffer, offset = self._get_chunk_buffer_and_offset(pos)
-            return np.ndarray(
-                buffer=buffer, offset=offset+8,
-                dtype=self.imageAttributes.dtype,            
-                shape=self.imageAttributes.shape,        
-                strides=self.imageAttributes.strides,
-            )
         except NameNotInChunkmapError:
             return np.zeros(shape=self.imageAttributes.shape, dtype=self.imageAttributes.dtype)
+
+        if self.imageAttributes.eCompression == ImageAttributesCompression.ictLossLess:
+            buffer = zlib.decompress(self._read_chunk(pos)[8:])
+            return np.ndarray(
+                buffer = buffer,
+                offset = 0,
+                dtype = self.imageAttributes.dtype,            
+                shape = self.imageAttributes.shape,        
+                strides = self.imageAttributes.strides,
+            )    
+        elif self.imageAttributes.eCompression == ImageAttributesCompression.ictNone:
+            buffer, offset = self._get_chunk_buffer_and_offset(pos)
+            return np.ndarray(
+                buffer = buffer,
+                offset = offset + 8,
+                dtype = self.imageAttributes.dtype,            
+                shape = self.imageAttributes.shape,        
+                strides = self.imageAttributes.strides,
+            )            
+        else:
+            raise NotImplementedError("Compression ImageAttributesCompression.ictLossy (1) not supported")
+
 
     def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
