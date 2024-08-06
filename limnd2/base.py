@@ -482,41 +482,82 @@ class BaseChunker(abc.ABC):
             return np.zeros(shape=self.imageAttributes.shape[:2], dtype=np.uint32), {}
         (_uncompressed_size, ) = struct.unpack_from("<I", data)
         stream = io.BytesIO(zlib.decompress(data[4:]))
-        rle_header = struct.Struct("<IIIIIII")
-        rle_object = struct.Struct("<IIIIIIIII")
-        rle_seg = rle_row = struct.Struct("<II")
+
         def _unpack(stream: io.BufferedIOBase, strct: struct.Struct) -> tuple:
-            return strct.unpack(stream.read(strct.size))        
+            return strct.unpack(stream.read(strct.size))
+
+        rle_header = struct.Struct("<IIIIIII")
         (version, width, height, obj_count, _nbytes, _last_object_offset, _custom_data_size) = _unpack(stream, rle_header)
-        if version != 3:
+
+        if version == 1:
             raise NotImplementedError()
-        ret_obj_info_dict = {}
-        ret_binimage = np.zeros(shape=(height, width), dtype=np.uint32)    
-        for _i in range(obj_count):
-            (obj_id, left, top, right, bottom, _nbytes, nrows, _last_row_offset, obj_status) = _unpack(stream, rle_object)
-            if not no_obj_info:
-                obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
-                ret_obj_info_dict[obj_id] = obj_info
-                for j in range(nrows):                        
-                    (y, nsegments) = _unpack(stream, rle_row)
-                    for k in range(nsegments):
-                        (x, n) = _unpack(stream, rle_seg)
-                        if 0 == j and 0 == k:
-                            obj_info["seed"] = (x, y)
-                        ret_binimage[y, x : x + n] = obj_id
-                        pxls += n
-                        xx += sum(range(x, x+n))
-                        yy += n*y
-                obj_info["pixels"] = pxls
-                obj_info["center"] = (xx // pxls, yy // pxls)
-            else:
-                ret_obj_info_dict[obj_id] = None
-                for _j in range(nrows):                    
-                    (y, nsegments) = _unpack(stream, rle_row)
-                    for _k in range(nsegments):
-                        (x, n) = _unpack(stream, rle_seg)
-                        ret_binimage[y, x : x + n] = obj_id
-        return (ret_binimage, ret_obj_info_dict)    
+        
+        elif version == 2:
+            rle_object = struct.Struct("<IIIIIIIIIII")
+            rle_seg = rle_row = struct.Struct("<II")  
+
+            ret_obj_info_dict = {}
+            ret_binimage = np.zeros(shape=(height, width), dtype=np.uint32)    
+            for _i in range(obj_count):
+                (obj_id, left, top, right, bottom, _nbytes, nrows, _last_row_offset, obj_status, _3d_object_id, _class_id) = _unpack(stream, rle_object)
+                if not no_obj_info:
+                    obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
+                    ret_obj_info_dict[obj_id] = obj_info
+                    for j in range(nrows):                        
+                        (y, nsegments) = _unpack(stream, rle_row)
+                        for k in range(nsegments):
+                            (x, n) = _unpack(stream, rle_seg)
+                            if 0 == j and 0 == k:
+                                obj_info["seed"] = (x, y)
+                            ret_binimage[y, x : x + n] = obj_id
+                            pxls += n
+                            xx += sum(range(x, x+n))
+                            yy += n*y
+                    obj_info["pixels"] = pxls
+                    obj_info["center"] = (xx // pxls, yy // pxls)
+                else:
+                    ret_obj_info_dict[obj_id] = None
+                    for _j in range(nrows):                    
+                        (y, nsegments) = _unpack(stream, rle_row)
+                        for _k in range(nsegments):
+                            (x, n) = _unpack(stream, rle_seg)
+                            ret_binimage[y, x : x + n] = obj_id
+            return (ret_binimage, ret_obj_info_dict)          
+
+        elif version == 3:
+            rle_object = struct.Struct("<IIIIIIIII")
+            rle_seg = rle_row = struct.Struct("<II")        
+            
+            ret_obj_info_dict = {}
+            ret_binimage = np.zeros(shape=(height, width), dtype=np.uint32)    
+            for _i in range(obj_count):
+                (obj_id, left, top, right, bottom, _nbytes, nrows, _last_row_offset, obj_status) = _unpack(stream, rle_object)
+                if not no_obj_info:
+                    obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
+                    ret_obj_info_dict[obj_id] = obj_info
+                    for j in range(nrows):                        
+                        (y, nsegments) = _unpack(stream, rle_row)
+                        for k in range(nsegments):
+                            (x, n) = _unpack(stream, rle_seg)
+                            if 0 == j and 0 == k:
+                                obj_info["seed"] = (x, y)
+                            ret_binimage[y, x : x + n] = obj_id
+                            pxls += n
+                            xx += sum(range(x, x+n))
+                            yy += n*y
+                    obj_info["pixels"] = pxls
+                    obj_info["center"] = (xx // pxls, yy // pxls)
+                else:
+                    ret_obj_info_dict[obj_id] = None
+                    for _j in range(nrows):                    
+                        (y, nsegments) = _unpack(stream, rle_row)
+                        for _k in range(nsegments):
+                            (x, n) = _unpack(stream, rle_seg)
+                            ret_binimage[y, x : x + n] = obj_id
+            return (ret_binimage, ret_obj_info_dict)    
+        else:
+            raise NotImplementedError()
+        
         
 def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
     s0, s1 = dst.shape[0:2]
