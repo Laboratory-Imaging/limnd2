@@ -102,6 +102,12 @@ class BaseChunker(abc.ABC):
         self._picture_metadata: PictureMetadata|None = with_picture_metadata
         self._binary_rle_metadata: BinaryRleMetadata|None = with_binary_rle_metadata
         self._binary_tiled_raster_metadata: BinaryRasterMetadata|None = with_binary_raster_metadata
+
+        # WARNING ATTRIBUTE IS ONLY SET AFTER CALLING rleChunkToArray FUNCTION,
+        # WHICH RETRIEVES BINARY VERSION, TILL THEN ITS None,
+        # EVEN IF BINARIES ARE PRESENT
+        self._binary_version: int|None = None
+
         self._image_text_info: ImageTextInfo|None = with_image_text_info
         self._acq_times: np.ndarray|None = None
         self._acq_times2: np.ndarray|None = None
@@ -488,6 +494,7 @@ class BaseChunker(abc.ABC):
 
         rle_header = struct.Struct("<IIIIIII")
         (version, width, height, obj_count, _nbytes, _last_object_offset, _custom_data_size) = _unpack(stream, rle_header)
+        self._binary_version = version
 
         if version == 1:
             raise NotImplementedError()
@@ -557,6 +564,9 @@ class BaseChunker(abc.ABC):
             return (ret_binimage, ret_obj_info_dict)    
         else:
             raise NotImplementedError()
+    
+    def getBinaryVersion(self) -> int|None:
+        return self._binary_version
         
         
 def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
@@ -570,4 +580,5 @@ def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
 def _downsample_2x_00(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
     s0, s1 = dst.shape[0:2]
     np.copyto(dst, src[0:2*s0:2, 0:2*s1:2])
+
 
