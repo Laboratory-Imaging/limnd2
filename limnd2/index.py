@@ -61,8 +61,9 @@ def index_file(path: Path) -> Record:
     try:
         file_obj = limnd2.Nd2Reader(str(path.resolve()))
         bver = file_obj.chunker.getBinaryVersion()
-    except Exception as e:      #change it BinaryRasterMetadataItem
+    except limnd2.UnsupportedChunkmapError as e:
         chunker_valid = False
+        chunker_error = e.chunk_name
 
     def size_fmt(size):
         kB = 1024
@@ -105,11 +106,11 @@ def index_file(path: Path) -> Record:
         return Record(
             {
                 "Path": str(path.parent),
-                "Name": path.name + "[red bold italic] Invalid Chunker[/red bold italic]",
+                "Name": path.name,
                 "Version": "", #f"{file_obj.version[0]}.{file_obj.version[1]}",
                 "Size": size_fmt(path.stat().st_size), 
                 "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'), #info['mtime'], 
-                "Experiment": "", #", ".join([e.name for e in file_obj.experiment]) if file_obj.experiment else "", #", ".join([e["ClassName"] for e in info['experimentData']]), 
+                "Experiment": f"[red bold italic]Invalid Chunker: {chunker_error}[/red bold italic]", #", ".join([e.name for e in file_obj.experiment]) if file_obj.experiment else "", #", ".join([e["ClassName"] for e in info['experimentData']]), 
                 "Dtype": "", #file_obj.imageAttributes.dtype.__name__,
                 "Bits": "", #file_obj.imageAttributes.uiBpcSignificant, 
                 "Resolution": "", #f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",

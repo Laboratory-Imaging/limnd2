@@ -70,13 +70,13 @@ ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p        = re.compile(b'^CustomDa
 
 class NameNotInChunkmapError(Exception):
     def __init__(self, name: bytes|str):
-        self.chunk_name = name if type(str) else bytes.decode('ascii')
+        self.chunk_name = name if type(name) == str else name.decode('ascii')
         self.message = f"Name not in Chunk Map: {self.chunk_name}"
         super().__init__(self.message)
 
 class UnsupportedChunkmapError(Exception):
     def __init__(self, name: bytes|str):
-        self.chunk_name = name if type(str) else bytes.decode('ascii')
+        self.chunk_name = name if type(name) == str else name.decode('ascii')
         self.message = f"Chunk Map with signature: {self.chunk_name} is not supported"
         super().__init__(self.message)
 
@@ -89,7 +89,7 @@ class BinaryIdNotFountError(Exception):
 class UnexpectedCallError(Exception):
     def __init__(self, function_name: str, name: bytes|str):
         self.function_name = function_name
-        self.chunk_name = name if type(str) else bytes.decode('ascii')
+        self.chunk_name = name if type(name) == str else name.decode('ascii')
         self.message = f"Unexpected call ({self.function_name}): {self.chunk_name}"
         super().__init__(self.message)    
 
