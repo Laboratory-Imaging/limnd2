@@ -199,7 +199,7 @@ class LimBinaryIOChunker(BaseChunker):
     def _read_chunkmap(self) -> collections.OrderedDict:
         sig, self._original_chunkmap_offset = STRUCT_SIG_CHUNKMAP_LOC.unpack(self._read_struct_at(STRUCT_SIG_CHUNKMAP_LOC, self._file_size() - 40))
         if sig != ND2_CHUNKMAP_SIGNATURE:
-            raise RuntimeError(f"Invalid ChunkMap signature {sig!r} in file {self._fh.name!r}")    
+            raise UnsupportedChunkmapError(sig)    
         self._original_chunkmap_chunk = self._read_chunk(self._original_chunkmap_offset)
         QQ = struct.Struct("QQ")
         current_position = 0            

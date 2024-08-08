@@ -4,3 +4,6 @@ __pycache__
 /env
 /tst_data
 /*.egg-info
+*.nd2
+nd2files/*
+nd2files

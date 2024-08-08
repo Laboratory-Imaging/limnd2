@@ -74,6 +74,12 @@ class NameNotInChunkmapError(Exception):
         self.message = f"Name not in Chunk Map: {self.chunk_name}"
         super().__init__(self.message)
 
+class UnsupportedChunkmapError(Exception):
+    def __init__(self, name: bytes|str):
+        self.chunk_name = name if type(str) else bytes.decode('ascii')
+        self.message = f"Chunk Map with signature: {self.chunk_name} is not supported"
+        super().__init__(self.message)
+
 class BinaryIdNotFountError(Exception):
     def __init__(self, id: int):
         self.binid = id
@@ -102,12 +108,6 @@ class BaseChunker(abc.ABC):
         self._picture_metadata: PictureMetadata|None = with_picture_metadata
         self._binary_rle_metadata: BinaryRleMetadata|None = with_binary_rle_metadata
         self._binary_tiled_raster_metadata: BinaryRasterMetadata|None = with_binary_raster_metadata
-
-        # WARNING ATTRIBUTE IS ONLY SET AFTER CALLING rleChunkToArray FUNCTION,
-        # WHICH RETRIEVES BINARY VERSION, TILL THEN ITS None,
-        # EVEN IF BINARIES ARE PRESENT
-        self._binary_version: int|None = None
-
         self._image_text_info: ImageTextInfo|None = with_image_text_info
         self._acq_times: np.ndarray|None = None
         self._acq_times2: np.ndarray|None = None
@@ -482,7 +482,27 @@ class BaseChunker(abc.ABC):
         elif match := ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_5p.fullmatch(chunkname):
             return (int(match.group(1)), int(match.group(5)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
         return None
-    
+ 
+    def getBinaryVersion(self) -> int|None:
+        binids = self.binaryRleMetadata.binIdList
+        if not binids:
+            return None
+        binmeta = self.binaryRleMetadata.findItemById(binids[0])
+        if binmeta is None:
+            return None
+        data = self.chunk(binmeta.dataChunkName(0))
+        if len(data) < 4:
+            return None
+        
+        stream = io.BytesIO(zlib.decompress(data[4:], wbits=0))
+
+        def _unpack(stream: io.BufferedIOBase, strct: struct.Struct) -> tuple:
+            return strct.unpack(stream.read(strct.size))
+
+        rle_header = struct.Struct("<I")
+        (version, )= _unpack(stream, rle_header)
+        return version
+
     def rleChunkToArray(self, data: bytes|memoryview, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         if len(data) < 4:
             return np.zeros(shape=self.imageAttributes.shape[:2], dtype=np.uint32), {}
@@ -494,7 +514,6 @@ class BaseChunker(abc.ABC):
 
         rle_header = struct.Struct("<IIIIIII")
         (version, width, height, obj_count, _nbytes, _last_object_offset, _custom_data_size) = _unpack(stream, rle_header)
-        self._binary_version = version
 
         if version == 1:
             raise NotImplementedError()
@@ -565,8 +584,6 @@ class BaseChunker(abc.ABC):
         else:
             raise NotImplementedError()
     
-    def getBinaryVersion(self) -> int|None:
-        return self._binary_version
         
         
 def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
