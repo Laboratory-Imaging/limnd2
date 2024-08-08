@@ -49,12 +49,16 @@ twine upload -r local dist\*
 pip install --trusted-host 192.168.11.200 --index-url http://192.168.11.200:9500/simple/ limnd2
 ```
 
-or create `~/.pip/pip.conf` with the following content:
+or create 
+- `$HOME/.config/pip/pip.conf` (on Linux)
+- `%APPDATA%\pip\pip.ini` (on Windows)
+
+with the following content:
+
 ```toml
 [global]
 extra-index-url = http://192.168.11.200:9500/simple/
 
 [install]
-trusted-host =
-    192.168.11.200
+trusted-host = 192.168.11.200
 ```
