@@ -55,15 +55,13 @@ TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # YYYY-MM-DD HH:MM:SS
 def index_file(path: Path) -> Record:
     """Return a dict with the index file data."""
 
-    chunker_valid = True
-    chunker_error = ""
-
+    file_version = None
+    file_obj = None
     try:
         file_obj = limnd2.Nd2Reader(str(path.resolve()))
-        bver = file_obj.chunker.getBinaryVersion()
+        bin_ver = file_obj.chunker.getBinaryVersion()
     except limnd2.UnsupportedChunkmapError as e:
-        chunker_valid = False
-        chunker_error = e.chunk_name
+        file_version = e.file_version
 
     def size_fmt(size):
         kB = 1024
@@ -80,47 +78,40 @@ def index_file(path: Path) -> Record:
             return f"{size/kB:.1f} kB"
         return f"{size} B"
 
-
-    if "kate" in path.name:
-        file_obj.chunker.getBinaryVersion()
-    if chunker_valid:
-        return Record(
-            {
-                "Path": str(path.parent),
-                "Name": path.name,
-                "Version": f"{file_obj.version[0]}.{file_obj.version[1]}",
-                "Size": size_fmt(path.stat().st_size), 
-                "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'), #info['mtime'], 
-                "Experiment": ", ".join([e.name for e in file_obj.experiment]) if file_obj.experiment else "", #", ".join([e["ClassName"] for e in info['experimentData']]), 
-                "Dtype": file_obj.imageAttributes.dtype.__name__,
-                "Bits": file_obj.imageAttributes.uiBpcSignificant, 
-                "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
-                "Channels": file_obj.imageAttributes.componentCount,
-                "Binary_version": bver if bver else "", #metadata["binVersion"] if metadata["binVersion"] else "", 
-                "Software_name": file_obj.appInfo.m_SWNameString, 
-                "Software_version": file_obj.appInfo.m_VersionString,
-                "Grabber": file_obj.appInfo.m_GrabberString
-            }
-        )
+    if file_obj is not None:
+        return Record({
+            "Path": str(path.parent),
+            "Name": path.name,
+            "Version": f"{file_obj.version[0]}.{file_obj.version[1]}",
+            "Size": size_fmt(path.stat().st_size), 
+            "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
+            "Experiment": ", ".join([e.name for e in file_obj.experiment]) if file_obj.experiment else "",
+            "Dtype": file_obj.imageAttributes.dtype.__name__,
+            "Bits": file_obj.imageAttributes.uiBpcSignificant, 
+            "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
+            "Channels": file_obj.imageAttributes.componentCount,
+            "Binary_version": bin_ver if bin_ver else "",
+            "Software_name": file_obj.appInfo.m_SWNameString, 
+            "Software_version": file_obj.appInfo.m_VersionString,
+            "Grabber": file_obj.appInfo.m_GrabberString
+        })
     else:
-        return Record(
-            {
-                "Path": str(path.parent),
-                "Name": path.name,
-                "Version": "", #f"{file_obj.version[0]}.{file_obj.version[1]}",
-                "Size": size_fmt(path.stat().st_size), 
-                "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'), #info['mtime'], 
-                "Experiment": f"[red bold italic]Invalid Chunker: {chunker_error}[/red bold italic]", #", ".join([e.name for e in file_obj.experiment]) if file_obj.experiment else "", #", ".join([e["ClassName"] for e in info['experimentData']]), 
-                "Dtype": "", #file_obj.imageAttributes.dtype.__name__,
-                "Bits": "", #file_obj.imageAttributes.uiBpcSignificant, 
-                "Resolution": "", #f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
-                "Channels": "", #file_obj.imageAttributes.componentCount,
-                "Binary_version": "", #bver if bver else "", #metadata["binVersion"] if metadata["binVersion"] else "", 
-                "Software_name": "", #file_obj.appInfo.m_SWNameString, 
-                "Software_version": "", #file_obj.appInfo.m_VersionString,
-                "Grabber": "", #file_obj.appInfo.m_GrabberString
-            }
-        )
+        return Record({
+            "Path": str(path.parent),
+            "Name": path.name,
+            "Version": f"{file_version[0]}.{file_version[1]}" if file_version is not None else "",
+            "Size": size_fmt(path.stat().st_size), 
+            "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
+            "Experiment": "",
+            "Dtype": "",
+            "Bits": "",
+            "Resolution": "",
+            "Channels": "",
+            "Binary_version": "",
+            "Software_name": "",
+            "Software_version": "",
+            "Grabber": "",
+        })
 
 
 def _gather_files(
@@ -197,12 +188,12 @@ def _pretty_print_table(data: list[Record], sort_column: str | None = None) -> N
             table.add_column(header)
 
     for row in data:
-        table.add_row(*[_strify(value) for value in row.values()])
+        table.add_row(*[_stringify(value) for value in row.values()])
 
     Console().print(table)
 
 
-def _strify(val: Any) -> str:
+def _stringify(val: Any) -> str:
     if isinstance(val, bool):
         return "✅" if val else ""
     return str(val)

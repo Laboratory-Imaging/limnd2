@@ -75,9 +75,10 @@ class NameNotInChunkmapError(Exception):
         super().__init__(self.message)
 
 class UnsupportedChunkmapError(Exception):
-    def __init__(self, name: bytes|str):
+    def __init__(self, version : tuple, name: bytes|str):
+        self.file_version = version
         self.chunk_name = name if type(name) == str else name.decode('ascii')
-        self.message = f"Chunk Map with signature: {self.chunk_name} is not supported"
+        self.message = f"File version {self.file_version} with unsupported Chunk Map signature: {self.chunk_name}"
         super().__init__(self.message)
 
 class BinaryIdNotFountError(Exception):
