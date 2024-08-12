@@ -484,25 +484,18 @@ class BaseChunker(abc.ABC):
             return (int(match.group(1)), int(match.group(5)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
         return None
  
-    def getBinaryVersion(self) -> int|None:
-        binids = self.binaryRleMetadata.binIdList
-        if not binids:
-            return None
-        binmeta = self.binaryRleMetadata.findItemById(binids[0])
-        if binmeta is None:
-            return None
-        data = self.chunk(binmeta.dataChunkName(0))
-        if len(data) < 4:
-            return None
-        
-        stream = io.BytesIO(zlib.decompress(data[4:], wbits=0))
-
-        def _unpack(stream: io.BufferedIOBase, strct: struct.Struct) -> tuple:
-            return strct.unpack(stream.read(strct.size))
-
-        rle_header = struct.Struct("<I")
-        (version, )= _unpack(stream, rle_header)
-        return version
+    def rleBinaryVersion(self) -> int:
+        attrs = self.imageAttributes
+        for meta in self.binaryRleMetadata:
+            data = self.chunk(meta.dataChunkName(0))
+            if 4 <= len(data):
+                version_struct = struct.Struct("<I")
+                version_struct_size = version_struct.size
+                decompress = zlib.decompressobj()
+                decompressed_header = decompress.decompress(data[4:], version_struct_size)
+                (version, ) =  version_struct.unpack(decompressed_header)
+                return version
+        return 0
 
     def rleChunkToArray(self, data: bytes|memoryview, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         if len(data) < 4:

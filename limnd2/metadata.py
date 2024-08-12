@@ -718,7 +718,7 @@ class SampleSettings:
                     pCameraSetting: dict = {},
                     pDeviceSetting: dict = {},
                     pObjectiveSetting: dict = {},
-                    sOpticalConfigs: list = [], 
+                    sOpticalConfigs: list|dict = [], 
                     sSpecSettings: str = "",
                     uiModeFQ: int = 0,
                     baScanArea: bytes = b"",
@@ -740,7 +740,11 @@ class SampleSettings:
         sOpticalConfigs_: list = []
         if type(sOpticalConfigs) == dict:
             for _, item in sOpticalConfigs.items():
-                sOpticalConfigs_.append(SampleSettingsOC(**item))
+                if type(item) == dict:
+                    sOpticalConfigs_.append(SampleSettingsOC(**item))
+                elif type(item) == str:
+                    sOpticalConfigs_.append(SampleSettingsOC(sOpticalConfigName=item))
+                    
         elif type(sOpticalConfigs) == list and all(isinstance(item, SampleSettingsOC) for item in sOpticalConfigs):
             sOpticalConfigs = sOpticalConfigs_
 

@@ -702,6 +702,10 @@ class ExperimentLevel:
         return self.eType == ExperimentLoopType.eEtSpectLoop
     
     @property
+    def count(self) -> int:
+        return len([item for item in self.pItemValid if item]) if self.pItemValid is not None else self.uLoopPars.uiCount
+    
+    @property
     def name(self) -> str:
         return ExperimentLoopType.toLongName(self.eType)
     
@@ -738,7 +742,7 @@ class ExperimentLevel:
         return ret
 
     def shape(self, *, skipSpectralLoop: bool = True) -> tuple[int]:
-        ret = tuple() if self.isLambda and skipSpectralLoop else (len([item for item in self.pItemValid if item]) if self.pItemValid is not None else self.uLoopPars.uiCount,)
+        ret = tuple() if self.isLambda and skipSpectralLoop else (self.count, )
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].shape(skipSpectralLoop=skipSpectralLoop)
         return ret

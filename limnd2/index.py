@@ -8,7 +8,6 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     Any,
     Iterable,
     Iterator,
@@ -38,13 +37,13 @@ class Record(TypedDict):
     Size: str
     Modified: str
     Experiment: str
+    Frames: int
     Dtype: str
     Bits: int
     Resolution: str
     Channels: int
-    Binary_version: str
-    Software_name: str
-    Software_version: str
+    Binary: str
+    Software: str
     Grabber: str
 
 
@@ -57,9 +56,16 @@ def index_file(path: Path) -> Record:
 
     file_version = None
     file_obj = None
+    bin_info = ""
     try:
         file_obj = limnd2.Nd2Reader(str(path.resolve()))
-        bin_ver = file_obj.chunker.getBinaryVersion()
+        raster_bin_count = len(file_obj.chunker.binaryRasterMetadata)
+        if 0 < raster_bin_count:
+            bin_info = f"{raster_bin_count}x BIN"
+        else:
+            rle_bin_count = len(file_obj.chunker.binaryRleMetadata)
+            if 0 < rle_bin_count:
+                bin_info = f"{rle_bin_count}x RLEv{file_obj.chunker.rleBinaryVersion()}"
     except limnd2.UnsupportedChunkmapError as e:
         file_version = e.file_version
 
@@ -85,14 +91,14 @@ def index_file(path: Path) -> Record:
             "Version": f"{file_obj.version[0]}.{file_obj.version[1]}",
             "Size": size_fmt(path.stat().st_size), 
             "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
-            "Experiment": ", ".join([e.name for e in file_obj.experiment]) if file_obj.experiment else "",
+            "Experiment": ", ".join([f"{e.shortName} ({e.count})" for e in file_obj.experiment]) if file_obj.experiment else "",
+            "Frames": max(1, file_obj.imageAttributes.frameCount),
             "Dtype": file_obj.imageAttributes.dtype.__name__,
             "Bits": file_obj.imageAttributes.uiBpcSignificant, 
             "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
             "Channels": file_obj.imageAttributes.componentCount,
-            "Binary_version": bin_ver if bin_ver else "",
-            "Software_name": file_obj.appInfo.m_SWNameString, 
-            "Software_version": file_obj.appInfo.m_VersionString,
+            "Binary": bin_info,
+            "Software": f'{file_obj.appInfo.m_SWNameString} {file_obj.appInfo.m_VersionString}', 
             "Grabber": file_obj.appInfo.m_GrabberString
         })
     else:
@@ -107,9 +113,8 @@ def index_file(path: Path) -> Record:
             "Bits": "",
             "Resolution": "",
             "Channels": "",
-            "Binary_version": "",
-            "Software_name": "",
-            "Software_version": "",
+            "Binary": "",
+            "Software": "",
             "Grabber": "",
         })
 
@@ -152,15 +157,6 @@ def _index_files(
                 original_print(f"\t{file_path}:{e}", file=sys.stderr)
     
     return results
-
-    '''
-    with ThreadPoolExecutor() as executor:
-        results = list(executor.map(index_file, _gather_files(paths, recurse, glob)))
-
-    return results
-    '''
-
-
 
 def _pretty_print_table(data: list[Record], sort_column: str | None = None) -> None:
     try:
