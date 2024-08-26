@@ -181,6 +181,10 @@ class BinaryRasterMetadata(collections.UserList):
     def binNameList(self) -> list[str]:
         return [item.binName for item in self.data]
     
+    @property
+    def binColorList(self) -> list[str]:
+        return [item.binColor for item in self.data]    
+    
     def to_json(self) -> bytes:
         return json.dumps([asdict(item) for item in self.data]).encode('utf-8')
 
