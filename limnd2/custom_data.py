@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections, enum, numpy as np, datetime
 from dataclasses import dataclass, field
 from .lite_variant import decode_lv
+from .treeview_helper import get_format_fn
 
 class RecordedDataType(enum.IntEnum):
     eUnknown = 0
@@ -66,6 +67,17 @@ class RecordedData(collections.UserList):
         for id in reversed(order):
             if 0 < (index := self.findById(id)):
                 self.data.insert(0, self.data.pop(index))
+
+    def to_table(self) -> dict[str, any]:
+        coldefs = []
+        coldefs.append(dict(id='id', hidden=True))
+        rowdata = [ dict(id=i+1) for i in range(self.rowCount) ]
+        for col in self.data:
+            coldefs.append(dict(id=col.ID, title=f"{col.Desc} [{col.Unit}]" if col.Unit else col.Desc, fmtfncode=_get_recorded_data_fmt_function(col), style=_get_recorded_data_styles(col)))
+            for index, datavalue in enumerate(col.data):
+                rowdata[index][col.ID] = datavalue
+        coldefs.append(dict(id='tail'))
+        return dict(coldefs=coldefs, rowdata=rowdata)                
 
 
 class CustomDescriptionItemType(enum.IntEnum):
@@ -157,3 +169,16 @@ class CustomDescription(collections.UserList):
         return CustomDescription(decoded.get('CLxCustomDescription', {}))
 
 
+
+def _get_recorded_data_fmt_function(col: RecordedDataItem) -> str:
+    if col.Type == RecordedDataType.eDouble:
+        digits = 2 if col.ID in ('X', 'Y') else 3
+        return get_format_fn(digits)
+    else:
+        return "(coldef) => { coldef.fmtfn = String };"
+    
+def _get_recorded_data_styles(col: RecordedDataItem) -> dict[str, str]:
+    if col.Type in (RecordedDataType.eDouble, RecordedDataType.eInt) or col.ID == "ACQTIME":
+        return { "text-align": "right" }
+    else:
+        return { "text-align": "left" }    

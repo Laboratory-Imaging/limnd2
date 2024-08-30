@@ -51,7 +51,8 @@ class ImageTextInfo:
         object.__setattr__(self, 'sInfo1', TextInfoItem_11)
         object.__setattr__(self, 'sInfo2', TextInfoItem_12)
         object.__setattr__(self, 'sOptics', TextInfoItem_13)
-    
+
+   
     def to_dict(self) -> dict[str, str]:
         return dict(
             imageId=self.sImageID,

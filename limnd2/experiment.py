@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from .metadata import PictureMetadataPicturePlanes
 from .lite_variant import decode_lv
 from .variant import decode_var
+from .treeview_helper import get_format_fn
 
 class ExperimentLoopType(enum.IntEnum):
     eEtUnknown              = 0
@@ -688,6 +689,10 @@ class ExperimentLevel:
 
     def __iter__(self):
         return ExperimentIterator(self._allLevels())
+    
+    @property
+    def dims(self) -> dict[str, int]:
+        return { exp_loop.typeName: exp_loop.count for exp_loop in self }
 
     @property
     def valid(self) -> bool:
@@ -780,6 +785,30 @@ class ExperimentLevel:
             for i in range(self.uiNextLevelCount):
                 ret.append(self.ppNextLevelEx[i])
         return ret
+
+    def to_table(self):
+        right_align = {'text-align': 'right'}
+        css_style = { 'X': right_align, 'Y': right_align, 'Z': right_align, 'Bottom': right_align, 'Count': right_align, 'Step': right_align, 'Top': right_align, 'Interval': right_align, 'Duration': right_align, 'Loops': right_align }
+        min_width = { 'X': '100px', 'Y': '100px', 'Z': '100px', 'Bottom': '80px', 'Count': '60px', 'Step': '80px', 'Top': '80px', 'Interval': '100px', 'Duration': '100px', 'Loops': '100px' }
+        format_fn = { 'X': get_format_fn(2), 'Y': get_format_fn(2), 'Z': get_format_fn(3), 'Bottom': get_format_fn(3), 'Step': get_format_fn(3), 'Top': get_format_fn(3), 'Color': '(coldef) => { coldef.fmtfn = function(val) { return val === "#ffffff" ? "Brightfield" : "" }; };' }
+        style_fn = { 'Color':  '(coldef) => { coldef.stylefn = function(val) { return  val === "#ffffff" ? { "background": "linear-gradient(0.25turn, rgba(255,0,0,0.3), rgba(0,255,0,0.3), rgba(0,0,255,0.3))" } : { "background-color": `${val}ee` }; } };' }
+        replace = { 'X': 'X Pos [µm]', 'Y': 'Y Pos [µm]', 'Z': 'Z Pos [µm]', 'OC': 'Opt. conf.', 'Bottom': 'Bottom [µm]', 'Drive': 'Z Drive', 'Step': 'Z Step [µm]', 'Top': 'Top [µm]' }
+        col_defs = []
+        for k in self.uLoopPars.info[0].keys():
+            s = css_style.get(k, {})
+            d = dict(id=k, title=replace.get(k, k), headerStyle=s, style=s)
+            fmt_fn_code = format_fn.get(k, None)
+            if fmt_fn_code is not None:
+                d["fmtfncode"] = fmt_fn_code
+            style_fn_code = style_fn.get(k, None)
+            if style_fn_code is not None:
+                d["stylefncode"] = style_fn_code
+            min_w = min_width.get(k, None)
+            if min_w is not None:
+                d["minwidth"] = min_w
+            col_defs.append(d)
+
+        return dict(coldefs=col_defs, rowdata=self.uLoopPars.info)
       
     def to_lv(self) -> bytes:
         raise NotImplementedError()

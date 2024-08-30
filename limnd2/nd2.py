@@ -1,3 +1,4 @@
+from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
@@ -6,7 +7,7 @@ from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo, AppInfo
 from .variant import decode_var
 
-import numpy as np
+import datetime, functools, numpy as np, os
 
 if Nd2LoggerEnabled:
     import logging
@@ -28,7 +29,7 @@ class Nd2Reader:
     def version(self) -> tuple[int, int]:
         return self._chunker.fileVersion
 
-    @property
+    @functools.cached_property
     def is3d(self) -> bool:
         exp = self.experiment
         if exp is None:
@@ -36,7 +37,7 @@ class Nd2Reader:
         dims = exp.dimnames()
         return dims and 'z' in dims
 
-    @property
+    @functools.cached_property
     def is8bitRgb(self) -> bool:
         return 8 == self.imageAttributes.uiBpcSignificant and self.pictureMetadata.isRgb
 
@@ -56,17 +57,17 @@ class Nd2Reader:
     def imageTextInfo(self) -> ImageTextInfo:
         return self._chunker.imageTextInfo
     
-    @property
+    @functools.cached_property
     def wellplateDesc(self) -> WellplateDesc|None:
         data = self.chunk(b'CustomData|WellPlateDesc_0!')
         return WellplateDesc.from_lv(data) if data is not None else None
     
-    @property
+    @functools.cached_property
     def wellplateFrameInfo(self) -> WellplateFrameInfo|None:
         data = self.chunk(b'CustomData|WellPlateFrameInfoZJSON!')
         return WellplateFrameInfo.from_json(data) if data is not None else None
     
-    @property
+    @functools.cached_property
     def appInfo(self) -> AppInfo:
         data = self.chunk(b'CustomDataVar|AppInfo_V1_0!')
         return AppInfo.from_var(data)
@@ -121,7 +122,27 @@ class Nd2Reader:
             recData.sort()
         return recData
     
-    @property
+    @functools.cached_property
+    def generalImageInfo(self) -> dict[str, any]:
+        ia = self.imageAttributes
+        stat = os.stat(self.filename)
+        loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in self.experiment if 0 < exp_level.count ]) if self.experiment else ""
+        filename = os.path.basename(self.filename)
+        path = os.path.dirname(self.filename)
+        bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
+        frame_res = f"{ia.width} x {ia.height}"       
+        dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
+        file_size = _size_fmt(stat.st_size)
+        frame_size = _size_fmt(ia.height*ia.widthBytes)
+        z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0        
+        volume_size = _size_fmt(ia.height*ia.widthBytes*z_count)
+        sizes = f"{_size_fmt(stat.st_size)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
+        calibration = f"{self.pictureMetadata.dCalibration:.3f} µm/px" if self.pictureMetadata.bCalibrated else "Uncalibrated"
+        mtime = f"{datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%x %X')}"
+        app_created = self.appInfo.software
+        return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, file_size=file_size, frame_res=frame_res, volume_size=volume_size, sizes=sizes, calibration=calibration, mtime=mtime, app_created=app_created)
+    
+    @functools.cached_property
     def customDescription(self) -> CustomDescription|None:
         data = self.chunk(b'CustomData|CustomDescriptionV1_0!')
         if data is None:
@@ -239,3 +260,17 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
             raise ValueError("File handle passed to LimNd2Wrtier must have \"rb+\" or \"wb\" mode")
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
+def _size_fmt(size):
+    kB = 1024
+    MB = kB*1024
+    GB = MB*1024
+    TB = GB*1024
+    if TB <= size:
+        return f"{size/TB:.0f}TB"
+    if GB <= size:
+        return f"{size/GB:.0f}GB"
+    if MB <= size:
+        return f"{size/MB:.0f}MB"
+    if kB <= size:
+        return f"{size/kB:.0f}kB"
+    return f"{size} B"

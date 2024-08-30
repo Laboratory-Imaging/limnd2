@@ -4,6 +4,7 @@ import datetime, enum, numpy as np, operator
 from dataclasses import dataclass, field
 from .lite_variant import decode_lv
 from .variant import decode_var
+from .treeview_helper import create_treeview_grouping
 
 def jdn_now():
    result = datetime.datetime.now(datetime.UTC).timestamp()
@@ -873,6 +874,22 @@ class PictureMetadataPicturePlanes:
         object.__setattr__(self, 'uiCount', 1)
         object.__setattr__(self, 'uiCompCount', comps)
         object.__setattr__(self, 'sPlane', [ PicturePlaneDesc(**args) ])
+
+    def to_table(self) -> dict[str, any]:
+        rows=[]
+        col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
+        settings = self.sSampleSetting    
+        for plane in self.sPlane:
+            setting = settings[plane.uiSampleIndex]
+            camera = setting.cameraName or "Unknown camera"
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value=','.join(oc for oc in setting.opticalConfigurations)))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Microscope name:", value=setting.microscopeName))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective name:", value=setting.objectiveName))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value=setting.objectiveMagnification))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value=setting.objectiveNumericAperture))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value=setting.refractiveIndex))
+        rows.sort(key=lambda row: row["camera"])
+        return dict(coldefs=col_defs, groups=create_treeview_grouping(rows, ['camera', 'channel']), rowdata=rows)
 
 
 @dataclass(frozen=True, kw_only=True)

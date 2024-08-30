@@ -32,6 +32,18 @@ class ImageAttributesPixelType(enum.IntEnum):
       pxtUnsigned = 1
       pxtReal = 2
 
+      @staticmethod
+      def short_name(type : ImageAttributesPixelType) -> str:
+          match type:
+              case ImageAttributesPixelType.pxtSigned:
+                  return "int"
+              case ImageAttributesPixelType.pxtUnsigned:
+                  return "uint"
+              case ImageAttributesPixelType.pxtReal:
+                  return "float"
+              case _:
+                  return "unknown"
+
 @dataclass(frozen=True, kw_only=True)
 class ImageAttributes:
     uiWidth: int = 0
