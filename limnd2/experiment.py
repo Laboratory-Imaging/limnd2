@@ -410,6 +410,10 @@ class ExperimentSpectralLoop(ExperimentLoop):
             ocs = self.pPlanes.sSampleSetting[plane.uiSampleIndex].sOpticalConfigs if plane.uiSampleIndex < len(self.pPlanes.sSampleSetting) else []
             ret.append(dict(Index=idx, Name=plane.sDescription, OC=', '.join([oc.sOpticalConfigName for oc in ocs]), Color=plane.colorAsHtmlString))
         return ret
+    
+    def replacePlanes(self, picturePlanes: PictureMetadataPicturePlanes) -> None:
+        object.__setattr__(self, 'pPlanes', picturePlanes)
+
         
 
 @dataclass(init=False, frozen=True)

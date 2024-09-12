@@ -4,7 +4,7 @@ import abc, io, itertools, re, struct, typing, zlib
 import numpy as np
 from .attributes import ImageAttributes, NumpyArrayLike
 from .binary import BinaryRleMetadata, BinaryRasterMetadata
-from .experiment import ExperimentLevel
+from .experiment import ExperimentLevel, ExperimentLoopType
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo
 
@@ -228,6 +228,9 @@ class BaseChunker(abc.ABC):
                 self._experiment = ExperimentLevel.from_var(data)                
             else:
                 return None
+            spectralLoop = self._experiment.findLevel(ExperimentLoopType.eEtSpectLoop)
+            if spectralLoop is not None and self.pictureMetadata is not None:
+                spectralLoop.uLoopPars.replacePlanes(self.pictureMetadata.sPicturePlanes)
         return self._experiment
     
     @property
