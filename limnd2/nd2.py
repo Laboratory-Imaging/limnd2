@@ -1,3 +1,5 @@
+import datetime, functools, numpy as np, os
+
 from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
@@ -7,13 +9,12 @@ from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo, AppInfo
 from .variant import decode_var
 
-import datetime, functools, numpy as np, os
 
 if Nd2LoggerEnabled:
     import logging
     logger = logging.getLogger("limnd2")
 
-class Nd2Reader:    
+class Nd2Reader:
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = True
         return _create_chunker(*args, **kwargs)
@@ -44,42 +45,42 @@ class Nd2Reader:
     @property
     def imageAttributes(self) -> ImageAttributes:
         return self._chunker.imageAttributes
-    
+
     @property
     def pictureMetadata(self) -> PictureMetadata:
-        return self._chunker.pictureMetadata    
-    
+        return self._chunker.pictureMetadata
+
     @property
     def experiment(self) -> ExperimentLevel|None:
         return self._chunker.experiment
-    
+
     @property
     def imageTextInfo(self) -> ImageTextInfo:
         return self._chunker.imageTextInfo
-    
+
     @functools.cached_property
     def wellplateDesc(self) -> WellplateDesc|None:
         data = self.chunk(b'CustomData|WellPlateDesc_0!')
         return WellplateDesc.from_lv(data) if data is not None else None
-    
+
     @functools.cached_property
     def wellplateFrameInfo(self) -> WellplateFrameInfo|None:
         data = self.chunk(b'CustomData|WellPlateFrameInfoZJSON!')
         return WellplateFrameInfo.from_json(data) if data is not None else None
-    
+
     @functools.cached_property
     def appInfo(self) -> AppInfo:
         data = self.chunk(b'CustomDataVar|AppInfo_V1_0!')
         return AppInfo.from_var(data)
-    
+
     @property
     def software(self) -> str:
         return self.appInfo.software
-    
+
     @property
     def acqFrames(self) -> NumpyArrayLike:
         return self._chunker.acqFrames
-    
+
     @property
     def acqTimes(self) -> NumpyArrayLike|None:
         return self._chunker.acqTimes
@@ -87,15 +88,15 @@ class Nd2Reader:
     @property
     def acqTimes2(self) -> NumpyArrayLike|None:
         return self._chunker.acqTimes2
-    
+
     @property
     def compFrameRange(self) -> NumpyArrayLike:
         return self._chunker.compFrameRange
-    
+
     @property
     def compRange(self) -> NumpyArrayLike:
         return self._chunker.compRange
-    
+
     @property
     def recordedData(self) -> RecordedData:
         recData = RecordedData()
@@ -121,7 +122,7 @@ class Nd2Reader:
             recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
             recData.sort()
         return recData
-    
+
     @functools.cached_property
     def generalImageInfo(self) -> dict[str, any]:
         ia = self.imageAttributes
@@ -130,18 +131,18 @@ class Nd2Reader:
         filename = os.path.basename(self.filename)
         path = os.path.dirname(self.filename)
         bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
-        frame_res = f"{ia.width} x {ia.height}"       
+        frame_res = f"{ia.width} x {ia.height}"
         dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
         file_size = _size_fmt(stat.st_size)
         frame_size = _size_fmt(ia.height*ia.widthBytes)
-        z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0        
+        z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0
         volume_size = _size_fmt(ia.height*ia.widthBytes*z_count)
         sizes = f"{_size_fmt(stat.st_size)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
         calibration = f"{self.pictureMetadata.dCalibration:.3f} µm/px" if self.pictureMetadata.bCalibrated else "Uncalibrated"
         mtime = f"{datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%x %X')}"
         app_created = self.appInfo.software
         return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, file_size=file_size, frame_res=frame_res, volume_size=volume_size, sizes=sizes, calibration=calibration, mtime=mtime, app_created=app_created)
-    
+
     @functools.cached_property
     def customDescription(self) -> CustomDescription|None:
         data = self.chunk(b'CustomData|CustomDescriptionV1_0!')
@@ -149,7 +150,7 @@ class Nd2Reader:
             return None
         return CustomDescription.from_lv(data)
 
-    
+
     def generateLoopIndexes(self, named: bool = False) -> list:
         exp = self.experiment
         if exp is None:
@@ -169,14 +170,14 @@ class Nd2Reader:
                 lst = [windex] + lst
                 ret.append(dict(zip(names, lst)) if named else lst)
             return ret
-        
+
         else:
             return self.experiment.generateLoopIndexes(named=named)
-    
+
     @property
     def binaryRleMetadata(self) -> BinaryRleMetadata:
         return self._chunker.binaryRleMetadata
-    
+
     @property
     def binaryRasterMetadata(self) -> BinaryRasterMetadata:
         if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(self._chunker.binaryRleMetadata):
@@ -187,36 +188,52 @@ class Nd2Reader:
     @property
     def chunker(self):
         return self._chunker
-    
+
     def chunk(self, name : bytes|str, asbytes : bool|None = None) -> bytes|memoryview|None:
         return self._chunker.chunk(name)
-    
+
     def image(self, seqindex: int) -> NumpyArrayLike:
         return self._chunker.image(seqindex)
 
     def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
         return self._chunker.downsampledImage(seqindex, downsize)
-    
-    def binaryRasterData(self, binid: int, seqindex: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:        
+
+    def binaryRasterData(self, binid: int, seqindex: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:
         return self._chunker.binaryRasterData(binid, seqindex)
 
     def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:
         return self._chunker.downsampledBinaryRasterData(binid, seqindex, downsize)
-    
+
     def finalize(self) -> None:
-        return self._chunker.finalize()    
+        return self._chunker.finalize()
+
+    def load_chunks(self) -> dict[str, bytes]:
+        data = {}
+        for chunk_name in self.chunker.chunk_names:
+            pos = self.chunker._chunk_pos(chunk_name)
+            data[chunk_name] = self.chunker._read_chunk(pos)
+        return data
+
+    def write(self, filename: str) -> None:
+        data = self.load_chunks()
+        for x, y in data.items():
+            print(x, ":", y[:20])
+
+
+        for chunk_name, (offset, size) in self.chunker._chunkmap.items():
+            print(chunk_name, offset)
 
 class Nd2Writer:
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = False
         return _create_chunker(*args, **kwargs)
-        
+
     def __init__(self, file : FileLikeObject, *, append : bool|None = None, chunker_kwargs:dict = {}) -> None:
         self._chunker = self.create_chunker(file, append=append, chunker_kwargs=chunker_kwargs)
 
     @property
     def version(self) -> tuple[int, int]:
-        return self._chunker.fileVersion        
+        return self._chunker.fileVersion
 
     @property
     def imageAttributes(self) -> ImageAttributes:
@@ -224,22 +241,22 @@ class Nd2Writer:
 
     @imageAttributes.setter
     def imageAttributes(self, val: ImageAttributes) -> None:
-        self._chunker.imageAttributes = val        
+        self._chunker.imageAttributes = val
 
     @property
     def chunker(self):
-        return self._chunker        
+        return self._chunker
 
     def setChunk(self, name : bytes|str, data : bytes|memoryview) -> None:
         return self._chunker.setChunk(name, data)
-    
+
     def finalize(self) -> None:
         return self._chunker.finalize()
-    
+
     def rollback(self) -> None:
         return self._chunker.rollback()
-    
-def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs:dict = {}):
+
+def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs: dict = {}):
     import os
     if type(file) == str:
         if readonly:
@@ -252,7 +269,7 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
         fh = open(file, mode)
         chunker_kwargs.update(dict(filename=file))
         return LimBinaryIOChunker(fh, **chunker_kwargs)
-        
+
     elif (hasattr(file, "read") or hasattr(file, "write")) and hasattr(file, "seek") and hasattr(file, "tell") and hasattr(file, "mode"):
         if readonly and "rb" != file.mode:
             raise ValueError("File handle passed to LimNd2Reader must have \"rb\" mode")

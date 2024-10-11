@@ -1,18 +1,19 @@
-import io
-import struct
-import zlib
-from typing import Any, Callable, Final, cast
-from collections import UserList
+import io, struct, zlib, abc, logging
+from typing import Any, Callable, Final, cast, Union, Self
+from dataclasses import field, fields
 
-strctBB = struct.Struct("BB")  # 2x uint8_t
+logger = logging.getLogger("limnd2")
+
+strctBB = struct.Struct("<BB")  # 2x uint8_t
 strctIQ = struct.Struct("<IQ")  # 1x uint32_t, 1x uint64_t
-strctB = struct.Struct("B")  # uint8_t
-strctI = struct.Struct("I")  # uint32_t
-strcti = struct.Struct("i")  # int32_t
-strctq = struct.Struct("q")  # int64_t
-strctQ = struct.Struct("Q")  # uint64_t
-strctd = struct.Struct("d")  # float64_t
-strctf = struct.Struct("f")  # float32_t
+strctB = struct.Struct("<B")  # uint8_t
+strctI = struct.Struct("<I")  # uint32_t
+strcti = struct.Struct("<i")  # int32_t
+strctq = struct.Struct("<q")  # int64_t
+strctQ = struct.Struct("<Q")  # uint64_t
+strctd = struct.Struct("<d")  # float64_t
+strctf = struct.Struct("<f")  # float32_t
+strctb = struct.Struct("<?")    # boolean
 
 def _unpack_bool(stream: io.BytesIO) -> bool:
     data = stream.read(strctB.size)
@@ -23,26 +24,20 @@ def _unpack_bool(stream: io.BytesIO) -> bool:
     # but LIMFILE_EXPORT json experiment (in JsonBridge.cpp) dumps a boolean of True
     # return strctB.unpack(data)[0] == 1
 
-
 def _unpack_int32(stream: io.BytesIO) -> int:
     return int(strcti.unpack(stream.read(strcti.size))[0])
-
 
 def _unpack_uint32(stream: io.BytesIO) -> int:
     return int(strctI.unpack(stream.read(strctI.size))[0])
 
-
 def _unpack_int64(stream: io.BytesIO) -> int:
     return int(strctq.unpack(stream.read(strctq.size))[0])
-
 
 def _unpack_uint64(stream: io.BytesIO) -> int:
     return int(strctQ.unpack(stream.read(strctQ.size))[0])
 
-
 def _unpack_double(stream: io.BytesIO) -> float:
     return float(strctd.unpack(stream.read(strctd.size))[0])
-
 
 def _unpack_void_pointer(stream: io.BytesIO) -> bytes:
     # TODO: i think nd2 will actually return a encodeBase64 string
@@ -58,7 +53,6 @@ def _unpack_string(data: io.BytesIO) -> str:
         if len(next_data) == 0:
             break
         value += next_data
-
     try:
         return value.decode("utf16")[:-1]
     except UnicodeDecodeError:
@@ -68,8 +62,37 @@ def _unpack_bytearray(data: io.BytesIO) -> bytes:
     size = _unpack_uint64(data)
     return data.read(size)
 
+
+def _encode_bool(value: bool, writer: io.BytesIO):
+    writer.write(strctb.pack(value))
+
+def _encode_int32(value: int, writer: io.BytesIO):
+    writer.write(strcti.pack(value))
+
+def _encode_uint32(value: int, writer: io.BytesIO):
+    writer.write(strctI.pack(value))
+
+def _encode_int64(value: int, writer: io.BytesIO):
+    writer.write(strctq.pack(value))
+
+def _encode_uint64(value: int, writer: io.BytesIO):
+    writer.write(strctQ.pack(value))
+
+def _encode_double(value: float, writer: io.BytesIO):
+    writer.write(strctd.pack(value))
+
+def _encode_string(value: str, writer: io.BytesIO):
+    writer.write(value.encode("utf-16-le") + b"\x00\x00")
+
+def _encode_bytes(value: bytes, writer: io.BytesIO):
+    writer.write(strctQ.pack(len(value)) + value)
+
 class ELxLiteVariantType:
-    UNKNOWN: Final = 0
+    DO_NOT_ENCODE: Final = -2                   # encoding of this object by the encoder is not done on purpose
+                                                # either it is omitted or set somewhere else
+    ENCODING_NOT_IMPLEMENTED: Final = -1        # encoding of those objects requires more thought, either it needs to be rewritten to nested dataclass or
+    UNKNOWN: Final = 0                          # type is not known yet, but shouldnt be problematic to set it
+
     BOOL: Final = 1
     INT32: Final = 2
     UINT32: Final = 3
@@ -83,6 +106,13 @@ class ELxLiteVariantType:
     LEVEL: Final = 11
     COMPRESS: Final = 76  # 'L'
 
+def LV_field(default: Any, variant_type: ELxLiteVariantType):
+    # return dataclasses Field instance with type for encoding such field stored in metadata
+    if callable(default):
+        return field(default_factory=default, metadata={"LVType": variant_type})
+    else:
+        return field(default=default, metadata={"LVType": variant_type})
+
 
 _PARSERS: dict[int, Callable[[io.BytesIO], Any]] = {
     ELxLiteVariantType.BOOL: _unpack_bool,  # 1
@@ -94,6 +124,17 @@ _PARSERS: dict[int, Callable[[io.BytesIO], Any]] = {
     ELxLiteVariantType.VOIDPOINTER: _unpack_void_pointer,  # 7
     ELxLiteVariantType.STRING: _unpack_string,  # 8
     ELxLiteVariantType.BYTEARRAY: _unpack_bytearray,  # 9
+}
+
+_ENCODERS: dict[ELxLiteVariantType, Callable[[Any, io.BytesIO], None]] = {
+    ELxLiteVariantType.BOOL: _encode_bool,
+    ELxLiteVariantType.INT32: _encode_int32,
+    ELxLiteVariantType.UINT32: _encode_uint32,
+    ELxLiteVariantType.INT64: _encode_int64,
+    ELxLiteVariantType.UINT64: _encode_uint64,
+    ELxLiteVariantType.DOUBLE: _encode_double,
+    ELxLiteVariantType.STRING: _encode_string,
+    ELxLiteVariantType.BYTEARRAY: _encode_bytes,
 }
 
 
@@ -113,7 +154,6 @@ def _chunk_name_and_dtype(stream: io.BytesIO) -> tuple[str, int]:
         # name of the section is a utf16 string of length `name_length * 2`
         name = stream.read(name_length * 2).decode("utf16")[:-1]
     return (name, data_type)
-
 
 # lite variant
 def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]:
@@ -172,9 +212,232 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
             output[name] = value
     return output
 
-def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
-    return _decode_lv(data, 1)
+def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, file=None) -> dict[str, Any]:
+    output: dict[str, Any] = {}
+    if not data:
+        return output
 
-def encode_lv(obj: list[tuple[str, int, Any]]) -> bytes:
-    #dec = _encode_lv(obj, types)
-    pass
+    stream = data if isinstance(data, io.BytesIO) else io.BytesIO(data)
+    for _ in range(_count):
+        curs = stream.tell()
+
+        name, data_type = _chunk_name_and_dtype(stream)
+
+
+        def get_enum_name_by_value(value, enum_class):
+            for key, val in enum_class.__dict__.items():
+                if val == value:
+                    return key
+            return None
+
+
+        if data_type == ELxLiteVariantType.COMPRESS:
+            stream.seek(10, 1)
+            deflated = zlib.decompress(stream.read())
+            return _decode_lv_exp(deflated, 1)
+
+        if data_type == -1:
+            # never seen this, but it's in the sdk
+            break  # pragma: no cover
+
+        value: Any
+        if data_type == ELxLiteVariantType.LEVEL:
+            item_count, length = strctIQ.unpack(stream.read(strctIQ.size))
+            next_data_length = stream.read(length - (stream.tell() - curs))
+
+            if file:
+                print(f'{"    " * depth}"{name}": {"{"}', file=file)
+            val: dict = _decode_lv_exp(next_data_length, item_count, depth+1, file)
+            if file:
+                print(f'{"    " * depth}{"}"},', file=file)
+
+            stream.seek(item_count * 8, 1)
+            # levels with a single "" key are actually lists
+            if len(val) == 1 and "" in val:
+                value = val[""]
+                if not isinstance(value, list):
+                    value = [value]
+                value = {f"i{n:010}": x for n, x in enumerate(value)}
+            else:
+                value = val
+
+        elif data_type in _PARSERS:
+            value = _PARSERS[data_type](stream)
+        else:
+            # also never seen this
+            value = None  # pragma: no cover
+        if name == "" and name in output:
+            # nd2 uses empty strings as keys for lists
+            # TODO this version doesnt deal with repeats i think
+            if not isinstance(output[name], list):
+                output[name] = [output[name]]
+            cast(list, output[name]).append(value)
+            if type(value) == str:
+                value = '"' + value + '"'
+            pad = 70 - len(name) - len("    " * depth)
+            if data_type != 11:
+                value = str(value) + ","
+                if file:
+                    print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
+
+        elif name in output:
+            print("WARNING: duplicite key:", name)
+            i = 1
+            uname = f'{name}#{i}'
+            while uname in output:
+                i += 1
+                uname = f'{name}#{i}'
+            output[uname] = value
+            if type(value) == str:
+                value = '"' + value + '"'
+            pad = 70 - len(name) - len("    " * depth)
+            if data_type != 11:
+                value = str(value) + ","
+                if file:
+                    print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
+
+        else:
+            output[name] = value
+            if type(value) == str:
+                value = '"' + value + '"'
+            pad = 70 - len(name) - len("    " * depth)
+            if data_type != 11:
+                value = str(value) + ","
+                if file:
+                    print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
+
+    """
+    if depth == 0:
+        import json
+        print(json.dumps(output, indent=4))
+    """
+    return output
+
+def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
+    def header_encode(attribute: str, LVType: ELxLiteVariantType, writer: io.BytesIO) -> None:
+        writer.write(strctBB.pack(LVType, len(attribute) + 1))
+        writer.write(attribute.encode("utf-16-le") + b"\x00\x00")
+
+    def attribute_encode(attribute: str, value: Any, LVType: ELxLiteVariantType, writer: io.BytesIO) -> None:
+        header_encode(attribute, LVType, writer)
+        _ENCODERS[LVType](value, writer)
+
+    writer = io.BytesIO()
+    if parent_name != None:
+        offsets = {}
+
+    for attribute, candidate in data.items():
+        if type(attribute) == int:
+            attribute = ""
+
+        if parent_name != None:
+            offsets[attribute] = writer.getbuffer().nbytes + len(parent_name) + struct.Struct("<BBIQ").size
+
+        if isinstance(candidate, dict):
+            value = candidate
+            header_encode(attribute, ELxLiteVariantType.LEVEL, writer)
+
+            item_count = len(value)
+            encoded_key = attribute.encode("utf-16-le") + b"\x00\x00"
+            writer.write(strctI.pack(item_count))
+
+            rec_writer, rec_offsets = _encode_lv(value, encoded_key)
+
+            data_len = len(rec_writer) + len(encoded_key) + struct.Struct("<BBIQ").size
+            writer.write(strctQ.pack(data_len) + rec_writer)
+
+            for key in sorted(rec_offsets.keys()):
+                writer.write(struct.pack("<Q", rec_offsets[key]))
+
+        elif isinstance(candidate, tuple):
+            value, LVType = candidate
+            if LVType in _ENCODERS:
+                attribute_encode(attribute, value, LVType, writer)
+            else:
+                raise ValueError(f"Can not convert type {ELxLiteVariantType.get_name(LVType)}." )
+
+            '''
+        elif hasattr(candidate, "to_lv") and callable(candidate.to_lv):
+            value = candidate
+            header_encode(attribute, ELxLiteVariantType.LEVEL, writer)
+
+            item_count = len(value)
+            encoded_key = attribute.encode("utf-16-le") + b"\x00\x00"
+            writer.write(strctI.pack(item_count))
+
+            rec_writer, rec_offsets = _encode_lv(value.to_lv(), encoded_key)
+
+            data_len = len(rec_writer) + len(encoded_key) + struct.Struct("<BBIQ").size
+            writer.write(strctQ.pack(data_len) + rec_writer)
+
+            for key in sorted(rec_offsets.keys()):
+                writer.write(struct.pack("<Q", rec_offsets[key]))
+            '''
+
+        else:
+            raise RuntimeError(f"Could not encode type {type(candidate)} ")
+
+
+    if parent_name != None:
+        return writer.getvalue(), offsets
+    return writer.getvalue()
+
+COUNT = 0
+def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
+    global COUNT
+    file = "decoder_types.txt"
+    if COUNT == 0:
+        COUNT = 1
+        with open(file, "w") as f:
+            return _decode_lv_exp(data, 1, file = f)
+    else:
+        with open(file, "a") as f:
+            return _decode_lv_exp(data, 1, file = f)
+    #return _decode_lv(data, 1)
+
+def encode_lv(data: dict[str, Union[dict, tuple[Any, ELxLiteVariantType]]]) -> bytes:
+    return _encode_lv(data)
+
+
+class LVSerializable(abc.ABC):
+    NOT_ENCODED_TYPES: tuple[ELxLiteVariantType] = (
+            ELxLiteVariantType.UNKNOWN,
+            ELxLiteVariantType.ENCODING_NOT_IMPLEMENTED,
+            ELxLiteVariantType.DO_NOT_ENCODE
+        )
+
+    @staticmethod
+    def _to_serializable_dict(obj: dict | Self, parent_path="") -> dict:
+        obj : dict | LVSerializable
+        types: dict = {}
+
+        if isinstance(obj, LVSerializable):
+            types = {f.name: f.metadata["LVType"] for f in fields(obj)}
+            obj = {f.name: getattr(obj, f.name) for f in fields(obj)}
+
+        result = {}
+        for key, value in obj.items():
+
+            if value is None or (key in types and types[key] in LVSerializable.NOT_ENCODED_TYPES):
+                # if value is none
+                # or it has a unknown or unsupported type
+                # skip value
+                continue
+
+            if isinstance(value, list):
+                value = {i : val for i, val in enumerate(value)}
+                result[key] = LVSerializable._to_serializable_dict(value, parent_path=f"{parent_path}[{key}]")
+            elif isinstance(value, dict):
+                result[key] = LVSerializable._to_serializable_dict(value, parent_path=f"{parent_path}[{key}]")
+            elif isinstance(value, LVSerializable):
+                result[key] = value.to_serializable_dict(parent_path=f"{parent_path}.{value.__class__.__name__}")
+            elif key in types and types[key] != ELxLiteVariantType.UNKNOWN:
+                result[key] = (value, types[key])
+            else:
+                logger.warning(f"WARNING: {parent_path}[{key}]: no type found for value of type {type(value)}.")
+        return result
+
+    def to_serializable_dict(self, parent_path = "") -> dict:
+        if not parent_path:
+            parent_path += self.__class__.__name__
+        return self._to_serializable_dict(self, parent_path=parent_path)

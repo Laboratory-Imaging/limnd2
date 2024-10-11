@@ -7,3 +7,6 @@ __pycache__
 *.nd2
 nd2files/*
 nd2files
+decoder_types.txt
+tst/*
+tst

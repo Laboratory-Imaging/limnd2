@@ -84,21 +84,35 @@ def index_file(path: Path) -> Record:
             return f"{size/kB:.1f} kB"
         return f"{size} B"
 
+    #if(file_obj.imageAttributes.uiWidth != file_obj.imageAttributes.uiTileWidth):
+    #    print(path.name, "\n", file_obj.imageAttributes)
+    """
+    print(path.name)
+
+    for e in file_obj.experiment:
+        if e.wsMeasProbes != "":
+            copy = e.__dict__
+            del copy["ppNextLevelEx"]
+            #print(copy["uLoopPars"])
+            print(copy)
+    """
+    #print(path.name, "\n", "\n\n".join([f"{e}" for e in file_obj.experiment]), "\n\n\n")
+
     if file_obj is not None:
         return Record({
             "Path": str(path.parent),
             "Name": path.name,
             "Version": f"{file_obj.version[0]}.{file_obj.version[1]}",
-            "Size": size_fmt(path.stat().st_size), 
+            "Size": size_fmt(path.stat().st_size),
             "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
             "Experiment": ", ".join([f"{e.shortName} ({e.count})" for e in file_obj.experiment]) if file_obj.experiment else "",
             "Frames": max(1, file_obj.imageAttributes.frameCount),
             "Dtype": file_obj.imageAttributes.dtype.__name__,
-            "Bits": file_obj.imageAttributes.uiBpcSignificant, 
+            "Bits": file_obj.imageAttributes.uiBpcSignificant,
             "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
             "Channels": file_obj.imageAttributes.componentCount,
             "Binary": bin_info,
-            "Software": f'{file_obj.appInfo.m_SWNameString} {file_obj.appInfo.m_VersionString}', 
+            "Software": f'{file_obj.appInfo.m_SWNameString} {file_obj.appInfo.m_VersionString}',
             "Grabber": file_obj.appInfo.m_GrabberString
         })
     else:
@@ -106,7 +120,7 @@ def index_file(path: Path) -> Record:
             "Path": str(path.parent),
             "Name": path.name,
             "Version": f"{file_version[0]}.{file_version[1]}" if file_version is not None else "",
-            "Size": size_fmt(path.stat().st_size), 
+            "Size": size_fmt(path.stat().st_size),
             "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
             "Experiment": "",
             "Dtype": "",
@@ -133,8 +147,8 @@ def _gather_files(
 def _index_files(
     paths: Iterable[Path], recurse: bool = False, glob: str = "*.nd2", format="table"
 ) -> list[Record]:
-    
-    
+
+
     files = _gather_files(paths, recurse, glob)
     results = []
     error = False
@@ -145,7 +159,7 @@ def _index_files(
             results.append(index_file(file_path))
         except Exception as e:
             if not error:
-                import sys 
+                import sys
                 error = True
                 if format == "table":
                     print("[red]Following files could not be processed:[/red]")
@@ -155,7 +169,7 @@ def _index_files(
                 print(f"\t[white]{file_path}:[/white] [red italic]{e}[/red italic]")
             else:
                 original_print(f"\t{file_path}:{e}", file=sys.stderr)
-    
+
     return results
 
 def _pretty_print_table(data: list[Record], sort_column: str | None = None) -> None:
@@ -382,7 +396,7 @@ def main(argv: Sequence[str] = ()) -> None:
 
     if not data:
         print("[red]No ND2 files found.[/red]")
-        return 
+        return
 
     data = _filter_data(
         data,

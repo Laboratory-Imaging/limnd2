@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime, enum, numpy as np, operator
 from dataclasses import dataclass, field
+
 from .lite_variant import decode_lv
 from .variant import decode_var
 from .treeview_helper import create_treeview_grouping
@@ -10,7 +11,7 @@ def jdn_now():
    result = datetime.datetime.now(datetime.UTC).timestamp()
    result /= 86_400         # seconds per day
    result += 2_440_587.5    # JDN EPOCH
-   return result;    
+   return result;
 
 class PictureMetadataTimeSourceType(enum.IntEnum):
     etsSW = 0
@@ -51,7 +52,7 @@ class OpticalFilterSpectType(enum.IntEnum):
     eOftBarrier             = 5 # specified by lower (falling edge) and higher (raising) wavelength
     eOftMultiplepass        = 6 # specified by a few edges
     eOftFull                = 7 # full position of a filterwheel
-    eOftEmpty               = 8 # empty position of a filterwheel        
+    eOftEmpty               = 8 # empty position of a filterwheel
 
 class PicturePlaneModality(enum.IntEnum):
     eModWidefieldFluo       = 0
@@ -131,7 +132,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
             PicturePlaneModality.eModVAASConfocalNF:    PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modVAAS_NF,
             PicturePlaneModality.eModDSDConfocal:       PicturePlaneModalityFlags.modDSDConfocal
         }.get(mod, PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modCamera)
-    
+
     @staticmethod
     def to_str_list(flags : PicturePlaneModalityFlags) -> list[str]:
         ret: list[str] = []
@@ -244,7 +245,7 @@ class OpticalSpectrum:
                     bPoints: bool = False,
                     pPoint: dict|list[OpticalSpectrumPoint] = [],
                     **kwargs):
-        
+
         object.__setattr__(self, 'bPoints', bPoints)
         if type(pPoint) == dict and 'uiCount' in kwargs:
             pPoint_ = []
@@ -259,14 +260,14 @@ class OpticalSpectrum:
     @property
     def isValid(self) -> bool:
         return 0 < len(self.pPoint)
-    
+
     @property
     def count(self) -> int:
         return len(self.pPoint)
-    
+
     def findmaxtvalue(self) -> tuple[int, float]:
         return max(enumerate(pt.dTValue for pt in self.pPoint), key=operator.itemgetter(1))
-    
+
     def peakAndFWHM(self) -> tuple[float, float, float]:
         if self.bPoints:
             if not self.isValid:
@@ -281,17 +282,17 @@ class OpticalSpectrum:
             while ilast < len(self.pPoint) and halftmax < self.pPoint[ilast].dTValue:
                 ilast += 1
             while 0 <= ifirst and halftmax < self.pPoint[ifirst].dTValue:
-                ifirst -= 1                
+                ifirst -= 1
             if not (0 <= ifirst and ilast < len(self.pPoint)):
-               raise ValueError            
-            return peak, self.pPoint[ifirst].dWavelength, self.pPoint[ilast].dWavelength               
+               raise ValueError
+            return peak, self.pPoint[ifirst].dWavelength, self.pPoint[ilast].dWavelength
         else:
             for index, pt in enumerate(self.pPoint):
                 if pt.eType == OpticalSpectrumPointType.eSptRaisingEdge and index + 1 < len(self.pPoint) and self.pPoint[index + 1].eType == OpticalSpectrumPointType.eSptFallingEdge:
                    return (pt.wavelength + self.pPoint[index + 1].wavelength) / 2, pt.dWavelength, self.pPoint[index + 1].wavelength
                 elif pt.eType == OpticalSpectrumPointType.eSptPeak:
                     return pt.dWavelength, pt.dWavelength, pt.dWavelength
-                
+
     def singleWavelength(self) -> float:
         try:
             peak, _, _ = self.peakAndFWHM()
@@ -299,7 +300,7 @@ class OpticalSpectrum:
         except ValueError:
             pass
         if 1 == len(self.pPoint):
-            return self.pPoint[0].dWavelength        
+            return self.pPoint[0].dWavelength
         num, denom = 0.0, 0.0
         for pt in self.pPoint:
             num += pt.dWavelength * pt.dTValue
@@ -314,10 +315,10 @@ class OpticalSpectrum:
         if not self.bPoints:
             if self.pPoint[0].eType in (OpticalSpectrumPointType.eSptRaisingEdge, OpticalSpectrumPointType.eSptPeak):
                 dWlMin = self.pPoint[ 0].dWavelength - 1.0
-            if self.pPoint[-1].eType in (OpticalSpectrumPointType.eSptFallingEdge, OpticalSpectrumPointType.eSptPeak):                
+            if self.pPoint[-1].eType in (OpticalSpectrumPointType.eSptFallingEdge, OpticalSpectrumPointType.eSptPeak):
                 dWlMin = self.pPoint[-1].dWavelength + 1.0
         return dWlMin, dWlMax
-    
+
     @staticmethod
     def combine(a: OpticalSpectrum, b: OpticalSpectrum) -> OpticalSpectrum:
         ret, tol = OpticalSpectrum._combine_low(a, b, 0)
@@ -364,8 +365,8 @@ class OpticalSpectrum:
             point.dWavelength = awl[ia] if doa else bwl[ib]
             def set_transposethis(x):
                 nonlocal transpa, transpb
-                if doa: 
-                    transpa=x 
+                if doa:
+                    transpa=x
                 else:
                     transpb=x
             transposeother = lambda: transpb if doa else transpa
@@ -382,7 +383,7 @@ class OpticalSpectrum:
                 if transposeother():
                     result.append(point)
                     mindiff = 0
-                set_transposethis(True)           
+                set_transposethis(True)
             elif point.eType == OpticalSpectrumPointType.eSptFallingEdge:
                 if transposeother():
                     result.append(point)
@@ -443,13 +444,13 @@ class OpticalFilter:
         object.__setattr__(self, 'm_ePlacement', m_ePlacement)
         object.__setattr__(self, 'm_eNature', m_eNature)
         object.__setattr__(self, 'm_eSpctType', m_eSpctType)
-        object.__setattr__(self, 'm_uiColor', m_uiColor)                
+        object.__setattr__(self, 'm_uiColor', m_uiColor)
         object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**m_ExcitationSpectrum) if type(m_ExcitationSpectrum) == dict else m_ExcitationSpectrum)
-        object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)    
-        object.__setattr__(self, 'm_MirrorSpectrum', OpticalSpectrum(**m_MirrorSpectrum) if type(m_MirrorSpectrum) == dict else m_MirrorSpectrum)  
+        object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)
+        object.__setattr__(self, 'm_MirrorSpectrum', OpticalSpectrum(**m_MirrorSpectrum) if type(m_MirrorSpectrum) == dict else m_MirrorSpectrum)
 
 @dataclass(init=False, frozen=True)
-class OpticalFilterPath:    
+class OpticalFilterPath:
     m_sDescr: str = ""
     m_pFilter: list[OpticalFilter] = field(default_factory=list)
 
@@ -462,7 +463,7 @@ class OpticalFilterPath:
         if type(m_pFilter) == dict:
             m_pFilter_ = []
             for _, item in m_pFilter.items():
-                m_pFilter_.append(OpticalFilter(**item))            
+                m_pFilter_.append(OpticalFilter(**item))
             object.__setattr__(self, 'm_pFilter', m_pFilter_)
         elif type(m_pFilter) == list and all(isinstance(item, OpticalFilter) for item in m_pFilter):
             object.__setattr__(self, 'm_pFilter', m_pFilter)
@@ -472,7 +473,7 @@ class OpticalFilterPath:
     @property
     def isValid(self):
         return 0 < len(self.m_pFilter)
-    
+
     def meanEmissionWavelength(self) -> float:
         def em2pt(s: OpticalSpectrum) -> float:
             if s.pPoint[0].eType == OpticalSpectrumPointType.eSptRaisingEdge and s.pPoint[1].eType == OpticalSpectrumPointType.eSptFallingEdge:
@@ -497,7 +498,7 @@ class OpticalFilterPath:
         for flt in self.m_pFilter:
             if OpticalFilterPlacement.eOfpFilterTurret == flt.m_ePlacement and 2 == flt.m_EmissionSpectrum.count:
                 return em2pt(flt.m_EmissionSpectrum)
-            
+
         exSpectrum: OpticalSpectrum = None
         for flt in self.m_pFilter:
             if 0 < flt.m_ExcitationSpectrum.count:
@@ -507,7 +508,7 @@ class OpticalFilterPath:
             dMin, dMax = flt.m_EmissionSpectrum.wavelengthRange()
             if 0 < flt.m_EmissionSpectrum.count and 0 < (dMin + dMax) / 2:
                 emSpectrum = OpticalSpectrum.combine(emSpectrum, flt.m_EmissionSpectrum)
-        ex = None 
+        ex = None
         for pt in exSpectrum.pPoint:
             if pt.eType in (OpticalSpectrumPointType.eSptPeak, OpticalSpectrumPointType.eSptFallingEdge):
                 ex = pt
@@ -562,12 +563,12 @@ class PicturePlaneDesc:
     pFluorescentProbe: FluorescentProbe = field(default_factory=FluorescentProbe)
                                             # Spectrum of the fluorescence fluorophore used. It can be specified by the user and
                                             #   can be used for any calculations (spectral unmixing etc.)
-    pFilterPath: OpticalFilterPath = field(default_factory=OpticalFilterPath)                  
+    pFilterPath: OpticalFilterPath = field(default_factory=OpticalFilterPath)
                                             # Filter path description, comes from devices. It can contain information about all
                                             #   elements influencing the spectral properties in the optical path. Optionally there
                                             #   can be lamps (incl. spectra), filters (incl. CCD sensitivity) and shutters.
                                             #   It must enable a description of an experiment using e.g.: exc. filterwheel, ems. fw,
-                                            #   mirrors, shutter, DIA lamp for DIC    
+                                            #   mirrors, shutter, DIA lamp for DIC
     dLampVoltage: float = 0
     dFadingCorr: float = 0                  # The coefficient used for fluorescence fading correction.
     uiColor: int = 0x00ffffff               # The colour used for representation of the plane and optionally for look-up table
@@ -580,7 +581,7 @@ class PicturePlaneDesc:
                                             #   used to access correct camerasettings items corresponding to this picture plane
     emissionWavelengthNm: float = 0
     excitationWavelengthNm: float = 0
-    
+
     def __init__(   self,
                     *,
                     uiCompCount: int = 1,
@@ -598,7 +599,7 @@ class PicturePlaneDesc:
                     dPinholeDiameter: float = -1,
                     iChannelSeriesIndex: int = -1,
                     iCapturedPlaneIndex: int = -1,
-                    **kwargs):        
+                    **kwargs):
         sizeObjFullChip = (kwargs.get('sizeObjFullChip.cx', sizeObjFullChip[0]), kwargs.get('sizeObjFullChip.cy', sizeObjFullChip[1]))
         uiModalityMask = PicturePlaneModalityFlags.from_modality(kwargs['eModality']) if 'eModality' in kwargs else uiModalityMask
         object.__setattr__(self, 'uiCompCount', uiCompCount)
@@ -615,7 +616,7 @@ class PicturePlaneDesc:
             object.__setattr__(self, 'pFluorescentProbe', FluorescentProbe())
 
         if type(pFilterPath) == dict:
-            object.__setattr__(self, 'pFilterPath', OpticalFilterPath(**pFilterPath))            
+            object.__setattr__(self, 'pFilterPath', OpticalFilterPath(**pFilterPath))
         elif isinstance(pFilterPath, OpticalFilterPath):
             object.__setattr__(self, 'pFilterPath', pFilterPath)
         else:
@@ -642,37 +643,37 @@ class PicturePlaneDesc:
     @property
     def isBrightfield(self) -> bool:
         return (self.uiModalityMask & PicturePlaneModalityFlags.modBrightfield)
-    
+
     @property
     def isDarkfield(self) -> bool:
-        return (self.uiModalityMask & PicturePlaneModalityFlags.modDarkfield)    
-    
+        return (self.uiModalityMask & PicturePlaneModalityFlags.modDarkfield)
+
     @property
     def isFluorescence(self) -> bool:
         return (self.uiModalityMask & PicturePlaneModalityFlags.modFluorescence)
-    
+
     @property
     def isContrast(self) -> bool:
         return (self.uiModalityMask & PicturePlaneModalityFlags.modMaskContrast)
-    
+
     @property
     def modalityList(self) -> list[str]:
         return PicturePlaneModalityFlags.to_str_list(self.uiModalityMask)
-    
+
     @property
     def colorAsTuple(self):
         b = (self.uiColor >> 16) & 0xFF
         g = (self.uiColor >> 8) & 0xFF
         r = self.uiColor & 0xFF
         return (r, g, b)
-    
+
     @property
     def colorAsClampedTuple(self):
         b = ((self.uiColor >> 16) & 0xFF) / 255.0
         g = ((self.uiColor >> 8) & 0xFF) / 255.0
         r = (self.uiColor & 0xFF) / 255.0
-        return (r, g, b)    
-    
+        return (r, g, b)
+
     @property
     def colorAsHtmlString(self):
         b = (self.uiColor >> 16) & 0xFF
@@ -709,17 +710,17 @@ class SampleSettings:
     uiModeFQ: int = 0
     baScanArea: bytes = field(default_factory=bytes)
     matCameraToStage: np.ndarray = field(default_factory=lambda: np.eye(2, 2))
-    dExposureTime: float = 0.0    
-    dScalingToIntensity: float = 0.0    
+    dExposureTime: float = 0.0
+    dScalingToIntensity: float = 0.0
     dRelayLensZoom: float = 1.0
     dObjectiveToPinholeZoom: float = 1.0
 
-    def __init__(   self, 
+    def __init__(   self,
                     *,
                     pCameraSetting: dict = {},
                     pDeviceSetting: dict = {},
                     pObjectiveSetting: dict = {},
-                    sOpticalConfigs: list|dict = [], 
+                    sOpticalConfigs: list|dict = [],
                     sSpecSettings: str = "",
                     uiModeFQ: int = 0,
                     baScanArea: bytes = b"",
@@ -729,7 +730,7 @@ class SampleSettings:
                     dRelayLensZoom: float = 1.0,
                     dObjectiveToPinholeZoom: float = 1.0,
                     **kwargs):
-        
+
         object.__setattr__(self, 'pCameraSetting', pCameraSetting)
         object.__setattr__(self, 'pDeviceSetting', pDeviceSetting)
 
@@ -745,7 +746,7 @@ class SampleSettings:
                     sOpticalConfigs_.append(SampleSettingsOC(**item))
                 elif type(item) == str:
                     sOpticalConfigs_.append(SampleSettingsOC(sOpticalConfigName=item))
-                    
+
         elif type(sOpticalConfigs) == list and all(isinstance(item, SampleSettingsOC) for item in sOpticalConfigs):
             sOpticalConfigs = sOpticalConfigs_
 
@@ -766,7 +767,7 @@ class SampleSettings:
     @property
     def microscopeName(self) -> str:
         return self.pDeviceSetting.get("m_sMicroscopeFullName", "")
-    
+
     @property
     def objectiveName(self) -> str:
         return self.pObjectiveSetting.wsObjectiveName
@@ -774,7 +775,7 @@ class SampleSettings:
     @property
     def objectiveCode(self) -> str:
         return self.pObjectiveSetting.wsObjectiveCode
-    
+
     @property
     def objectiveMagnification(self) -> float:
         return self.pObjectiveSetting.dObjectiveMag
@@ -782,11 +783,11 @@ class SampleSettings:
     @property
     def objectiveNumericAperture(self) -> float:
         return self.pObjectiveSetting.dObjectiveNA
-    
+
     @property
     def refractiveIndex(self) -> float:
         return self.pObjectiveSetting.dRefractIndex
-    
+
     @property
     def opticalConfigurations(self) -> list[str]:
         return [item.sOpticalConfigName for item in self.sOpticalConfigs]
@@ -805,12 +806,12 @@ class PictureMetadataPicturePlanes:
     iStimulationSettingsCount: int = 0
     sStimulationSetting: list[dict] = field(default_factory=list)
 
-    def __init__(   self, 
+    def __init__(   self,
                     *,
                     uiCount: int = 0,
                     uiCompCount: int = 0,
-                    sPlane: list[PicturePlaneDesc]|dict|None = None, 
-                    sPlaneNew: dict[str, dict]|None = None, 
+                    sPlane: list[PicturePlaneDesc]|dict|None = None,
+                    sPlaneNew: dict[str, dict]|None = None,
                     sSampleSetting: list[dict] = [],
                     sDescription: str = "",
                     eRepresentation: PictureMetadataPicturePlanesRepresentation = PictureMetadataPicturePlanesRepresentation.eRepDefault,
@@ -842,7 +843,7 @@ class PictureMetadataPicturePlanes:
                     sPlane_.append(item)
                 else:
                     raise TypeError()
-                
+
         object.__setattr__(self, 'sPlane', sPlane_)
 
         sSampleSetting_ = []
@@ -863,12 +864,12 @@ class PictureMetadataPicturePlanes:
     @property
     def valid(self) -> bool:
         return 0 < self.uiCount and self.uiCount <= self.uiCompCount and self.uiCount == len(self.sPlane)
-    
+
     def makeValid(self, comps: int, **kwargs) -> None:
         if comps not in (1, 3):
-            raise ValueError()        
-        args = dict(uiCompCount=comps, 
-                    uiModalityMask=PicturePlaneModalityFlags.modBrightfield if comps == 3 else PicturePlaneModalityFlags.modFluorescence, 
+            raise ValueError()
+        args = dict(uiCompCount=comps,
+                    uiModalityMask=PicturePlaneModalityFlags.modBrightfield if comps == 3 else PicturePlaneModalityFlags.modFluorescence,
                     sDescription="RGB" if comps == 3 else "Mono")
         args.update(kwargs)
         object.__setattr__(self, 'uiCount', 1)
@@ -878,7 +879,7 @@ class PictureMetadataPicturePlanes:
     def to_table(self) -> dict[str, any]:
         rows=[]
         col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
-        settings = self.sSampleSetting    
+        settings = self.sSampleSetting
         for plane in self.sPlane:
             setting = settings[plane.uiSampleIndex]
             camera = setting.cameraName or "Unknown camera"
@@ -897,7 +898,7 @@ class PictureMetadataPhysicalQuantity:
     wsName: str = ""
     uiIntepretation: int = 0
     dValue: float = 0
-    
+
 @dataclass(init=False, frozen=True)
 class PictureMetadata:
     dTimeAbsolute: float = -1.0             # time specification when the picture was captured [Julian Day Number]
@@ -908,14 +909,14 @@ class PictureMetadata:
     uiRow: int = 0
     uiCol: int = 0
     dZPos: float = 0.0
-    bZPosAbsolute: bool = False 
+    bZPosAbsolute: bool = False
     dAngle: float = 0.0
     sPicturePlanes: PictureMetadataPicturePlanes = field(default_factory=PictureMetadataPicturePlanes)
     dTemperK: float = 293                   # temperature (in Kelvins)
     dCalibration: float = -1                # microns to pixel
     dAspect: float = -1                     # pixel aspect ratio
     dCalibPrecision: float = -1             # calibration precision in microns
-    bCalibrated: bool = False               # is calibration valid 
+    bCalibrated: bool = False               # is calibration valid
     wsObjectiveName: str = ""
     dObjectiveMag: float = -1
     dObjectiveNA: float = -1
@@ -935,7 +936,7 @@ class PictureMetadata:
     dStgLgCT22: float = 1
     baOpticalPathsCorrections: bytes = b''  # Inter-modality registration support - CLxOpticalPathsCorrectionTable serialized to LiteVariant
 
-    def __init__(   self, 
+    def __init__(   self,
                     *,
                     dTimeAbsolute: float = jdn_now(),
                     dTimeMSec: float = 0.0,
@@ -1017,14 +1018,14 @@ class PictureMetadata:
     @property
     def valid(self) -> bool:
         return self.sPicturePlanes.valid
-    
+
     def makeValid(self, comps: int, **kwargs) -> None:
         self.sPicturePlanes.makeValid(comps, **kwargs)
 
     @property
     def isRgb(self) -> bool:
         return 1 == self.sPicturePlanes.uiCount and 3 == self.sPicturePlanes.uiCompCount
-    
+
     @property
     def channels(self) -> list[PicturePlaneDesc]:
         return self.sPicturePlanes.sPlane
@@ -1040,7 +1041,7 @@ class PictureMetadata:
             else:
                 ret.append(plane.sDescription)
         return ret
-    
+
     @property
     def componentColors(self) -> list[tuple[float, float, float]]:
         def color_as_tuple(color):
@@ -1063,39 +1064,39 @@ class PictureMetadata:
             return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlane[plane].uiSampleIndex]
         except (AttributeError, IndexError) as _:
             return None
-    
+
     def cameraName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).cameraName
         except (AttributeError, IndexError) as _:
             return ""
-    
+
     def microscopeName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).microscopeName
         except (AttributeError, IndexError):
             return ""
-        
+
     def objectiveName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).objectiveName
         except (AttributeError, IndexError):
-            return ""        
+            return ""
 
     def opticalConfigurations(self, plane: int = 0) -> list[str]:
-        try:        
+        try:
             return self.sampleSettings(plane).opticalConfigurations
         except (AttributeError, IndexError):
-            return []        
-      
+            return []
+
     def to_lv(self) -> bytes:
         raise NotImplementedError()
-    
+
     @staticmethod
     def from_lv(data: bytes|memoryview) -> PictureMetadata:
         decoded = decode_lv(data)
         return PictureMetadata(**decoded.get('SLxPictureMetadata', {}))
-    
+
     @staticmethod
     def from_var(data: bytes|memoryview) -> PictureMetadata:
         decoded = decode_var(data)

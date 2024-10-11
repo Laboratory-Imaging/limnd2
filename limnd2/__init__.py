@@ -7,7 +7,8 @@ __all__ = [
     "CustomDescription", "RecordedData", "RecordedDataItem", "RecordedDataType",
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
     "Nd2Reader", "Nd2Writer",
-    "ImageTextInfo"
+    "ImageTextInfo",
+    "TiffReader",
 ]
 
 from .attributes import ImageAttributesCompression, ImageAttributesPixelType, ImageAttributes
@@ -17,3 +18,4 @@ from .custom_data import CustomDescription, RecordedData, RecordedDataItem, Reco
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .nd2 import Nd2Reader, Nd2Writer
 from .textinfo import ImageTextInfo
+from .tiff_reader import TiffReader
