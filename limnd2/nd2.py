@@ -1,4 +1,5 @@
 import datetime, functools, numpy as np, os
+from pathlib import Path
 
 from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
@@ -21,6 +22,12 @@ class Nd2Reader:
 
     def __init__(self, file : FileLikeObject, *, chunker_kwargs:dict = {}) -> None:
         self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.finalize()
 
     @property
     def filename(self) -> str|None:
@@ -224,6 +231,12 @@ class Nd2Reader:
             print(chunk_name, offset)
 
 class Nd2Writer:
+    """
+    Very experimental nd2 file writer, will NOT ENCODE a lot of data (see usage of 
+    LVType.UNKNOWN, LVType.ENCODING_NOT_IMPLEMENTED), those will need further work, but should not be needed for working nd2 file.
+    Also does not encode wellplates, binaries and ROIs at all, only supported chunks for writing are:
+    Images, Attributes, Metadata and Experiments chunks,
+    """
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = False
         return _create_chunker(*args, **kwargs)
@@ -231,9 +244,17 @@ class Nd2Writer:
     def __init__(self, file : FileLikeObject, *, append : bool|None = None, chunker_kwargs:dict = {}) -> None:
         self._chunker = self.create_chunker(file, append=append, chunker_kwargs=chunker_kwargs)
 
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.finalize()
+
+
     @property
     def version(self) -> tuple[int, int]:
         return self._chunker.fileVersion
+
 
     @property
     def imageAttributes(self) -> ImageAttributes:
@@ -241,7 +262,29 @@ class Nd2Writer:
 
     @imageAttributes.setter
     def imageAttributes(self, val: ImageAttributes) -> None:
-        self._chunker.imageAttributes = val
+        if val != None:
+            self._chunker.imageAttributes = val
+
+
+    @property
+    def experiment(self) -> ExperimentLevel:
+        return self._chunker.experiment
+
+    @experiment.setter
+    def experiment(self, val: ExperimentLevel) -> None:
+        if val != None:
+            self._chunker.experiment = val
+    
+
+    @property
+    def pictureMetadata(self) -> PictureMetadata:
+        return self._chunker.pictureMetadata
+
+    @pictureMetadata.setter
+    def pictureMetadata(self, val: PictureMetadata) -> None:
+        if val != None:
+            self._chunker.pictureMetadata = val
+
 
     @property
     def chunker(self):
@@ -258,7 +301,7 @@ class Nd2Writer:
 
 def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs: dict = {}):
     import os
-    if type(file) == str:
+    if isinstance(file, (str, Path)):
         if readonly:
             mode = "rb"
         else:

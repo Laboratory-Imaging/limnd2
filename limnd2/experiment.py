@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import collections, enum, itertools, json, math, zlib
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, fields
 
-from .metadata import PictureMetadataPicturePlanes
+from .metadata import PictureMetadataPicturePlanes, PicturePlaneDesc
 from .lite_variant import decode_lv, encode_lv, LVSerializable, ELxLiteVariantType as LVType, LV_field
 from .variant import decode_var
 from .treeview_helper import get_format_fn
@@ -63,7 +63,7 @@ class ExperimentLoop(LVSerializable):
     uiCount: int                    = LV_field(0,                         LVType.UINT32)
 
     @staticmethod
-    def createExperimentLoop(eType, uLoopPars):
+    def createExperimentLoop(eType: ExperimentLoopType, uLoopPars: dict):
         uLoopPars = uLoopPars[0] if type(uLoopPars) == list else uLoopPars
         if eType == ExperimentLoopType.eEtTimeLoop:
             return ExperimentTimeLoop(**uLoopPars)
@@ -78,70 +78,40 @@ class ExperimentLoop(LVSerializable):
         else:
             raise NotImplementedError(f'Loop type {eType} not implemented yet')
 
-@dataclass(init=False, frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
     dStart: float                   = LV_field(0,                         LVType.DOUBLE)
     dPeriod: float                  = LV_field(0,                         LVType.DOUBLE)
     dDuration: float                = LV_field(0,                         LVType.DOUBLE)
         # if dDuration is nonzero, then dPeriod must be zero and
         # means experiment is captured as fast as possible for dDuration ms
+
     dMinPeriodDiff: float           = LV_field(0,                         LVType.DOUBLE)
     dMaxPeriodDiff: float           = LV_field(0,                         LVType.DOUBLE)
     dAvgPeriodDiff: float           = LV_field(0,                         LVType.DOUBLE)
     wsPhaseName: str                = LV_field("",                        LVType.UNKNOWN)
     sAutoFocusBeforePeriod: dict    = LV_field(dict,                      LVType.ENCODING_NOT_IMPLEMENTED)
     sAutoFocusBeforeCapture: dict   = LV_field(dict,                      LVType.ENCODING_NOT_IMPLEMENTED)
-    uiLoopType: ExperimentType      = LV_field(ExperimentType.eEtDefault, LVType.UNKNOWN)  # 0..default type, 1..Stimulation, 2..Bleaching, 32..Incubation
-    uiGroup: int                    = LV_field(0,                         LVType.UNKNOWN)  # 0..no group, HIWORD(uiGroup)..Index of group from 1, LOWORD(uiGroup)..Index inside group
+    uiLoopType: ExperimentType      = LV_field(ExperimentType.eEtDefault, LVType.UNKNOWN)  
+    # 0..default type, 1..Stimulation, 2..Bleaching, 32..Incubation
+
+    uiGroup: int                    = LV_field(0,                         LVType.UNKNOWN)  
+    # 0..no group, HIWORD(uiGroup)..Index of group from 1, LOWORD(uiGroup)..Index inside group
+
     uiStimulationCount: int         = LV_field(0,                         LVType.UNKNOWN)
-    bDurationPref: bool             = LV_field(False,                     LVType.BOOL)     # If true, time loop will stop at the dDuration time regardless uiCount
-    pIncubationData: bytes          = LV_field(b'',                       LVType.UNKNOWN)  # parameters for incubation device
+    bDurationPref: bool             = LV_field(None,                      LVType.BOOL)     
+    # If true, time loop will stop at the dDuration time regardless uiCount
+
+    pIncubationData: bytes          = LV_field(b'',                       LVType.UNKNOWN)  
+    # parameters for incubation device
+
     uiIncubationDataSize: int       = LV_field(0,                         LVType.UNKNOWN)
     wsInterfaceName: str            = LV_field("",                        LVType.STRING)
     uiTreatment: int                = LV_field(0,                         LVType.UNKNOWN)
     dIncubationDuration: float      = LV_field(-1,                        LVType.UNKNOWN)
 
-    def __init__(   self,
-                    *,
-                    uiCount: int = 0,
-                    dStart: float= 0,
-                    dPeriod: float = 0,
-                    dDuration: float = 0,
-                    dMinPeriodDiff: float = 0,
-                    dMaxPeriodDiff: float = 0,
-                    dAvgPeriodDiff: float = 0,
-                    wsPhaseName: str = "",
-                    sAutoFocusBeforePeriod: dict = {},
-                    sAutoFocusBeforeCapture: dict = {},
-                    uiLoopType: ExperimentType|int = ExperimentType.eEtDefault,
-                    uiGroup: int = 0,
-                    uiStimulationCount: int = 0,
-                    bDurationPref: bool = False,
-                    pIncubationData: bytes = b'',
-                    uiIncubationDataSize: int = 0,
-                    wsInterfaceName: str = "",
-                    uiTreatment: int = 0,
-                    dIncubationDuration: float= -1,
-                    **kwargs):
-        super().__init__(uiCount=uiCount)
-        object.__setattr__(self, 'dStart', dStart)
-        object.__setattr__(self, 'dPeriod', dPeriod)
-        object.__setattr__(self, 'dDuration', dDuration)
-        object.__setattr__(self, 'dMinPeriodDiff', dMinPeriodDiff)
-        object.__setattr__(self, 'dMaxPeriodDiff', dMaxPeriodDiff)
-        object.__setattr__(self, 'dAvgPeriodDiff', dAvgPeriodDiff)
-        object.__setattr__(self, 'wsPhaseName', wsPhaseName)
-        object.__setattr__(self, 'sAutoFocusBeforePeriod', sAutoFocusBeforePeriod)
-        object.__setattr__(self, 'sAutoFocusBeforeCapture', sAutoFocusBeforeCapture)
-        object.__setattr__(self, 'uiLoopType', uiLoopType)
-        object.__setattr__(self, 'uiGroup', uiGroup)
-        object.__setattr__(self, 'uiStimulationCount', uiStimulationCount)
-        object.__setattr__(self, 'bDurationPref', bDurationPref)
-        object.__setattr__(self, 'pIncubationData', pIncubationData)
-        object.__setattr__(self, 'uiIncubationDataSize', uiIncubationDataSize)
-        object.__setattr__(self, 'wsInterfaceName', wsInterfaceName)
-        object.__setattr__(self, 'uiTreatment', uiTreatment)
-        object.__setattr__(self, 'dIncubationDuration', dIncubationDuration)
+    def __post_init__(self):
+        object.__setattr__(self, 'uiLoopType', ExperimentType(self.uiLoopType))
 
     @property
     def formattedInterval(self) -> str:
@@ -156,83 +126,25 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
         return [ dict(Phase='#1', Interval=self.formattedInterval, Duration=self.formattedDuration, Loops=self.uiCount) ]
 
 
-@dataclass(init=False, frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
-    uiPeriodCount: int                  = 0
-    pPeriod: list[ExperimentTimeLoop]   = field(default_factory=list)
-    pSubLoops: list[list[ExperimentLevel]]|None = None                  # list (if this list is empty, use ppNextLevelEx list from
-                                                                        #        experiment for each time phase)
-    sAutoFocusBeforePeriod: dict        = field(default_factory=dict)
-    sAutoFocusBeforeCapture: dict       = field(default_factory=dict)
-    wsCommandBeforePeriod: list[str]    = field(default_factory=list)
-    wsCommandAfterPeriod: list[str]     = field(default_factory=list)
-    pPeriodValid: list[bool]            = field(default_factory=list)
+    uiPeriodCount: int                                      = LV_field(0,               LVType.UINT32)
+    pPeriod: list[ExperimentTimeLoop]                       = LV_field(list,            LVType.LEVEL)
+    pSubLoops: dict | None                                  = LV_field(None,            LVType.ENCODING_NOT_IMPLEMENTED)
+    # list (if this list is empty, use ppNextLevelEx list from experiment for each time phase)
 
-    def __init__(   self,
-                    *,
-                    uiCount: int = 0,
-                    uiPeriodCount: int = 0,
-                    pPeriod: list[ExperimentTimeLoop]|dict = [],
-                    pSubLoops: list[list[ExperimentLevel]]|dict[dict] = None,
-                    sAutoFocusBeforePeriod: dict = {},
-                    sAutoFocusBeforeCapture: dict = {},
-                    wsCommandBeforePeriod: list[str]|dict = [],
-                    wsCommandAfterPeriod: list[str]|dict = [],
-                    pPeriodValid: list[bool] = [],
-                    **kwargs):
-        super().__init__(uiCount=uiCount)
-        if type(pPeriodValid) == bytes:
-            pPeriodValid = [item != 0 for item in pPeriodValid]
-        if type(wsCommandBeforePeriod) == dict and 0 < len(wsCommandBeforePeriod):
-            strs = []
-            for i in range(len(wsCommandBeforePeriod)):
-                strs.append(wsCommandBeforePeriod.get(f'i{i:010d}', ""))
-            wsCommandBeforePeriod = strs
-        if type(wsCommandAfterPeriod) == dict and 0 < len(wsCommandBeforePeriod):
-            strs = []
-            for i in range(len(wsCommandAfterPeriod)):
-                strs.append(wsCommandAfterPeriod.get(f'i{i:010d}', ""))
-            wsCommandAfterPeriod = strs
-        object.__setattr__(self, 'uiPeriodCount', uiPeriodCount)
-        if 0 < self.uiPeriodCount:
+    sAutoFocusBeforePeriod: dict                            = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
+    sAutoFocusBeforeCapture: dict                           = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
+    wsCommandBeforePeriod: dict                             = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
+    wsCommandAfterPeriod: dict                              = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
+    pPeriodValid: bytes                                     = LV_field(bytes,           LVType.BYTEARRAY)
+    
+    def __post_init__(self):
+        if isinstance(self.pPeriod, dict):
             periods = []
-            if self.uiPeriodCount != len(pPeriodValid):
-                raise ValueError(f"Mismatch in len(pPeriodValid)={len(pPeriodValid)} and uiPeriodCount={uiPeriodCount}")
-            if self.uiPeriodCount != len(pPeriod):
-                raise ValueError(f"Mismatch in len(pPeriod)={len(pPeriod)} and uiPeriodCount={uiPeriodCount}")
-            if type(pPeriod) == dict:
-                for i in range(self.uiPeriodCount):
-                    period = pPeriod.get(f'i{i:010d}', {})
-                    periods.append(ExperimentTimeLoop(**period))
-                object.__setattr__(self, 'pPeriod', periods)
-            elif type(pPeriod) == list and all(isinstance(item, ExperimentLevel) for item in pPeriod):
-                object.__setattr__(self, 'pPeriod', pPeriod)
-            else:
-                raise TypeError()
-        else:
-            object.__setattr__(self, 'pPeriod', [])
-        if type(pSubLoops) in (list, dict) and len(pSubLoops) == self.uiPeriodCount:
-            if type(pSubLoops) == dict:
-                subexps = []
-                for i in range(self.uiPeriodCount):
-                    periodexp = pSubLoops.get(f'i{i:010d}', {})
-                    if 'uiNextLevelCount' in periodexp and 'ppNextLevelEx' in periodexp:
-                        subexps.append(ExperimentLevel.createExperimentLevels(periodexp['ppNextLevelEx']))
-                    else:
-                        raise TypeError()
-                pSubLoops = subexps
-            elif type(pSubLoops) == list and all(type(item) == list and all(isinstance(el, ExperimentLevel) for el in item) for item in pSubLoops):
-                pass
-            else:
-                raise TypeError()
-            object.__setattr__(self, 'pSubLoops', pSubLoops)
-        else:
-            object.__setattr__(self, 'pSubLoops', None)
-        object.__setattr__(self, 'sAutoFocusBeforePeriod', sAutoFocusBeforePeriod)
-        object.__setattr__(self, 'sAutoFocusBeforeCapture', sAutoFocusBeforeCapture)
-        object.__setattr__(self, 'wsCommandBeforePeriod', wsCommandBeforePeriod)
-        object.__setattr__(self, 'wsCommandAfterPeriod', wsCommandAfterPeriod)
-        object.__setattr__(self, 'pPeriodValid', pPeriodValid)
+            for period in self.pPeriod.values():
+                periods.append(ExperimentTimeLoop(**period))
+            object.__setattr__(self, 'pPeriod', periods)
 
     @property
     def info(self) -> list[dict[str, any]]:
@@ -249,7 +161,7 @@ class ZStackType(enum.IntEnum):
     zstSymmetricRangeFixedHomeTopToBottom   = 6 # Symmetric Range around fixed Home position (Top -> Bottom)
     zstAsymmetricRangeFixedHomeTopToBottom  = 7 # Asymmetric Range around fixed Home position (Top -> Bottom)
 
-@dataclass(init=False, frozen=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     dZLow: float                            = LV_field(0.0,   LVType.DOUBLE)
     dZLowPFSOffset: float                   = LV_field(0.0,   LVType.DOUBLE)
@@ -269,45 +181,35 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     wsCommandBeforeCapture: str             = LV_field("",    LVType.STRING)
     wsCommandAfterCapture: str              = LV_field("",    LVType.STRING)
 
-    def __init__(   self,
-                    *,
-                    uiCount: int = 0,
-                    dZLow: float = 0.0,
-                    dZLowPFSOffset: float = 0.0,
-                    dZHigh: float = 0.0,
-                    dZHighPFSOffset: float = 0.0,
-                    dZHome: float = 0.0,
-                    dZStep: float = 0.0,
-                    dReferencePosition: float = 0.0,
-                    dTIRFPosition: float = 0.0,
-                    dTIRFPFSOffset: float = 0.0,
-                    iType: ZStackType|int = 0,
-                    bAbsolute: bool = False,
-                    bTriggeredPiezo: bool = False,
-                    bZInverted: bool = False,
-                    bTIRF: bool = False,
-                    wsZDevice: str = "",
-                    wsCommandBeforeCapture: str = "",
-                    wsCommandAfterCapture: str = "",
-                    **kwargs):
-        super().__init__(uiCount=uiCount)
-        object.__setattr__(self, 'dZLow', dZLow)
-        object.__setattr__(self, 'dZLowPFSOffset', dZLowPFSOffset)
-        object.__setattr__(self, 'dZHigh', dZHigh)
-        object.__setattr__(self, 'dZHighPFSOffset', dZHighPFSOffset)
-        object.__setattr__(self, 'dZHome', dZHome)
-        object.__setattr__(self, 'dZStep', dZStep)
-        object.__setattr__(self, 'dReferencePosition', dReferencePosition)
-        object.__setattr__(self, 'dTIRFPosition', dTIRFPosition)
-        object.__setattr__(self, 'dTIRFPFSOffset', dTIRFPFSOffset)
-        object.__setattr__(self, 'iType', ZStackType(iType) if type(iType) == int else iType)
-        object.__setattr__(self, 'bAbsolute', bAbsolute)
-        object.__setattr__(self, 'bTriggeredPiezo', bTriggeredPiezo)
-        object.__setattr__(self, 'bZInverted', bZInverted)
-        object.__setattr__(self, 'bTIRF', bTIRF)
-        object.__setattr__(self, 'wsZDevice', wsZDevice)
-        object.__setattr__(self, 'wsCommandBeforeCapture', wsCommandBeforeCapture)
-        object.__setattr__(self, 'wsCommandAfterCapture', wsCommandAfterCapture)
+    # probably error in NIS elements, should be duplicate of dZLow
+    dZLow_1: float                          = LV_field("",    LVType.DO_NOT_ENCODE)
+
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+
+    sZDevice: object                        = LV_field(None,  LVType.ENCODING_NOT_IMPLEMENTED)
+    sCommandAfterCapture: str               = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)
+    sCommandBeforeCapture: str              = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)
+
+    def __init__(self, **kwargs):
+        known = set()
+        for field in fields(self):
+            known.add(field.name)
+            default = field.default if field.default is not MISSING else field.default_factory()
+            object.__setattr__(self, field.name, default)
+            
+        for name, value in kwargs.items():
+            if name in known:
+                object.__setattr__(self, name, value)
+            elif name == "dZLow#1":
+                object.__setattr__(self, "dZLow_1", value)
+            else:
+                raise ValueError(f"Unexpected argument: {name}")
+            
+        self.__post_init__()
+
+    def __post_init__(self):
+        object.__setattr__(self, 'iType', ZStackType(self.iType))
 
     @property
     def homeIndex(self):
@@ -357,60 +259,60 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     def info(self) -> list[dict[str, any]]:
         return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice)]
 
+@dataclass(frozen=True, kw_only=True)
+class ExperimentSpectralLoopPoint(LVSerializable):
+    pAutoFocus: dict                            = LV_field(dict,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    pZStackPos: int                             = LV_field(0,                               LVType.INT32)
+    pdOffset: float                             = LV_field(0.0,                             LVType.DOUBLE)
+    wsCommandBeforeCapture: str                 = LV_field("",                              LVType.STRING)
+    wsCommandAfterCapture: str                  = LV_field("",                              LVType.STRING)
 
-@dataclass(init=False, frozen=True)
-class ExperimentSpectralLoop(ExperimentLoop):
-    pPlanes: PictureMetadataPicturePlanes = field(default_factory=PictureMetadataPicturePlanes)
-    pAutoFocus: dict = field(default_factory=dict)
-    pZStackPos: list[int] = field(default_factory=list)
-    wsCommandBeforeCapture: list[str] = field(default_factory=list)
-    wsCommandAfterCapture: list[str] = field(default_factory=list)
-    pdOffset: list[float] = field(default_factory=list)
-    iOffsetReference: int = 0
-    bMergeCameras: bool = False
-    bWaitForPFS: bool = False
-    bAskForFilter: bool = False
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    pPlaneDesc: PicturePlaneDesc                = LV_field(PicturePlaneDesc,                LVType.LEVEL)
 
-    def __init__(   self,
-                    *,
-                    uiCount: int = 0,
-                    pPlanes: PictureMetadataPicturePlanes|dict = {},
-                    pAutoFocus: dict = {},
-                    pZStackPos: list[int] = [],
-                    wsCommandBeforeCapture: list[str] = [],
-                    wsCommandAfterCapture: list[str] = [],
-                    pdOffset: list[float] = [],
-                    iOffsetReference: int = 0,
-                    bMergeCameras: bool = False,
-                    bWaitForPFS: bool = False,
-                    bAskForFilter: bool = False,
-                    **kwargs):
-        pPlanes_ = PictureMetadataPicturePlanes(**pPlanes)
-        uiCount = pPlanes_.uiCount
-        if 'Points' in kwargs:
-            points = kwargs['Points']
-            wsCommandBeforeCapture, wsCommandAfterCapture = [""]*uiCount, [""]*uiCount
-            pZStackPos, pdOffset = [0]*uiCount, [0.0]*uiCount
-            if len(points) != uiCount:
-                ValueError(f"Mismatch in len(Poins)={len(points)} and uiCount={uiCount}")
-            for i in range(uiCount):
-                point = points.get(f'i{i:010d}', {})
-        super().__init__(uiCount=uiCount)
-        object.__setattr__(self, 'pPlanes', pPlanes_)
-        object.__setattr__(self, 'pAutoFocus', pAutoFocus)
-        object.__setattr__(self, 'pZStackPos', pZStackPos)
-        object.__setattr__(self, 'wsCommandBeforeCapture', wsCommandBeforeCapture)
-        object.__setattr__(self, 'wsCommandAfterCapture', wsCommandAfterCapture)
-        object.__setattr__(self, 'pdOffset', pdOffset)
-        object.__setattr__(self, 'iOffsetReference', iOffsetReference)
-        object.__setattr__(self, 'bMergeCameras', bMergeCameras)
-        object.__setattr__(self, 'bWaitForPFS', bWaitForPFS)
-        object.__setattr__(self, 'bAskForFilter', bAskForFilter)
+    def __post_init__(self):
+        object.__setattr__(self, "pPlaneDesc", PicturePlaneDesc(**self.pPlaneDesc))
 
+
+@dataclass(frozen=True, kw_only=True)
+class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
+    pPlanes: PictureMetadataPicturePlanes       = LV_field(PictureMetadataPicturePlanes,    LVType.LEVEL)
+    iOffsetReference: int                       = LV_field(0,                               LVType.INT32)
+    bMergeCameras: bool                         = LV_field(False,                           LVType.BOOL)
+    bWaitForPFS: bool                           = LV_field(False,                           LVType.BOOL)
+    bAskForFilter: bool                         = LV_field(False,                           LVType.BOOL)
+    Points: list[ExperimentSpectralLoopPoint]   = LV_field(list,                            LVType.LEVEL)
+
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)
+    pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+
+    def __post_init__(self):
+        self.pPlanes: dict
+        self.Points: dict
+
+        planes_args = {**(self.pPlanes)}
+        if self.pPlaneDesc:
+            planes_args["sPlane"] = self.pPlaneDesc
+            object.__setattr__(self, "pPlaneDesc", None)
+
+        object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**planes_args))
+        
+        if isinstance(self.Points, dict):
+            points = [ExperimentSpectralLoopPoint(**point) for point in self.Points.values()]
+            object.__setattr__(self, "Points", points)
+        
+        object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**self.pPlanes))
+        
     @property
     def info(self) -> list[dict[str, any]]:
         ret = []
-        for i, plane in enumerate(self.pPlanes.sPlane):
+        for i, plane in enumerate(self.pPlanes.sPlaneNew):
             idx = f'#{i+1}'
             ocs = self.pPlanes.sSampleSetting[plane.uiSampleIndex].sOpticalConfigs if plane.uiSampleIndex < len(self.pPlanes.sSampleSetting) else []
             ret.append(dict(Index=idx, Name=plane.sDescription, OC=', '.join([oc.sOpticalConfigName for oc in ocs]), Color=plane.colorAsHtmlString))
@@ -419,81 +321,55 @@ class ExperimentSpectralLoop(ExperimentLoop):
     def replacePlanes(self, picturePlanes: PictureMetadataPicturePlanes) -> None:
         object.__setattr__(self, 'pPlanes', picturePlanes)
 
+@dataclass(frozen=True, kw_only=True)
+class ExperimentXYPosLoopPoint(LVSerializable):
+    dPosX: float                    = LV_field(0.0,               LVType.DOUBLE)
+    dPosY: float                    = LV_field(0.0,               LVType.DOUBLE)
+    dPosZ: float                    = LV_field(0.0,               LVType.DOUBLE)
+    dPFSOffset: float               = LV_field(0.0,               LVType.DOUBLE)
+    dPosName: str                   = LV_field("",                LVType.STRING)
+
+    @staticmethod
+    def create_points(points: dict):
+        points_list = []
+        for point in points.values():
+            points_list.append(ExperimentXYPosLoopPoint(**point))
+        return points_list
 
 
-@dataclass(init=False, frozen=True)
-class ExperimentXYPosLoop(ExperimentLoop):
-    dPosX: list[float]              = LV_field(list,              LVType.DO_NOT_ENCODE)
-    dPosY: list[float]              = LV_field(list,              LVType.DO_NOT_ENCODE)
-    bUseZ: bool                     = LV_field(False,             LVType.BOOL)
-    dPosZ: list[float]              = LV_field(list,              LVType.DO_NOT_ENCODE)
-    dPFSOffset: list[float]         = LV_field(list,              LVType.DO_NOT_ENCODE)
-    bRelativeXY: bool               = LV_field(True,              LVType.BOOL)
-    dReferenceX: float              = LV_field(0.0,               LVType.DOUBLE)
-    dReferenceY: float              = LV_field(0.0,               LVType.DOUBLE)
-    bRedefineAfterPFS: bool         = LV_field(False,             LVType.BOOL)
-    bRedefineAfterAutoFocus: bool   = LV_field(False,             LVType.BOOL)
-    bKeepPFSOn: bool                = LV_field(False,             LVType.BOOL)
-    bSplitMultipoints: bool         = LV_field(False,             LVType.BOOL)
-    bUseAFPlane: bool               = LV_field(False,             LVType.BOOL)
-    bZEnabled: bool                 = LV_field(False,             LVType.BOOL)
-    pPosName: list[str]             = LV_field(list,              LVType.DO_NOT_ENCODE)
-    sZDevice: str                   = LV_field("",                LVType.STRING)
-    sAutoFocusBeforeCapture: dict   = LV_field(dict,              LVType.ENCODING_NOT_IMPLEMENTED)
+@dataclass(frozen=True, kw_only=True)
+class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
+    bUseZ: bool                             = LV_field(False,             LVType.BOOL)
+    bRelativeXY: bool                       = LV_field(True,              LVType.BOOL)
+    dReferenceX: float                      = LV_field(0.0,               LVType.DOUBLE)
+    dReferenceY: float                      = LV_field(0.0,               LVType.DOUBLE)
+    bRedefineAfterPFS: bool                 = LV_field(False,             LVType.BOOL)
+    bRedefineAfterAutoFocus: bool           = LV_field(False,             LVType.BOOL)
+    bKeepPFSOn: bool                        = LV_field(False,             LVType.BOOL)
+    bSplitMultipoints: bool                 = LV_field(False,             LVType.BOOL)
+    bUseAFPlane: bool                       = LV_field(False,             LVType.BOOL)
+    bZEnabled: bool                         = LV_field(False,             LVType.BOOL)
+    sZDevice: str                           = LV_field("",                LVType.STRING)
+    sAFBefore: dict                         = LV_field(dict,              LVType.ENCODING_NOT_IMPLEMENTED)
+    Points: list[ExperimentXYPosLoopPoint]  = LV_field(None,              LVType.LEVEL)
 
-    def __init__(   self,
-                    *,
-                    uiCount: int = 0,
-                    dPosX: list[float] = [],
-                    dPosY: list[float] = [],
-                    bUseZ: bool = False,
-                    dPosZ: list[float] = [],
-                    dPFSOffset: list[float] = [],
-                    bRelativeXY: bool = True,
-                    dReferenceX: float = 0,
-                    dReferenceY: float = 0,
-                    bRedefineAfterPFS: bool = False,
-                    bRedefineAfterAutoFocus: bool = False,
-                    bKeepPFSOn: bool = False,
-                    bSplitMultipoints: bool = False,
-                    bUseAFPlane: bool = False,
-                    bZEnabled: bool = False,
-                    pPosName: list[str] = [],
-                    sZDevice: str = "",
-                    sAutoFocusBeforeCapture: dict = {},
-                    **kwargs):
-        super().__init__(uiCount=uiCount)
-        if 'Points' in kwargs:
-            points = kwargs['Points']
-            if len(points) != uiCount:
-                ValueError(f"Mismatch in len(Poins)={len(points)} and uiCount={uiCount}")
-            dPosX, dPosY, dPosZ, dPFSOffset = [0.0]*uiCount, [0.0]*uiCount, [0.0]*uiCount, [-1.0]*uiCount
-            pPosName = [""]*uiCount
-            for i in range(uiCount):
-                point = points.get(f'i{i:010d}', {})
-                dPosX[i], dPosY[i] = point.get("dPosX", 0.0), point.get("dPosY", 0.0)
-                dPosZ[i] = point.get("dPosZ", 0.0)
-                dPFSOffset[i] = point.get("dPFSOffset", -1.0)
-                pPosName[i] = point.get("dPosName", "")
-        sAutoFocusBeforeCapture = kwargs.get("sAFBefore", sAutoFocusBeforeCapture)
-        object.__setattr__(self, 'dPosX', dPosX)
-        object.__setattr__(self, 'dPosY', dPosY)
-        object.__setattr__(self, 'bUseZ', bUseZ)
-        object.__setattr__(self, 'dPosZ', dPosZ)
-        object.__setattr__(self, 'dPFSOffset', dPFSOffset)
-        object.__setattr__(self, 'bRelativeXY', bRelativeXY)
-        object.__setattr__(self, 'dReferenceX', dReferenceX)
-        object.__setattr__(self, 'dReferenceY', dReferenceY)
-        object.__setattr__(self, 'bRedefineAfterPFS', bRedefineAfterPFS)
-        object.__setattr__(self, 'bRedefineAfterAutoFocus', bRedefineAfterAutoFocus)
-        object.__setattr__(self, 'bKeepPFSOn', bKeepPFSOn)
-        object.__setattr__(self, 'bSplitMultipoints', bSplitMultipoints)
-        object.__setattr__(self, 'bUseAFPlane', bUseAFPlane)
-        object.__setattr__(self, 'bZEnabled', bZEnabled)
-        object.__setattr__(self, 'pPosName', pPosName)
-        object.__setattr__(self, 'sZDevice', sZDevice)
-        object.__setattr__(self, 'sAutoFocusBeforeCapture', sAutoFocusBeforeCapture)
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    dPosX: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)
+    dPosY: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)
+    dPosZ: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)
+    dPFSOffset: object                      = LV_field(None,              LVType.DO_NOT_ENCODE)
+    pPosName: object                        = LV_field(None,              LVType.DO_NOT_ENCODE)
+    # TODO in XML variant, points are passed as 5 lists with values, 
+    # convert them to ExperimentXYPosLoopPoint, store in "self.Points"
 
+    sAutoFocusBeforeCapture: object         = LV_field(None,              LVType.DO_NOT_ENCODE)
+    uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)
+
+    def __post_init__(self):
+        if self.Points and isinstance(self.Points, dict):
+            object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points(self.Points))
+        
     @property
     def info(self) -> list[dict[str, any]]:
         ret = []
@@ -504,24 +380,6 @@ class ExperimentXYPosLoop(ExperimentLoop):
                 d['Z'] = self.dPosZ[i]
             ret.append(d)
         return ret
-
-    def to_serializable_dict(self, parent_path=""):
-        res = super().to_serializable_dict(parent_path)
-        points = []
-        for x, y, z, off, name in zip(self.dPosX, self.dPosY, self.dPosZ, self.dPFSOffset, self.pPosName):
-            point = {
-                "dPFSOffset":   (off,   LVType.DOUBLE),
-                "dPosX":        (x,     LVType.DOUBLE),
-                "dPosY":        (y,     LVType.DOUBLE),
-                "dPosZ":        (z,     LVType.DOUBLE),
-                "dPosName":     (name,  LVType.STRING),
-            }
-            points.append(point)
-        points = {i : point for i, point in enumerate(points)}
-        res["Points"] = points
-        return res
-
-
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -599,21 +457,28 @@ class ExperimentIterator:
             raise StopIteration
 
 
-@dataclass(init=False, frozen=False)
+@dataclass(frozen=True, kw_only=True)
 class ExperimentLevel(LVSerializable):
-    eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)     # Type of the current loop, determines the union member to be used
-    wsApplicationDesc: str                  = LV_field("",                                LVType.STRING)     # Unique identification of the application which created the image (experiment)
+    eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)     
+    # Type of the current loop, determines the union member to be used
+
+    wsApplicationDesc: str                  = LV_field("",                                LVType.STRING)     
+    # Unique identification of the application which created the image (experiment)
+
     wsUserDesc: str                         = LV_field("",                                LVType.STRING)
-    wsMeasProbes: str                       = LV_field("",                                LVType.STRING)     # Time measurement probes definition
+    aMeasProbesBase64: str                  = LV_field("",                                LVType.STRING)     
+    # Time measurement probes definition
+
     wsCameraName: str                       = LV_field("",                                LVType.STRING)
     uLoopPars: ExperimentLoop               = LV_field(ExperimentLoop,                    LVType.LEVEL)
-        # A specification of parameters of the current level loop.
-        # The structure depends on the content of eType member variable.
+    # A specification of parameters of the current level loop.
+    # The structure depends on the content of eType member variable.
 
-    pItemValid: list[bool] | None           = LV_field(None,                              LVType.DO_NOT_ENCODE)
-        # A list of bools specifying whether the items are branched in a next level.
-        # This is the only possibility how to break experiment orthogonality.
-        # Default value is None, it means all items are used and the experiment is fully orthogonal.
+    
+    pItemValid: bytes                       = LV_field(None,                              LVType.BYTEARRAY)
+    # A list of bools specifying whether the items are branched in a next level.
+    # This is the only possibility how to break experiment orthogonality.
+    # Default value is None, it means all items are used and the experiment is fully orthogonal.
 
     sAutoFocusBeforeLoop: dict              = LV_field(dict,                              LVType.ENCODING_NOT_IMPLEMENTED)
     wsCommandBeforeLoop: str                = LV_field("",                                LVType.STRING)
@@ -628,93 +493,52 @@ class ExperimentLevel(LVSerializable):
     bUseTiRecipe: bool                      = LV_field(False,                             LVType.BOOL)
     bUseIntenzityCorrection: bool           = LV_field(False,                             LVType.BOOL)
     bUseTriggeredAcquisition: bool          = LV_field(False,                             LVType.BOOL)
-    bTriggeredStimulation: bool             = LV_field(False,                             LVType.BOOL)                          # Ax + GalvoXY triggered sequential stimulation = Ax se triggeruje na end TTL Outu na galvu a galvo se triggeruje na pulzik na TTL Inu vygenerovany Axem.
+    bTriggeredStimulation: bool             = LV_field(False,                             LVType.BOOL)                          
+    # Ax + GalvoXY triggered sequential stimulation = Ax se triggeruje na end 
+    # TTL Outu na galvu a galvo se triggeruje na pulzik na TTL Inu vygenerovany Axem.
+
     bKeepObject: bool                       = LV_field(False,                             LVType.BOOL)
-    bRecordAllAvailableData: bool           = LV_field(False,                             LVType.BOOL)                          # used in JOBS via expression. Determines (in job only) whether all data should be recorded
-    vectStimulationConfigurations: list     = LV_field(list,                              LVType.ENCODING_NOT_IMPLEMENTED)      # phase, list SC
-    uiRepeatCount: int                      = LV_field(1,                                 LVType.UINT32)                        # Number of repeatings (how many times must be the current subexperiment repeated)
+    RecordAllData: bool                     = LV_field(False,                             LVType.BOOL)                          
+    # used in JOBS via expression. Determines (in job only) whether all data should be recorded
+
+    vectStimulationConfigurations: list     = LV_field(list,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    # phase, list SC
+
+    vectStimulationConfigurationsSize: int  = LV_field(0,                                 LVType.INT32)
+    uiRepeatCount: int                      = LV_field(1,                                 LVType.UINT32)                        
+    # Number of repeatings (how many times must be the current subexperiment repeated)
+
     uiNextLevelCount: int                   = LV_field(0,                                 LVType.UINT32)
-    ppNextLevelEx: list[ExperimentLevel]    = LV_field(list,                              LVType.LEVEL)                         # A list of subloops
-    pLargeImage: dict | None                = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      # A pointer to a LargeImage description structure or None, if the LargeImage is not defined in this loop
-    pNIExperiment: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      # A pointer to a NICard description structure or None, if the NICard description is not defined in this loop
-    pRecordedData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      # A pointer to a Recorded Data description structure or None, if Recorded Data is not defined in this loop
-    sParallelExperiment: dict | None        = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      # Parallel experiments description
-    pExternalData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      # External data (liquid handling)
-    def __init__(   self,
-                    *,
-                    eType: ExperimentLoopType|int = ExperimentLoopType.eEtUnknown,
-                    wsApplicationDesc: str = "",
-                    wsUserDesc: str = "",
-                    wsMeasProbes: str = "",
-                    wsCameraName: str = "",
-                    uLoopPars: ExperimentLoop|dict = {},
-                    pItemValid: list[bool]|bytes|None = None,
-                    sAutoFocusBeforeLoop: dict = {},
-                    wsCommandBeforeLoop: str = "",
-                    wsCommandBeforeCapture: str = "",
-                    wsCommandAfterCapture: str = "",
-                    wsCommandAfterLoop: str = "",
-                    bControlShutter: bool = False,
-                    bControlLight: bool = False,
-                    bUsePFS: bool = False,
-                    bUseWatterSupply: bool = False,
-                    bUseHWSequencer: bool= False,
-                    bUseTiRecipe: bool = False,
-                    bUseIntenzityCorrection: bool = False,
-                    bUseTriggeredAcquisition: bool = False,
-                    bTriggeredStimulation: bool= False,
-                    bKeepObject: bool = False,
-                    bRecordAllAvailableData: bool = False,
-                    vectStimulationConfigurations: list = [],
-                    uiRepeatCount: int = 1,
-                    uiNextLevelCount: int = 0,
-                    ppNextLevelEx: list[ExperimentLevel]|dict = [],
-                    pLargeImage: dict|None= None,
-                    pNIExperiment: dict|None = None,
-                    pRecordedData: dict|None = None,
-                    sParallelExperiment: dict|None = None,
-                    pExternalData: dict|None = None,
-                    **kwargs):
-        wsMeasProbes = kwargs.get('aMeasProbesBase64', wsMeasProbes)
-        bRecordAllAvailableData = kwargs.get('RecordAllData', bRecordAllAvailableData)
-        if 'vectStimulationConfigurations' in kwargs:
-            pass
-        if type(pItemValid) == bytes:
-            pItemValid = [ item != 0 for item in pItemValid ]
-        if pItemValid == {}:
-            pItemValid = None
-        object.__setattr__(self, 'eType', ExperimentLoopType(eType) if type(eType) == int else eType)
-        object.__setattr__(self, 'wsApplicationDesc', wsApplicationDesc)
-        object.__setattr__(self, 'wsUserDesc', wsUserDesc)
-        object.__setattr__(self, 'wsMeasProbes', wsMeasProbes)
-        object.__setattr__(self, 'wsCameraName', wsCameraName)
-        object.__setattr__(self, 'uLoopPars', ExperimentLoop.createExperimentLoop(self.eType, uLoopPars))
-        object.__setattr__(self, 'pItemValid', pItemValid)
-        object.__setattr__(self, 'sAutoFocusBeforeLoop', sAutoFocusBeforeLoop)
-        object.__setattr__(self, 'wsCommandBeforeLoop', wsCommandBeforeLoop)
-        object.__setattr__(self, 'wsCommandBeforeCapture', wsCommandBeforeCapture)
-        object.__setattr__(self, 'wsCommandAfterCapture', wsCommandAfterCapture)
-        object.__setattr__(self, 'wsCommandAfterLoop', wsCommandAfterLoop)
-        object.__setattr__(self, 'bControlShutter', bControlShutter)
-        object.__setattr__(self, 'bControlLight', bControlLight)
-        object.__setattr__(self, 'bUsePFS', bUsePFS)
-        object.__setattr__(self, 'bUseWatterSupply', bUseWatterSupply)
-        object.__setattr__(self, 'bUseHWSequencer', bUseHWSequencer)
-        object.__setattr__(self, 'bUseTiRecipe', bUseTiRecipe)
-        object.__setattr__(self, 'bUseIntenzityCorrection', bUseIntenzityCorrection)
-        object.__setattr__(self, 'bUseTriggeredAcquisition', bUseTriggeredAcquisition)
-        object.__setattr__(self, 'bTriggeredStimulation', bTriggeredStimulation)
-        object.__setattr__(self, 'bKeepObject', bKeepObject)
-        object.__setattr__(self, 'bRecordAllAvailableData', bRecordAllAvailableData)
-        object.__setattr__(self, 'vectStimulationConfigurations', vectStimulationConfigurations)
-        object.__setattr__(self, 'uiRepeatCount', uiRepeatCount)
-        object.__setattr__(self, 'uiNextLevelCount', uiNextLevelCount)
-        object.__setattr__(self, 'ppNextLevelEx', ExperimentLevel.createExperimentLevels(ppNextLevelEx))
-        object.__setattr__(self, 'pLargeImage', pLargeImage)
-        object.__setattr__(self, 'pNIExperiment', pNIExperiment)
-        object.__setattr__(self, 'pRecordedData', pRecordedData)
-        object.__setattr__(self, 'sParallelExperiment', sParallelExperiment)
-        object.__setattr__(self, 'pExternalData', pExternalData)
+    ppNextLevelEx: list[ExperimentLevel]    = LV_field(None,                              LVType.LEVEL)                         
+    # A list of subloops
+
+    pLargeImage: dict | None                = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    # A pointer to a LargeImage description structure or None, if the LargeImage is not defined in this loop
+
+    pNIExperiment: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    # A pointer to a NICard description structure or None, if the NICard description is not defined in this loop
+
+    pRecordedData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    # A pointer to a Recorded Data description structure or None, if Recorded Data is not defined in this loop
+
+    sParallelExperiment: dict | None        = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    # Parallel experiments description
+
+    pExternalData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    # External data (liquid handling)
+
+    iRecipeDSCPort: int                     = LV_field(None,                              LVType.INT32)
+
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    pLargeImageEx: object                   = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
+
+    def __post_init__(self):
+        if isinstance(self.pItemValid, dict):
+            object.__setattr__(self, 'pItemValid', bytes(self.pItemValid.values()))    
+        object.__setattr__(self, 'eType', ExperimentLoopType(self.eType))
+        object.__setattr__(self, 'ppNextLevelEx', ExperimentLevel.createExperimentLevels(self.ppNextLevelEx))
+        object.__setattr__(self, 'uLoopPars', ExperimentLoop.createExperimentLoop(self.eType, self.uLoopPars))
 
     def __iter__(self):
         return ExperimentIterator(self._allLevels())
@@ -842,14 +666,10 @@ class ExperimentLevel(LVSerializable):
     def to_lv(self) -> bytes:
         return encode_lv({"SLxExperiment" : self.to_serializable_dict()})
 
-    def to_serializable_dict(self, parent_path=""):
-        res = super().to_serializable_dict(parent_path)
-        res["pItemValid"] = (bytes([0x01 if b else 0x00 for b in self.pItemValid]))
-        return res
-
-
     @staticmethod
     def createExperimentLevels(ppNextLevelEx: list[ExperimentLevel]|dict):
+        if ppNextLevelEx is None:
+            return None
         if type(ppNextLevelEx) == dict:
             levels = []
             for i in range(len(ppNextLevelEx)):

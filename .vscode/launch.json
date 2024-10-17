@@ -17,7 +17,6 @@
             "request": "launch",
             "program": "./limnd2/index.py",
             "console": "integratedTerminal",
-            "args": [ "-r", "\\\\cork\\images\\Dimensions\\"]
         }
     ]
 }

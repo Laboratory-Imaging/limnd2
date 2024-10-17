@@ -1,6 +1,7 @@
 import io, struct, zlib, abc, logging
-from typing import Any, Callable, Final, cast, Union, Self
-from dataclasses import field, fields
+from typing import Any, Callable, Final, cast, Union, Self, ClassVar
+from dataclasses import field, fields, asdict
+from collections.abc import Mapping
 
 logger = logging.getLogger("limnd2")
 
@@ -105,13 +106,19 @@ class ELxLiteVariantType:
     DEPRECATED: Final = 10
     LEVEL: Final = 11
     COMPRESS: Final = 76  # 'L'
+    
+    @staticmethod
+    def get_name(number: int):
+        for key, val in ELxLiteVariantType.__dict__.items():
+            if val == number:
+                return key
+        return "NOT ELxLiteVariantType TYPE"
 
 def LV_field(default: Any, variant_type: ELxLiteVariantType):
-    # return dataclasses Field instance with type for encoding such field stored in metadata
     if callable(default):
         return field(default_factory=default, metadata={"LVType": variant_type})
     else:
-        return field(default=default, metadata={"LVType": variant_type})
+        return field(default=default,         metadata={"LVType": variant_type})
 
 
 _PARSERS: dict[int, Callable[[io.BytesIO], Any]] = {
@@ -196,6 +203,8 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
         else:
             # also never seen this
             value = None  # pragma: no cover
+
+
         if name == "" and name in output:
             # nd2 uses empty strings as keys for lists
             if not isinstance(output[name], list):
@@ -213,6 +222,10 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
     return output
 
 def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, file=None) -> dict[str, Any]:
+    # FUNCTION FOR DEBUGGING TYPES
+    # you can provide it a file and into this file it will output each attribute decoded by 
+    # the decode and THE TYPE of each attribute
+
     output: dict[str, Any] = {}
     if not data:
         return output
@@ -267,8 +280,6 @@ def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, fi
             # also never seen this
             value = None  # pragma: no cover
         if name == "" and name in output:
-            # nd2 uses empty strings as keys for lists
-            # TODO this version doesnt deal with repeats i think
             if not isinstance(output[name], list):
                 output[name] = [output[name]]
             cast(list, output[name]).append(value)
@@ -276,12 +287,11 @@ def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, fi
                 value = '"' + value + '"'
             pad = 70 - len(name) - len("    " * depth)
             if data_type != 11:
-                value = str(value) + ","
+                value = str(value).replace("\n", "\\n").replace("\r", "") + ","
                 if file:
                     print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
 
         elif name in output:
-            print("WARNING: duplicite key:", name)
             i = 1
             uname = f'{name}#{i}'
             while uname in output:
@@ -292,7 +302,7 @@ def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, fi
                 value = '"' + value + '"'
             pad = 70 - len(name) - len("    " * depth)
             if data_type != 11:
-                value = str(value) + ","
+                value = str(value).replace("\n", "\\n").replace("\r", "") + ","
                 if file:
                     print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
 
@@ -302,15 +312,10 @@ def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, fi
                 value = '"' + value + '"'
             pad = 70 - len(name) - len("    " * depth)
             if data_type != 11:
-                value = str(value) + ","
+                value = str(value).replace("\n", "\\n").replace("\r", "") + ","
                 if file:
                     print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
 
-    """
-    if depth == 0:
-        import json
-        print(json.dumps(output, indent=4))
-    """
     return output
 
 def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
@@ -320,6 +325,8 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
 
     def attribute_encode(attribute: str, value: Any, LVType: ELxLiteVariantType, writer: io.BytesIO) -> None:
         header_encode(attribute, LVType, writer)
+        if (LVType == ELxLiteVariantType.STRING and type(value) == bytearray):
+            print(f"'{attribute}' '{value}'")
         _ENCODERS[LVType](value, writer)
 
     writer = io.BytesIO()
@@ -327,11 +334,12 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
         offsets = {}
 
     for attribute, candidate in data.items():
-        if type(attribute) == int:
-            attribute = ""
 
         if parent_name != None:
             offsets[attribute] = writer.getbuffer().nbytes + len(parent_name) + struct.Struct("<BBIQ").size
+
+        if type(attribute) == int:
+            attribute = ""
 
         if isinstance(candidate, dict):
             value = candidate
@@ -346,7 +354,7 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
             data_len = len(rec_writer) + len(encoded_key) + struct.Struct("<BBIQ").size
             writer.write(strctQ.pack(data_len) + rec_writer)
 
-            for key in sorted(rec_offsets.keys()):
+            for key in sorted(rec_offsets.keys(), key=str):
                 writer.write(struct.pack("<Q", rec_offsets[key]))
 
         elif isinstance(candidate, tuple):
@@ -354,6 +362,7 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
             if LVType in _ENCODERS:
                 attribute_encode(attribute, value, LVType, writer)
             else:
+                print(value)
                 raise ValueError(f"Can not convert type {ELxLiteVariantType.get_name(LVType)}." )
 
             '''
@@ -388,10 +397,10 @@ def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
     file = "decoder_types.txt"
     if COUNT == 0:
         COUNT = 1
-        with open(file, "w") as f:
+        with open(file, "w", encoding="utf-8") as f:
             return _decode_lv_exp(data, 1, file = f)
     else:
-        with open(file, "a") as f:
+        with open(file, "a", encoding="utf-8") as f:
             return _decode_lv_exp(data, 1, file = f)
     #return _decode_lv(data, 1)
 
@@ -399,29 +408,26 @@ def encode_lv(data: dict[str, Union[dict, tuple[Any, ELxLiteVariantType]]]) -> b
     return _encode_lv(data)
 
 
-class LVSerializable(abc.ABC):
-    NOT_ENCODED_TYPES: tuple[ELxLiteVariantType] = (
-            ELxLiteVariantType.UNKNOWN,
-            ELxLiteVariantType.ENCODING_NOT_IMPLEMENTED,
-            ELxLiteVariantType.DO_NOT_ENCODE
-        )
+class LVSerializable(abc.ABC, Mapping):
+    NOT_ENCODED_TYPES: ClassVar[tuple[ELxLiteVariantType]] = (
+        ELxLiteVariantType.UNKNOWN,
+        ELxLiteVariantType.ENCODING_NOT_IMPLEMENTED,
+        ELxLiteVariantType.DO_NOT_ENCODE
+    )
 
     @staticmethod
-    def _to_serializable_dict(obj: dict | Self, parent_path="") -> dict:
+    def _to_serializable_dict(obj: dict | Self, parent_path: str = "") -> dict:
         obj : dict | LVSerializable
         types: dict = {}
 
         if isinstance(obj, LVSerializable):
             types = {f.name: f.metadata["LVType"] for f in fields(obj)}
-            obj = {f.name: getattr(obj, f.name) for f in fields(obj)}
+            obj = {f.name: getattr(obj, f.name) for f in fields(obj) if f.name in obj.__dict__}
 
         result = {}
         for key, value in obj.items():
 
             if value is None or (key in types and types[key] in LVSerializable.NOT_ENCODED_TYPES):
-                # if value is none
-                # or it has a unknown or unsupported type
-                # skip value
                 continue
 
             if isinstance(value, list):
@@ -431,7 +437,7 @@ class LVSerializable(abc.ABC):
                 result[key] = LVSerializable._to_serializable_dict(value, parent_path=f"{parent_path}[{key}]")
             elif isinstance(value, LVSerializable):
                 result[key] = value.to_serializable_dict(parent_path=f"{parent_path}.{value.__class__.__name__}")
-            elif key in types and types[key] != ELxLiteVariantType.UNKNOWN:
+            elif key in types:
                 result[key] = (value, types[key])
             else:
                 logger.warning(f"WARNING: {parent_path}[{key}]: no type found for value of type {type(value)}.")
@@ -441,3 +447,12 @@ class LVSerializable(abc.ABC):
         if not parent_path:
             parent_path += self.__class__.__name__
         return self._to_serializable_dict(self, parent_path=parent_path)
+
+    def __iter__(self):
+        return iter(asdict(self))
+
+    def __getitem__(self, key):
+        return asdict(self)[key]
+
+    def __len__(self):
+        return len(asdict(self))

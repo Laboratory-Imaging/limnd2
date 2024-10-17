@@ -24,10 +24,10 @@ ND2_CHUNK_MAGIC:        typing.Final                    = 0x0ABECEDA
 JP2_MAGIC:              typing.Final                    = 0x0C000000
 
 ND2_CHUNK_NAME_ImageAttributes                          = b'ImageAttributes!'
-ND2_CHUNK_NAME_ImageAttributesLV                        = b'ImageAttributesLV!'
+ND2_CHUNK_NAME_ImageAttributesLV                        = b'ImageAttributesLV!'                         #basic attributes
 
 ND2_CHUNK_NAME_ImageMetadata                            = b'ImageMetadata!'
-ND2_CHUNK_NAME_ImageMetadataLV                          = b'ImageMetadataLV!'
+ND2_CHUNK_NAME_ImageMetadataLV                          = b'ImageMetadataLV!'                           #experiment
 
 ND2_CHUNK_NAME_ImageTextInfo                            = b'ImageTextInfo!'
 ND2_CHUNK_NAME_ImageTextInfoLV                          = b'ImageTextInfoLV!'
@@ -45,7 +45,7 @@ ND2_CHUNK_FORMAT_FloatCompRangeCache_1p                 = b'CustomData|FloatComp
 ND2_CHUNK_NAME_CustomDataVar                            = b'CustomDataVar|CustomDataV2_0!'
 ND2_CHUNK_NAME_CustomDataVarLI                          = b'CustomDataVar|CustomDataV2_0LI!'
 
-ND2_CHUNK_FORMAT_ImageMetadataLV_1p                     = b'ImageMetadataSeqLV|%u!' # |seq_index!
+ND2_CHUNK_FORMAT_ImageMetadataLV_1p                     = b'ImageMetadataSeqLV|%u!' # |seq_index!           #metadata
 ND2_CHUNK_RE_ImageMetadataLV_1p                         = re.compile(b'^ImageMetadataSeqLV\\|(\\d+)!$')
 
 ND2_CHUNK_NAME_BinaryMetadata_v1                        = b'CustomDataVar|BinaryMetadata_v1!' # xml variant
@@ -189,6 +189,7 @@ class BaseChunker(abc.ABC):
     def rollback(self) -> None:
         pass
 
+
     @property
     def imageAttributes(self) -> ImageAttributes:
         if self._image_attributes is None:
@@ -208,6 +209,7 @@ class BaseChunker(abc.ABC):
         self.setChunk(ND2_CHUNK_NAME_ImageAttributesLV, data)
         self._image_attributes = val
 
+
     @property
     def pictureMetadata(self) -> PictureMetadata:
         if self._picture_metadata is None:
@@ -220,6 +222,14 @@ class BaseChunker(abc.ABC):
             if not self._picture_metadata.valid:
                 self._picture_metadata.makeValid(self.imageAttributes.componentCount)
         return self._picture_metadata
+
+    @pictureMetadata.setter
+    def pictureMetadata(self, val: PictureMetadata) -> None:
+        if self.is_readonly:
+            raise PermissionError("Cannot set PictureMetadata to readonly chunker")
+        data = val.to_lv()
+        self.setChunk(ND2_CHUNK_FORMAT_ImageMetadataLV_1p % (0), data)
+        self._picture_metadata = val
 
     @property
     def experiment(self) -> ExperimentLevel|None:
@@ -234,6 +244,15 @@ class BaseChunker(abc.ABC):
             if spectralLoop is not None and self.pictureMetadata is not None:
                 spectralLoop.uLoopPars.replacePlanes(self.pictureMetadata.sPicturePlanes)
         return self._experiment
+    
+    @experiment.setter
+    def experiment(self, val: ExperimentLevel) -> None:
+        if self.is_readonly:
+            raise PermissionError("Cannot set ExperimentLevel to readonly chunker")
+        data = val.to_lv()
+        self.setChunk(ND2_CHUNK_NAME_ImageMetadataLV, data)
+        self._experiment = val
+
 
     @property
     def imageTextInfo(self) -> ImageTextInfo:
@@ -330,7 +349,7 @@ class BaseChunker(abc.ABC):
 
     def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
         src_attrs, src_image = self.imageAttributes, image
-        while ImageAttributes.MinDownsampledSie < src_attrs.powSize:
+        while ImageAttributes.MinDownsampledSize < src_attrs.powSize:
             downsampled_attrs = src_attrs.makeDownsampled()
             downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
             _downsample_2x_linear(downsampled_image, src_image)
@@ -339,7 +358,7 @@ class BaseChunker(abc.ABC):
 
     def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
         src_attrs, src_binimage = self.imageAttributes, binimage
-        while ImageAttributes.MinDownsampledSie < src_attrs.powSize:
+        while ImageAttributes.MinDownsampledSize < src_attrs.powSize:
             downsampled_attrs = src_attrs.makeDownsampled()
             downsampled_image = np.zeros(shape=downsampled_attrs.shape[:2], dtype=np.uint32)
             _downsample_2x_00(downsampled_image, src_binimage)

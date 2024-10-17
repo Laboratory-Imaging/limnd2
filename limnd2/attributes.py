@@ -45,7 +45,7 @@ class ImageAttributesPixelType(enum.IntEnum):
               case _:
                   return "unknown"
 
-@dataclass(frozen=False, kw_only=True)
+@dataclass(frozen=True, kw_only=True)
 class ImageAttributes(LVSerializable):
     uiWidth: int                                = LV_field(0,                                       LVType.UINT32)
     uiWidthBytes: int                           = LV_field(0,                                       LVType.UINT32)
@@ -61,13 +61,11 @@ class ImageAttributes(LVSerializable):
     ePixelType: ImageAttributesPixelType        = LV_field(ImageAttributesPixelType.pxtUnsigned,    LVType.INT32)
     uiVirtualComponents: int                    = LV_field(0,                                       LVType.UINT32)
 
-    MinDownsampledSie: typing.ClassVar[int] = ND2_MIN_DOWNSAMPLED_SIZE
+    MinDownsampledSize: typing.ClassVar[int] = ND2_MIN_DOWNSAMPLED_SIZE
 
     def __post_init__(self):
-        if self.uiBpcInMemory <= 0:
-            self.uiBpcInMemory = (self.uiBpcSignificant + 7) // 8 * 8
-        if self.uiWidthBytes <= 0:
-            self.uiWidthBytes = (self.uiWidth * self.uiComp * self.uiBpcInMemory // 8 + 3) // 4 * 4
+        object.__setattr__(self, 'eCompression', ImageAttributesCompression(self.eCompression))
+        object.__setattr__(self, 'ePixelType', ImageAttributesPixelType(self.ePixelType))
 
     @property
     def width(self) -> int:

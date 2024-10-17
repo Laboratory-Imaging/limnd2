@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime, enum, numpy as np, operator
-from dataclasses import dataclass, field
+from typing import Any
+from dataclasses import MISSING, dataclass, field, fields
 
-from .lite_variant import decode_lv
+from .lite_variant import decode_lv, ELxLiteVariantType as LVType, LV_field, LVSerializable, encode_lv
 from .variant import decode_var
 from .treeview_helper import create_treeview_grouping
 
@@ -11,7 +12,7 @@ def jdn_now():
    result = datetime.datetime.now(datetime.UTC).timestamp()
    result /= 86_400         # seconds per day
    result += 2_440_587.5    # JDN EPOCH
-   return result;
+   return result
 
 class PictureMetadataTimeSourceType(enum.IntEnum):
     etsSW = 0
@@ -230,16 +231,28 @@ class OpticalSpectrumPointType(enum.IntEnum):
 
 
 @dataclass(frozen=True, kw_only=True)
-class OpticalSpectrumPoint:
-    eType: OpticalSpectrumPointType = 0
-    dWavelength: float = 0.0
-    dTValue: float = 0.0
+class OpticalSpectrumPoint(LVSerializable):
+    eType: OpticalSpectrumPointType             = LV_field(OpticalSpectrumPointType.eSptInvalid,  LVType.UINT32) 
+    dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
+    dTValue: float                              = LV_field(0.0,                                   LVType.DOUBLE)
 
-@dataclass(init=False, frozen=True)
-class OpticalSpectrum:
-    bPoints: bool = False
-    pPoint: list[OpticalSpectrumPoint] = field(default_factory=list)
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)
 
+    def __post_init__(self):
+        object.__setattr__(self, "eType", OpticalSpectrumPointType(self.eType))
+
+@dataclass(frozen=True, kw_only=True)
+class OpticalSpectrum(LVSerializable):
+    uiCount: int                                = LV_field(0,           LVType.UINT32)
+    bPoints: bool                               = LV_field(False,       LVType.BOOL)
+    pPoint: dict[str, OpticalSpectrumPoint]     = LV_field(dict,        LVType.LEVEL)
+
+    def __post_init__(self):
+        object.__setattr__(self, "pPoint", {k: OpticalSpectrumPoint(**v) for k, v in self.pPoint.items()})
+
+    """
     def __init__(   self,
                     *,
                     bPoints: bool = False,
@@ -256,7 +269,8 @@ class OpticalSpectrum:
             object.__setattr__(self, 'pPoint', pPoint)
         else:
             object.__setattr__(self, 'pPoint', [])
-
+    """
+            
     @property
     def isValid(self) -> bool:
         return 0 < len(self.pPoint)
@@ -396,13 +410,18 @@ class OpticalSpectrum:
         return OpticalSpectrum(bPoints=a.bPoints, pPoint=result)
 
 
-@dataclass(init=False, frozen=True)
-class FluorescentProbe:
-    m_sName: str = ""
-    m_uiColor: int = 0
-    m_ExcitationSpectrum: OpticalSpectrum = field(default_factory=OpticalSpectrum)
-    m_EmissionSpectrum: OpticalSpectrum = field(default_factory=OpticalSpectrum)
+@dataclass(frozen=True, kw_only=True)
+class FluorescentProbe(LVSerializable):
+    m_sName: str                            = LV_field("",                  LVType.STRING)
+    m_uiColor: int                          = LV_field(0xFFFFFF,            LVType.UINT32)
+    m_ExcitationSpectrum: OpticalSpectrum   = LV_field(OpticalSpectrum,     LVType.LEVEL)
+    m_EmissionSpectrum: OpticalSpectrum     = LV_field(OpticalSpectrum,     LVType.LEVEL)
 
+    def __post_init__(self):
+        object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**self.m_ExcitationSpectrum))
+        object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**self.m_EmissionSpectrum))
+
+    """
     def __init__(   self,
                     *,
                     m_sName: str = "",
@@ -414,19 +433,34 @@ class FluorescentProbe:
         object.__setattr__(self, 'm_uiColor', m_uiColor)
         object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**m_ExcitationSpectrum) if type(m_ExcitationSpectrum) == dict else m_ExcitationSpectrum)
         object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)
+    """
 
-@dataclass(init=False, frozen=True)
-class OpticalFilter:
-    m_sName: str = ""
-    m_sUserName: str = ""
-    m_ePlacement: OpticalFilterPlacement = 0
-    m_eNature: OpticalFilterNature = 0
-    m_eSpctType: OpticalFilterSpectType = 0
-    m_uiColor: int = 0
-    m_ExcitationSpectrum: OpticalSpectrum = field(default_factory=OpticalSpectrum)
-    m_EmissionSpectrum: OpticalSpectrum = field(default_factory=OpticalSpectrum)
-    m_MirrorSpectrum: OpticalSpectrum = field(default_factory=OpticalSpectrum)
+@dataclass(frozen=True, kw_only=True)
+class OpticalFilter(LVSerializable):
+    m_sName: str                            = LV_field("",                                      LVType.STRING)
+    m_sUserName: str                        = LV_field("",                                      LVType.STRING)
+    m_ePlacement: OpticalFilterPlacement    = LV_field(OpticalFilterPlacement.eOfpNoFilter,     LVType.UINT32)
+    m_eNature: OpticalFilterNature          = LV_field(OpticalFilterNature.eOfnGeneric,         LVType.UINT32)
+    m_eSpctType: OpticalFilterSpectType     = LV_field(OpticalFilterSpectType.eOftBandpass,     LVType.UINT32)
+    m_uiColor: int                          = LV_field(0xFFFFFF,                                LVType.UINT32)
+    m_ExcitationSpectrum: OpticalSpectrum   = LV_field(OpticalSpectrum,                         LVType.LEVEL)
+    m_EmissionSpectrum: OpticalSpectrum     = LV_field(OpticalSpectrum,                         LVType.LEVEL)
+    m_MirrorSpectrum: OpticalSpectrum       = LV_field(OpticalSpectrum,                         LVType.LEVEL)
 
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)
+
+    def __post_init__(self):
+        object.__setattr__(self, "m_ePlacement", OpticalFilterPlacement(self.m_ePlacement))
+        object.__setattr__(self, "m_eNature", OpticalFilterNature(self.m_eNature))
+        object.__setattr__(self, "m_eSpctType", OpticalFilterSpectType(self.m_eSpctType))
+
+        object.__setattr__(self, "m_ExcitationSpectrum", OpticalSpectrum(**self.m_ExcitationSpectrum))
+        object.__setattr__(self, "m_EmissionSpectrum", OpticalSpectrum(**self.m_EmissionSpectrum))
+        object.__setattr__(self, "m_MirrorSpectrum", OpticalSpectrum(**self.m_MirrorSpectrum))
+
+    """
     def __init__(   self,
                     *,
                     m_sName: str = "",
@@ -448,12 +482,24 @@ class OpticalFilter:
         object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**m_ExcitationSpectrum) if type(m_ExcitationSpectrum) == dict else m_ExcitationSpectrum)
         object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)
         object.__setattr__(self, 'm_MirrorSpectrum', OpticalSpectrum(**m_MirrorSpectrum) if type(m_MirrorSpectrum) == dict else m_MirrorSpectrum)
+    """
+        
+@dataclass(frozen=True, kw_only=True)
+class OpticalFilterPath(LVSerializable):
+    m_sDescr: str                       = LV_field("",          LVType.STRING)
+    m_uiCount: int                      = LV_field(0,           LVType.UINT32)
+    m_pFilter: list[OpticalFilter]      = LV_field(None,        LVType.LEVEL)
 
-@dataclass(init=False, frozen=True)
-class OpticalFilterPath:
-    m_sDescr: str = ""
-    m_pFilter: list[OpticalFilter] = field(default_factory=list)
+    def __post_init__(self):
+        if isinstance(self.m_pFilter, dict):
+            filters = [OpticalFilter(**filter) for filter in self.m_pFilter.values()]
+            object.__setattr__(self, "m_pFilter", filters)
+        elif isinstance(self.m_pFilter, list):
+            filters = [OpticalFilter(**filter) for filter in self.m_pFilter]
+            object.__setattr__(self, "m_pFilter", filters)
 
+
+    """
     def __init__(   self,
                     *,
                     m_sDescr: str = "",
@@ -469,6 +515,7 @@ class OpticalFilterPath:
             object.__setattr__(self, 'm_pFilter', m_pFilter)
         else:
             object.__setattr__(self, 'm_pFilter', [])
+    """
 
     @property
     def isValid(self):
@@ -551,37 +598,109 @@ class OpticalFilterPath:
                                 closestWL, dist = pt.dWavelength, d
         return closestWL
 
-@dataclass(init=False, frozen=True)
-class PicturePlaneDesc:
-    uiCompCount: int = 1
-    uiSampleIndex: int = 0                  # Specifies a sample relation of this instance. SLxPicturePlaneDesc instances are
-                                            #   grouped by this index. Index also determines the sample settings for this instance
-                                            #   (see SLxSampleSetting).
-    dObjCalibration1to1: float = 0          # Calibration and camera chip used for acquisition
-    sizeObjFullChip: tuple[int, int] = (0, 0)
-    uiModalityMask: PicturePlaneModalityFlags = PicturePlaneModalityFlags.modFluorescence
-    pFluorescentProbe: FluorescentProbe = field(default_factory=FluorescentProbe)
-                                            # Spectrum of the fluorescence fluorophore used. It can be specified by the user and
-                                            #   can be used for any calculations (spectral unmixing etc.)
-    pFilterPath: OpticalFilterPath = field(default_factory=OpticalFilterPath)
-                                            # Filter path description, comes from devices. It can contain information about all
-                                            #   elements influencing the spectral properties in the optical path. Optionally there
-                                            #   can be lamps (incl. spectra), filters (incl. CCD sensitivity) and shutters.
-                                            #   It must enable a description of an experiment using e.g.: exc. filterwheel, ems. fw,
-                                            #   mirrors, shutter, DIA lamp for DIC
-    dLampVoltage: float = 0
-    dFadingCorr: float = 0                  # The coefficient used for fluorescence fading correction.
-    uiColor: int = 0x00ffffff               # The colour used for representation of the plane and optionally for look-up table
-                                            #   creation. By default same as excitation filter.
-    sDescription: str = ""                  # name
-    dAcqTime: float = 0                     # acquistion time of one single image plane (value can be different for more planes inside one picture)
-    dPinholeDiameter: float = -1            # pinhole size in um
-    iChannelSeriesIndex: int = -1           # channel series index
-    iCapturedPlaneIndex: int = -1           # index of picture plane at the capture time,
-                                            #   used to access correct camerasettings items corresponding to this picture plane
-    emissionWavelengthNm: float = 0
-    excitationWavelengthNm: float = 0
+@dataclass(frozen=True, init=False, kw_only=True)
+class PicturePlaneDesc(LVSerializable):
+    uiCompCount: int                                = LV_field(1,                                           LVType.UINT32)
+    uiSampleIndex: int                              = LV_field(0,                                           LVType.UINT32)
+    # Specifies a sample relation of this instance. SLxPicturePlaneDesc instances are
+    # grouped by this index. Index also determines the sample settings for this instance
+    # (see SLxSampleSetting).
 
+    dObjCalibration1to1: float                      = LV_field(0.0,                                         LVType.DOUBLE)
+    # Calibration and camera chip used for acquisition
+
+    uiModalityMask: PicturePlaneModalityFlags       = LV_field(PicturePlaneModalityFlags.modFluorescence,   LVType.UINT64)
+    pFluorescentProbe: FluorescentProbe             = LV_field(FluorescentProbe,                            LVType.LEVEL)
+    # Spectrum of the fluorescence fluorophore used. It can be specified by the user and
+    # can be used for any calculations (spectral unmixing etc.)
+
+    pFilterPath: OpticalFilterPath                  = LV_field(OpticalFilterPath,                           LVType.LEVEL)
+    # Filter path description, comes from devices. It can contain information about all
+    #   elements influencing the spectral properties in the optical path. Optionally there
+    #   can be lamps (incl. spectra), filters (incl. CCD sensitivity) and shutters.
+    #   It must enable a description of an experiment using e.g.: exc. filterwheel, ems. fw,
+    #   mirrors, shutter, DIA lamp for DIC
+
+    dLampVoltage: float                             = LV_field(0.0,                                         LVType.DOUBLE)
+    dFadingCorr: float                              = LV_field(0.0,                                         LVType.DOUBLE)
+    # The coefficient used for fluorescence fading correction.
+
+    uiColor: int                                    = LV_field(0xFF6A02,                                    LVType.UINT32)
+    # The colour used for representation of the plane and optionally for look-up table
+    #   creation. By default same as excitation filter.
+
+    sDescription: str                               = LV_field("",                                          LVType.STRING)
+    # name
+
+    dAcqTime: float                                 = LV_field(0.0,                                         LVType.DOUBLE)
+    # acquistion time of one single image plane (value can be different for more planes inside one picture)
+
+    dPinholeDiameter: float                         = LV_field(-1.0,                                        LVType.DOUBLE)
+    # pinhole size in um
+
+    iChannelSeriesIndex: int                        = LV_field(-1,                                          LVType.INT32)
+    # channel series index
+
+    iCapturedPlaneIndex: int                        = LV_field(-1,                                          LVType.INT32)
+    # index of picture plane at the capture time,
+    #   used to access correct camerasettings items corresponding to this picture plane
+
+    #emissionWavelengthNm: float                     = LV_field(0.0,                                         LVType.DOUBLE)
+    #excitationWavelengthNm: float                   = LV_field(0.0,                                         LVType.DOUBLE)
+
+
+    # original names "sizeObjFullChip.cx" and "sizeObjFullChip.cy" - will need manual encoding
+    sizeObjFullChip_cx: int                         = LV_field(0,                                           LVType.INT32)
+    sizeObjFullChip_cy: int                         = LV_field(0,                                           LVType.INT32)
+
+
+
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    sOpticalConfigName: str                         = LV_field("",                                          LVType.STRING)
+    sOpticalConfigFull: dict[str, str]              = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)
+
+    eModality: int                                  = LV_field(0,                                           LVType.UINT32)
+
+    sCameraSetting: dict[str, Any]                  = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)
+    _00: object = LV_field(None, LVType.DO_NOT_ENCODE)
+    _01: object = LV_field(None, LVType.DO_NOT_ENCODE)
+
+    def __init__(self, **kwargs):
+        known = set()
+        for field in fields(self):
+            known.add(field.name)
+            default = field.default if field.default is not MISSING else field.default_factory()
+            object.__setattr__(self, field.name, default)
+            
+        for name, value in kwargs.items():
+            if name in known:
+                object.__setattr__(self, name, value)
+            elif name == "sizeObjFullChip.cx":
+                object.__setattr__(self, "sizeObjFullChip_cx", value)
+            elif name == "sizeObjFullChip.cy":
+                object.__setattr__(self, "sizeObjFullChip_cy", value)
+            else:
+                raise ValueError(f"Unexpected argument: {name}")
+        
+        self.__post_init__()
+            
+    def __post_init__(self):
+        object.__setattr__(self, "uiModalityMask", PicturePlaneModalityFlags(self.uiModalityMask))
+        object.__setattr__(self, "pFluorescentProbe", FluorescentProbe(**self.pFluorescentProbe))
+        object.__setattr__(self, "pFilterPath", OpticalFilterPath(**self.pFilterPath))
+
+    def to_serializable_dict(self, parent_path=""):
+        result = super().to_serializable_dict(parent_path)
+        if "sizeObjFullChip_cy" in result:
+            result["sizeObjFullChip.cy"] = result.pop("sizeObjFullChip_cy")
+        if "sizeObjFullChip_cx" in result:
+            result["sizeObjFullChip.cx"] = result.pop("sizeObjFullChip_cx")
+        return result
+    
+
+
+    """
     def __init__(   self,
                     *,
                     uiCompCount: int = 1,
@@ -639,7 +758,9 @@ class PicturePlaneDesc:
             object.__setattr__(self, 'emissionWavelengthNm', self.pFilterPath.meanEmissionWavelength())
         if self.excitationWavelengthNm is None and self.emissionWavelengthNm is not None and self.pFilterPath.isValid:
             object.__setattr__(self, 'excitationWavelengthNm', self.pFilterPath.closestExcitationWavelength(self.emissionWavelengthNm))
-
+    """
+            
+            
     @property
     def isBrightfield(self) -> bool:
         return (self.uiModalityMask & PicturePlaneModalityFlags.modBrightfield)
@@ -682,39 +803,61 @@ class PicturePlaneDesc:
         return f'#{r:02x}{g:02x}{b:02x}'
 
 
-@dataclass(frozen=True)
-class SampleSettingsOC:
-        uiOCTypeKey: int = 0
-        sOpticalConfigName: str = ""
+@dataclass(frozen=True, kw_only=True)
+class SampleSettingsOC(LVSerializable):
+    uiOCTypeKey: int                        = LV_field(0,                   LVType.UINT32)
+    sOpticalConfigName: str                 = LV_field("",                  LVType.STRING)
 
 @dataclass(frozen=True, kw_only=True)
-class ObjectiveSetting:
-    wsObjectiveName: str = ""
-    wsObjectiveCode: str = ""
-    dObjectiveMag: float = 0.0
-    dObjectiveNA: float = 0.0
-    dRefractIndex: float = 0.0
-    bTiltingNosepiece: bool = False
-    dHorizontalAngle: float = 0.0
-    dVerticalAngle: float = 0.0
-    dOpticalAxis: float = 0.0
+class ObjectiveSetting(LVSerializable):
+    wsObjectiveName: str                    = LV_field("",                  LVType.STRING)
+    wsObjectiveCode: str                    = LV_field("",                  LVType.STRING)
+    dObjectiveMag: float                    = LV_field(0.0,                 LVType.DOUBLE)
+    dObjectiveNA: float                     = LV_field(0.0,                 LVType.DOUBLE)
+    dRefractIndex: float                    = LV_field(0.0,                 LVType.DOUBLE)
+    bTiltingNosepiece: bool                 = LV_field(False,               LVType.BOOL)
+    dHorizontalAngle: float                 = LV_field(0.0,                 LVType.DOUBLE)
+    dVerticalAngle: float                   = LV_field(0.0,                 LVType.DOUBLE)
+    dOpticalAxis: float                     = LV_field(0.0,                 LVType.DOUBLE)
 
 
-@dataclass(init=False, frozen=True)
-class SampleSettings:
-    pCameraSetting: dict = field(default_factory=dict)
-    pDeviceSetting: dict = field(default_factory=dict)
-    pObjectiveSetting: ObjectiveSetting = field(default_factory=ObjectiveSetting)
-    sOpticalConfigs: list[SampleSettingsOC] = field(default_factory=list)
-    sSpecSettings: str = ""
-    uiModeFQ: int = 0
-    baScanArea: bytes = field(default_factory=bytes)
-    matCameraToStage: np.ndarray = field(default_factory=lambda: np.eye(2, 2))
-    dExposureTime: float = 0.0
-    dScalingToIntensity: float = 0.0
-    dRelayLensZoom: float = 1.0
-    dObjectiveToPinholeZoom: float = 1.0
+@dataclass(frozen=True, kw_only=True)
+class SampleSettings(LVSerializable):
+    pCameraSetting: dict                    = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
+    pDeviceSetting: dict                    = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
+    pObjectiveSetting: ObjectiveSetting     = LV_field(ObjectiveSetting,    LVType.LEVEL)
+    sOpticalConfigs: list[SampleSettingsOC] = LV_field(list,                LVType.LEVEL)
+    sSpecSettings: str                      = LV_field("",                  LVType.STRING)
+    uiModeFQ: int                           = LV_field(0,                   LVType.UINT32)
+    baScanArea: bytes                       = LV_field(bytes,               LVType.BYTEARRAY)
+    matCameraToStage: dict                  = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
+    dExposureTime: float                    = LV_field(0.0,                 LVType.DOUBLE)
+    dScalingToIntensity: float              = LV_field(0.0,                 LVType.DOUBLE)
+    dRelayLensZoom: float                   = LV_field(1.0,                 LVType.DOUBLE)
+    dObjectiveToPinholeZoom: float          = LV_field(1.0,                 LVType.DOUBLE)
+    uiOpticalConfigs: type                  = LV_field(0,                   LVType.UNKNOWN)
+    dZOffset: type                          = LV_field(0,                   LVType.UNKNOWN)
+    dCalibration1To1: type                  = LV_field(0,                   LVType.UNKNOWN)
+    dCameraCalibrationZoom: type            = LV_field(0,                   LVType.UNKNOWN)
 
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    eRepresentation: object                 = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
+    sOpticalConfigName: object              = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
+
+    def __post_init__(self):
+        self.pObjectiveSetting: dict
+
+        object.__setattr__(self, "pObjectiveSetting", ObjectiveSetting(**self.pObjectiveSetting))
+
+        if isinstance(self.sOpticalConfigs, dict):
+            if all(isinstance(d, dict) for d in self.sOpticalConfigs.values()):
+                configs = [SampleSettingsOC(**config) for config in self.sOpticalConfigs.values()]
+                object.__setattr__(self, "sOpticalConfigs", configs)
+            else:
+                object.__setattr__(self, "sOpticalConfigs", None)
+
+    """
     def __init__(   self,
                     *,
                     pCameraSetting: dict = {},
@@ -759,6 +902,7 @@ class SampleSettings:
         object.__setattr__(self, 'dScalingToIntensity', dScalingToIntensity)
         object.__setattr__(self, 'dRelayLensZoom', dRelayLensZoom)
         object.__setattr__(self, 'dObjectiveToPinholeZoom', dObjectiveToPinholeZoom)
+    """
 
     @property
     def cameraName(self) -> str:
@@ -793,81 +937,55 @@ class SampleSettings:
         return [item.sOpticalConfigName for item in self.sOpticalConfigs]
 
 
-@dataclass(init=False, frozen=True)
-class PictureMetadataPicturePlanes:
-    uiCount: int = 0                         # == len(sPlane)
-    uiCompCount: int = 0                     # the sum of uiCompCount of all sPlane members
-    sPlane: list[PicturePlaneDesc] = field(default_factory=list)
-    sSampleSetting: list[SampleSettings] = field(default_factory=list)
-    sDescription: str = ""
-    eRepresentation: PictureMetadataPicturePlanesRepresentation = PictureMetadataPicturePlanesRepresentation.eRepDefault
-    iExperimentSettingsCount: int = 0
-    sExperimentSetting: list[dict] = field(default_factory=list)
-    iStimulationSettingsCount: int = 0
-    sStimulationSetting: list[dict] = field(default_factory=list)
+@dataclass(frozen=True, kw_only=True)
+class PictureMetadataPicturePlanes(LVSerializable):
+    uiCount: int                                                = LV_field(0,                                                       LVType.UINT32)                   # == len(sPlane)
+    uiCompCount: int                                            = LV_field(0,                                                       LVType.UINT32)    # the sum of uiCompCount of all sPlane members
+    sPlaneNew: dict[str, PicturePlaneDesc]                      = LV_field(dict,                                                    LVType.LEVEL) 
+    uiSampleCount: int                                          = LV_field(0,                                                       LVType.UINT32) 
+    sSampleSetting: dict[str, SampleSettings]                   = LV_field(dict,                                                    LVType.LEVEL) 
+    sDescription: str                                           = LV_field("",                                                      LVType.STRING) 
+    eRepresentation: PictureMetadataPicturePlanesRepresentation = LV_field(PictureMetadataPicturePlanesRepresentation.eRepDefault,  LVType.UINT32)
+    iExperimentSettingsCount: int                               = LV_field(0,                                                       LVType.INT32)
+    sExperimentSetting: dict                                    = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
+    iStimulationSettingsCount: int                              = LV_field(0,                                                       LVType.INT32)
+    sStimulationSetting: dict                                   = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
 
-    def __init__(   self,
-                    *,
-                    uiCount: int = 0,
-                    uiCompCount: int = 0,
-                    sPlane: list[PicturePlaneDesc]|dict|None = None,
-                    sPlaneNew: dict[str, dict]|None = None,
-                    sSampleSetting: list[dict] = [],
-                    sDescription: str = "",
-                    eRepresentation: PictureMetadataPicturePlanesRepresentation = PictureMetadataPicturePlanesRepresentation.eRepDefault,
-                    iExperimentSettingsCount: int = 0,
-                    sExperimentSetting: list[dict] = [],
-                    iStimulationSettingsCount: int = 0,
-                    sStimulationSetting: list[dict] = [],
-                    **kwargs):
-        object.__setattr__(self, 'uiCount', uiCount)
-        object.__setattr__(self, 'uiCompCount', uiCompCount)
-        sPlane_ = []
-        if sPlaneNew is not None:
-            for _, item in sPlaneNew.items():
-                if type(item) == dict:
-                    sPlane_.append(PicturePlaneDesc(**item))
-                else:
-                    raise TypeError()
-        elif type(sPlane) == dict:
-            for _, item in sPlane.items():
-                if type(item) == dict:
-                    sPlane_.append(PicturePlaneDesc(**item))
-                else:
-                    raise TypeError()
-        elif type(sPlane) == list:
-            for item in sPlane:
-                if type(item) == dict:
-                    sPlane_.append(PicturePlaneDesc(**item))
-                elif isinstance(item, PicturePlaneDesc):
-                    sPlane_.append(item)
-                else:
-                    raise TypeError()
+    # Temporary storage
+    sPlane: None                                                = LV_field(None,                                                    LVType.DO_NOT_ENCODE) 
+    # some ND2 files use sPlane, some use sPlaneNew attribute, some have both,
+    # in __post_init__ set sPlaneNew to sPlane at first, replace it with sPlaneNew if it exists
 
-        object.__setattr__(self, 'sPlane', sPlane_)
+    def __post_init__(self):
+        if self.sPlane:
+            planes = {}
+            for key, plane in self.sPlane.items():
+                planes[key] = PicturePlaneDesc(**plane)
+            object.__setattr__(self, "sPlaneNew", planes)
 
-        sSampleSetting_ = []
-        if type(sSampleSetting) == dict:
-            for _, item in sSampleSetting.items():
-                sSampleSetting_.append(SampleSettings(**item))
-        elif type(sSampleSetting) == list and all(isinstance(item, SampleSettings) for item in sSampleSetting):
-            sSampleSetting_ = sSampleSetting
+        if self.sPlaneNew:
+            planes = {}
+            for key, plane in self.sPlaneNew.items():
+                planes[key] = PicturePlaneDesc(**plane)
+            object.__setattr__(self, "sPlaneNew", planes)
 
-        object.__setattr__(self, 'sSampleSetting', sSampleSetting_)
-        object.__setattr__(self, 'sDescription', sDescription)
-        object.__setattr__(self, 'eRepresentation', eRepresentation)
-        object.__setattr__(self, 'iExperimentSettingsCount', iExperimentSettingsCount)
-        object.__setattr__(self, 'sExperimentSetting', sExperimentSetting)
-        object.__setattr__(self, 'iStimulationSettingsCount', iStimulationSettingsCount)
-        object.__setattr__(self, 'sStimulationSetting', sStimulationSetting)
+        object.__setattr__(self, "sPlane", None)
+
+        ssettings = {}
+        for key, setting in self.sSampleSetting.items():
+            ssettings[key] = SampleSettings(**setting)
+        object.__setattr__(self, "sSampleSetting", ssettings)
+
+        object.__setattr__(self, "eRepresentation", PictureMetadataPicturePlanesRepresentation(self.eRepresentation))
+
 
     @property
     def valid(self) -> bool:
-        return 0 < self.uiCount and self.uiCount <= self.uiCompCount and self.uiCount == len(self.sPlane)
+        return 0 < self.uiCount and self.uiCount <= self.uiCompCount and self.uiCount == len(self.sPlaneNew)
 
     def makeValid(self, comps: int, **kwargs) -> None:
         if comps not in (1, 3):
-            raise ValueError()
+            raise ValueError("Invalid number of components:", comps, "expected 1 or 3.")
         args = dict(uiCompCount=comps,
                     uiModalityMask=PicturePlaneModalityFlags.modBrightfield if comps == 3 else PicturePlaneModalityFlags.modFluorescence,
                     sDescription="RGB" if comps == 3 else "Mono")
@@ -880,7 +998,7 @@ class PictureMetadataPicturePlanes:
         rows=[]
         col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
         settings = self.sSampleSetting
-        for plane in self.sPlane:
+        for plane in self.sPlaneNew:
             setting = settings[plane.uiSampleIndex]
             camera = setting.cameraName or "Unknown camera"
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value=','.join(oc for oc in setting.opticalConfigurations)))
@@ -894,126 +1012,114 @@ class PictureMetadataPicturePlanes:
 
 
 @dataclass(frozen=True, kw_only=True)
-class PictureMetadataPhysicalQuantity:
-    wsName: str = ""
-    uiIntepretation: int = 0
-    dValue: float = 0
+class PictureMetadataPhysicalQuantity(LVSerializable):
+    wsName: str                                         = LV_field("",                                  LVType.STRING)
+    uiIntepretation: int                                = LV_field(0,                                   LVType.ENCODING_NOT_IMPLEMENTED)
+    dValue: float                                       = LV_field(0.0,                                 LVType.DOUBLE)
 
-@dataclass(init=False, frozen=True)
-class PictureMetadata:
-    dTimeAbsolute: float = -1.0             # time specification when the picture was captured [Julian Day Number]
-    dTimeMSec: float = 0.0                  # time offset of captured frame [ms]
-    eTimeSource: PictureMetadataTimeSourceType = PictureMetadataTimeSourceType.etsSW
-    dXPos: float = 0.0
-    dYPos: float = 0.0
-    uiRow: int = 0
-    uiCol: int = 0
-    dZPos: float = 0.0
-    bZPosAbsolute: bool = False
-    dAngle: float = 0.0
-    sPicturePlanes: PictureMetadataPicturePlanes = field(default_factory=PictureMetadataPicturePlanes)
-    dTemperK: float = 293                   # temperature (in Kelvins)
-    dCalibration: float = -1                # microns to pixel
-    dAspect: float = -1                     # pixel aspect ratio
-    dCalibPrecision: float = -1             # calibration precision in microns
-    bCalibrated: bool = False               # is calibration valid
-    wsObjectiveName: str = ""
-    dObjectiveMag: float = -1
-    dObjectiveNA: float = -1
-    dRefractIndex1: float = -1
-    dRefractIndex2: float = -1
-    dZoom: float = -1
-    pPhysicalVar: list[PictureMetadataPhysicalQuantity] = field(default_factory=list)
-    uiPhysicalVarCount: int = 0             # == len(pPhysicalVar)
-    wsCustomData: str = ""
-    ePictureXAxis: PictureMetadataAxisDescription = PictureMetadataAxisDescription.eaxdX
-    ePictureYAxis: PictureMetadataAxisDescription = PictureMetadataAxisDescription.eaxdY
-    dTimeAxisCalibration: float = -1        # valid when there is eaxdT axis, in ms
-    dZAxisCalibration: float = -1           # valid when there is eaxdZ axis
-    dStgLgCT11: float = 1                   # transformation matrix, more general than dAngle
-    dStgLgCT21: float = 0
-    dStgLgCT12: float = 0
-    dStgLgCT22: float = 1
-    baOpticalPathsCorrections: bytes = b''  # Inter-modality registration support - CLxOpticalPathsCorrectionTable serialized to LiteVariant
+@dataclass(frozen=True, kw_only=True, init=False)
+class PictureMetadata(LVSerializable):
+    dTimeAbsolute: float                                = LV_field(jdn_now,                             LVType.DOUBLE)
+    # time specification when the picture was captured [Julian Day Number]
 
-    def __init__(   self,
-                    *,
-                    dTimeAbsolute: float = jdn_now(),
-                    dTimeMSec: float = 0.0,
-                    eTimeSource: PictureMetadataTimeSourceType = PictureMetadataTimeSourceType.etsSW,
-                    dXPos: float = 0.0,
-                    dYPos: float = 0.0,
-                    uiRow: int = 0,
-                    uiCol: int = 0,
-                    dZPos: float = 0.0,
-                    bZPosAbsolute: bool = False,
-                    dAngle: float = 0.0,
-                    sPicturePlanes: PictureMetadataPicturePlanes|dict = {},
-                    dTemperK: float = 293,
-                    dCalibration: float = -1,
-                    dAspect: float = -1,
-                    dCalibPrecision: float = -1,
-                    bCalibrated: bool = False,
-                    wsObjectiveName: str = "",
-                    dObjectiveMag: float = -1,
-                    dObjectiveNA: float = -1,
-                    dRefractIndex1: float = -1,
-                    dRefractIndex2: float = -1,
-                    dZoom: float = -1,
-                    pPhysicalVar: list[PictureMetadataPhysicalQuantity] = [],
-                    uiPhysicalVarCount: int = 0,
-                    wsCustomData: str = "",
-                    ePictureXAxis: PictureMetadataAxisDescription = PictureMetadataAxisDescription.eaxdX,
-                    ePictureYAxis: PictureMetadataAxisDescription = PictureMetadataAxisDescription.eaxdY,
-                    dTimeAxisCalibration: float = -1,
-                    dZAxisCalibration: float = -1,
-                    dStgLgCT11: float = 1,
-                    dStgLgCT21: float = 0,
-                    dStgLgCT12: float = 0,
-                    dStgLgCT22: float = 1,
-                    baOpticalPathsCorrections: bytes = b'',
-                    **kwargs):
-        uiCol = kwargs.get("uiCon20(L", uiCol)
-        object.__setattr__(self, 'dTimeAbsolute', dTimeAbsolute)
-        object.__setattr__(self, 'dTimeMSec', dTimeMSec)
-        object.__setattr__(self, 'eTimeSource', eTimeSource)
-        object.__setattr__(self, 'dXPos', dXPos)
-        object.__setattr__(self, 'dYPos', dYPos)
-        object.__setattr__(self, 'uiRow', uiRow if uiRow != 0xffffffff else 0)
-        object.__setattr__(self, 'uiCol', uiCol if uiCol != 0xffffffff else 0)
-        object.__setattr__(self, 'dZPos', dZPos)
-        object.__setattr__(self, 'bZPosAbsolute', bZPosAbsolute)
-        object.__setattr__(self, 'dAngle', dAngle)
-        if type(sPicturePlanes) == dict:
-            object.__setattr__(self, 'sPicturePlanes', PictureMetadataPicturePlanes(**sPicturePlanes))
-        elif isinstance(sPicturePlanes, PictureMetadataPicturePlanes):
-            object.__setattr__(self, 'sPicturePlanes', sPicturePlanes)
-        else:
-            raise TypeError()
-        object.__setattr__(self, 'dTemperK', dTemperK)
-        object.__setattr__(self, 'dCalibration', dCalibration)
-        object.__setattr__(self, 'dAspect', dAspect)
-        object.__setattr__(self, 'dCalibPrecision', dCalibPrecision)
-        object.__setattr__(self, 'bCalibrated', bCalibrated)
-        object.__setattr__(self, 'wsObjectiveName', wsObjectiveName)
-        object.__setattr__(self, 'dObjectiveMag', dObjectiveMag)
-        object.__setattr__(self, 'dObjectiveNA', dObjectiveNA)
-        object.__setattr__(self, 'dRefractIndex1', dRefractIndex1)
-        object.__setattr__(self, 'dRefractIndex2', dRefractIndex2)
-        object.__setattr__(self, 'dZoom', dZoom)
-        object.__setattr__(self, 'pPhysicalVar', pPhysicalVar)
-        object.__setattr__(self, 'uiPhysicalVarCount', uiPhysicalVarCount)
-        object.__setattr__(self, 'wsCustomData', wsCustomData)
-        object.__setattr__(self, 'ePictureXAxis', ePictureXAxis)
-        object.__setattr__(self, 'ePictureYAxis', ePictureYAxis)
-        object.__setattr__(self, 'dTimeAxisCalibration', dTimeAxisCalibration)
-        object.__setattr__(self, 'dZAxisCalibration', dZAxisCalibration)
-        object.__setattr__(self, 'dStgLgCT11', dStgLgCT11)
-        object.__setattr__(self, 'dStgLgCT21', dStgLgCT21)
-        object.__setattr__(self, 'dStgLgCT12', dStgLgCT12)
-        object.__setattr__(self, 'dStgLgCT22', dStgLgCT22)
-        object.__setattr__(self, 'baOpticalPathsCorrections', baOpticalPathsCorrections)
+    dTimeMSec: float                                    = LV_field(0.0,                                 LVType.DOUBLE)
+    # time offset of captured frame [ms]
 
+    eTimeSource: PictureMetadataTimeSourceType          = LV_field(PictureMetadataTimeSourceType.etsSW, LVType.INT32)
+    dXPos: float                                        = LV_field(0.0,                                 LVType.DOUBLE)
+    dYPos: float                                        = LV_field(0.0,                                 LVType.DOUBLE)
+    uiRow: int                                          = LV_field(0,                                   LVType.UINT32)
+    uiCol: int                                          = LV_field(0,                                   LVType.UINT32)
+    dZPos: float                                        = LV_field(0.0,                                 LVType.DOUBLE)
+    bZPosAbsolute: bool                                 = LV_field(False,                               LVType.BOOL)
+    dAngle: float                                       = LV_field(0.0,                                 LVType.DOUBLE)
+    sPicturePlanes: PictureMetadataPicturePlanes        = LV_field(PictureMetadataPicturePlanes,        LVType.LEVEL)
+    dTemperK: float                                     = LV_field(293.0,                               LVType.DOUBLE)
+    # temperature (in Kelvins)  
+
+    dCalibration: float                                 = LV_field(-1,                                  LVType.DOUBLE)
+    # microns to pixel  
+
+    dAspect: float                                      = LV_field(-1,                                  LVType.DOUBLE)
+    # pixel aspect ratio    
+
+    dCalibPrecision: float                              = LV_field(-1,                                  LVType.DOUBLE)
+    # calibration precision in microns  
+
+    bCalibrated: bool                                   = LV_field(False,                               LVType.BOOL)
+    # is calibration valid
+
+    wsObjectiveName: str                                = LV_field("",                                  LVType.STRING)
+    dObjectiveMag: float                                = LV_field(-1.0,                                LVType.DOUBLE)
+    dObjectiveNA: float                                 = LV_field(-1.0,                                LVType.DOUBLE)
+    dRefractIndex1: float                               = LV_field(-1.0,                                LVType.DOUBLE)
+    dRefractIndex2: float                               = LV_field(-1.0,                                LVType.DOUBLE)
+    dZoom: float                                        = LV_field(-1.0,                                LVType.DOUBLE)
+    pPhysicalVar: list[PictureMetadataPhysicalQuantity] = LV_field(list,                                LVType.LEVEL)
+    uiPhysicalVarCount: int                             = LV_field(0,                                   LVType.UINT32)
+    # == len(pPhysicalVar)
+
+    wsCustomData: str                                   = LV_field("",                                  LVType.STRING)
+    ePictureXAxis: PictureMetadataAxisDescription       = LV_field(PictureMetadataAxisDescription.eaxdX,LVType.INT32)
+    ePictureYAxis: PictureMetadataAxisDescription       = LV_field(PictureMetadataAxisDescription.eaxdY,LVType.INT32)
+    dTimeAxisCalibration: float                         = LV_field(-1.0,                                LVType.DOUBLE)
+    # valid when there is eaxdT axis, in ms
+
+    dZAxisCalibration: float                            = LV_field(-1.0,                                LVType.DOUBLE)
+    # valid when there is eaxdZ axis
+
+    dStgLgCT11: float                                   = LV_field(1.0,                                 LVType.DOUBLE)
+    dStgLgCT21: float                                   = LV_field(0.0,                                 LVType.DOUBLE)
+    dStgLgCT12: float                                   = LV_field(0.0,                                 LVType.DOUBLE)
+    dStgLgCT22: float                                   = LV_field(1.0,                                 LVType.DOUBLE)
+    # transformation matrix, more general than dAngle
+
+
+    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # store them in encoded fields above, by default, they will not be encoded back
+    dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)
+    sCameraSetting: dict[str, Any]                      = LV_field(dict,                                LVType.ENCODING_NOT_IMPLEMENTED)
+
+    baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
+    # Inter-modality registration support - CLxOpticalPathsCorrectionTable serialized to LiteVariant
+
+    uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)
+    dPinholeRadius: float                               = LV_field(0.0,                                 LVType.DOUBLE)
+
+    def __init__(self, **kwargs):
+        known = set()
+        for field in fields(self):
+            known.add(field.name)
+            default = field.default if field.default is not MISSING else field.default_factory()
+            object.__setattr__(self, field.name, default)
+
+        for name, value in kwargs.items():
+            if name in known:
+                object.__setattr__(self, name, value)
+            elif name.lower() == "uicon20(l":
+                object.__setattr__(self, "uicon20_L", value)
+            else:
+                raise ValueError(f"Unexpected argument: {name}")
+        
+        self.__post_init__()
+    
+    def __post_init__(self):
+        object.__setattr__(self, "eTimeSource", PictureMetadataTimeSourceType(self.eTimeSource))
+        object.__setattr__(self, "sPicturePlanes", PictureMetadataPicturePlanes(**self.sPicturePlanes))
+
+        self.pPhysicalVar : dict
+        physical = [PictureMetadataPhysicalQuantity(**p) for p in self.pPhysicalVar.values()]
+        object.__setattr__(self, "pPhysicalVar", physical)        
+
+        object.__setattr__(self, "ePictureXAxis", PictureMetadataAxisDescription(self.ePictureXAxis))
+        object.__setattr__(self, "ePictureYAxis", PictureMetadataAxisDescription(self.ePictureYAxis))
+        
+
+    def to_serializable_dict(self, parent_path=""):
+        result = super().to_serializable_dict(parent_path)
+        if "uicon20_L" in result:
+            result["uicon20(L"] = result.pop("uicon20_L")
+        return result
 
     @property
     def valid(self) -> bool:
@@ -1028,12 +1134,12 @@ class PictureMetadata:
 
     @property
     def channels(self) -> list[PicturePlaneDesc]:
-        return self.sPicturePlanes.sPlane
+        return self.sPicturePlanes.sPlaneNew
 
     @property
     def componentNames(self) -> list[str]:
         ret = []
-        for plane in self.sPicturePlanes.sPlane:
+        for plane in self.sPicturePlanes.sPlaneNew:
             if 3 == plane.uiCompCount:
                 ret.append("Blue")
                 ret.append("Green")
@@ -1050,7 +1156,7 @@ class PictureMetadata:
             r = (color & 0xFF) / 255.0
             return (r, g, b)
         ret = []
-        for plane in self.sPicturePlanes.sPlane:
+        for plane in self.sPicturePlanes.sPlaneNew:
             if 3 == plane.uiCompCount:
                 ret.append((0, 0, 1))
                 ret.append((0, 1, 0))
@@ -1061,7 +1167,7 @@ class PictureMetadata:
 
     def sampleSettings(self, plane: int = 0) -> SampleSettings|None:
         try:
-            return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlane[plane].uiSampleIndex]
+            return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlaneNew[plane].uiSampleIndex]
         except (AttributeError, IndexError) as _:
             return None
 
@@ -1090,7 +1196,7 @@ class PictureMetadata:
             return []
 
     def to_lv(self) -> bytes:
-        raise NotImplementedError()
+        return encode_lv({"SLxPictureMetadata" : self.to_serializable_dict()})
 
     @staticmethod
     def from_lv(data: bytes|memoryview) -> PictureMetadata:

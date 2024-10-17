@@ -271,7 +271,7 @@ class LimBinaryIOChunker(BaseChunker):
         if not BaseChunker._is_chunk_data(name):
             raise UnexpectedCallError("setChunk", name)
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
-        self._set_metadata(name, data)
+        self._set_metadata(name, data)          # TODO always set metadata ? no matter the chunk?
 
     def image(self, seqindex: int) -> NumpyArrayLike:        
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
