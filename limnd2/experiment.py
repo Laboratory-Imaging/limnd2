@@ -58,7 +58,7 @@ def _format_time(ms) -> str:
         ms -= (3_600_000)*hh + (60_000)*mm + 60*ss
         return "%d:%02d:%02d.%03d" % (hh, mm, ss, ms % 1000)
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentLoop(LVSerializable):
     uiCount: int                    = LV_field(0,                         LVType.UINT32)
 
@@ -182,15 +182,32 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     wsCommandAfterCapture: str              = LV_field("",    LVType.STRING)
 
     # probably error in NIS elements, should be duplicate of dZLow
-    dZLow_1: float                          = LV_field("",    LVType.DO_NOT_ENCODE)
+    #dZLow_1: float                          = LV_field("",    LVType.DO_NOT_ENCODE)                # DONE
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
 
-    sZDevice: object                        = LV_field(None,  LVType.ENCODING_NOT_IMPLEMENTED)
-    sCommandAfterCapture: str               = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)
-    sCommandBeforeCapture: str              = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)
+    #sZDevice: object                        = LV_field(None,  LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
+    #sCommandAfterCapture: str               = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
+    #sCommandBeforeCapture: str              = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
 
+    def __post_init__(self):
+
+        if 'dZLow#1' in self._unknown_fields:
+            self._unknown_fields.pop('dZLow#1')
+        
+        if "sCommandAfterCapture" in self._unknown_fields:
+            object.__setattr__(self, 'wsCommandBeforeCapture', self._unknown_fields.pop('sCommandAfterCapture'))    
+        
+        if "sCommandBeforeCapture" in self._unknown_fields:
+            object.__setattr__(self, 'wsCommandBeforeCapture', self._unknown_fields.pop('sCommandBeforeCapture'))    
+
+        if "sZDevice" in self._unknown_fields:
+            object.__setattr__(self, 'wsZDevice', self._unknown_fields.pop('sZDevice'))    
+
+        object.__setattr__(self, 'iType', ZStackType(self.iType))
+
+    """
     def __init__(self, **kwargs):
         known = set()
         for field in fields(self):
@@ -207,9 +224,7 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
                 raise ValueError(f"Unexpected argument: {name}")
             
         self.__post_init__()
-
-    def __post_init__(self):
-        object.__setattr__(self, 'iType', ZStackType(self.iType))
+    """
 
     @property
     def homeIndex(self):
@@ -259,7 +274,7 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     def info(self) -> list[dict[str, any]]:
         return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice)]
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoopPoint(LVSerializable):
     pAutoFocus: dict                            = LV_field(dict,                            LVType.ENCODING_NOT_IMPLEMENTED)
     pZStackPos: int                             = LV_field(0,                               LVType.INT32)
@@ -269,13 +284,14 @@ class ExperimentSpectralLoopPoint(LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    pPlaneDesc: PicturePlaneDesc                = LV_field(PicturePlaneDesc,                LVType.LEVEL)
+    # pPlaneDesc: PicturePlaneDesc                = LV_field(PicturePlaneDesc,                LVType.LEVEL)
 
     def __post_init__(self):
-        object.__setattr__(self, "pPlaneDesc", PicturePlaneDesc(**self.pPlaneDesc))
+        #object.__setattr__(self, "pPlaneDesc", PicturePlaneDesc(**self.pPlaneDesc))
+        pass
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     pPlanes: PictureMetadataPicturePlanes       = LV_field(PictureMetadataPicturePlanes,    LVType.LEVEL)
     iOffsetReference: int                       = LV_field(0,                               LVType.INT32)
@@ -286,20 +302,22 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)
-    pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
-    szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
-    szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
-    pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    # pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)
+    # pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    # szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    # szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    # pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
 
     def __post_init__(self):
         self.pPlanes: dict
         self.Points: dict
 
         planes_args = {**(self.pPlanes)}
+        """
         if self.pPlaneDesc:
             planes_args["sPlane"] = self.pPlaneDesc
             object.__setattr__(self, "pPlaneDesc", None)
+        """
 
         object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**planes_args))
         
@@ -335,9 +353,25 @@ class ExperimentXYPosLoopPoint(LVSerializable):
         for point in points.values():
             points_list.append(ExperimentXYPosLoopPoint(**point))
         return points_list
+    
+    def create_points_XML(xdict: dict[str, float], 
+                          ydict: dict[str, float], 
+                          zdict: dict[str, float], 
+                          offdict: dict[str, float], 
+                          namedict: dict[str, str]):
+        points = []
+        for key in xdict:
+            points.append(ExperimentXYPosLoopPoint(dPosX=xdict[key], 
+                                                   dPosY=ydict[key], 
+                                                   dPosZ=zdict[key], 
+                                                   dPFSOffset=offdict[key], 
+                                                   dPosName=namedict[key]))
+        return points
 
 
-@dataclass(frozen=True, kw_only=True)
+
+
+@dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     bUseZ: bool                             = LV_field(False,             LVType.BOOL)
     bRelativeXY: bool                       = LV_field(True,              LVType.BOOL)
@@ -355,20 +389,32 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    dPosX: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)
-    dPosY: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)
-    dPosZ: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)
-    dPFSOffset: object                      = LV_field(None,              LVType.DO_NOT_ENCODE)
-    pPosName: object                        = LV_field(None,              LVType.DO_NOT_ENCODE)
-    # TODO in XML variant, points are passed as 5 lists with values, 
-    # convert them to ExperimentXYPosLoopPoint, store in "self.Points"
+    # dPosX: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
+    # dPosY: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
+    # dPosZ: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
+    # dPFSOffset: object                      = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
+    # pPosName: object                        = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
 
-    sAutoFocusBeforeCapture: object         = LV_field(None,              LVType.DO_NOT_ENCODE)
-    uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)
+    # sAutoFocusBeforeCapture: object         = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
+    # uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)
 
     def __post_init__(self):
         if self.Points and isinstance(self.Points, dict):
             object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points(self.Points))
+
+        elif all(key in self._unknown_fields for key in ("dPosX", "dPosY", "dPosZ", "dPFSOffset", "pPosName")):
+            object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points_XML(self._unknown_fields.pop("dPosX"),
+                                                                                          self._unknown_fields.pop("dPosY"), 
+                                                                                          self._unknown_fields.pop("dPosZ"), 
+                                                                                          self._unknown_fields.pop("dPFSOffset"), 
+                                                                                          self._unknown_fields.pop("pPosName")))
+
+        if "sAutoFocusBeforeCapture" in self._unknown_fields:
+            object.__setattr__(self, 'sAFBefore', self._unknown_fields.pop("sAutoFocusBeforeCapture"))
+        
+
+
+
         
     @property
     def info(self) -> list[dict[str, any]]:
@@ -457,7 +503,7 @@ class ExperimentIterator:
             raise StopIteration
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentLevel(LVSerializable):
     eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)     
     # Type of the current loop, determines the union member to be used
@@ -531,7 +577,7 @@ class ExperimentLevel(LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    pLargeImageEx: object                   = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
+    # pLargeImageEx: object                   = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
 
     def __post_init__(self):
         if isinstance(self.pItemValid, dict):

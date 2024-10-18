@@ -230,18 +230,20 @@ class OpticalSpectrumPointType(enum.IntEnum):
     eSptRange = 5
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class OpticalSpectrumPoint(LVSerializable):
     eType: OpticalSpectrumPointType             = LV_field(OpticalSpectrumPointType.eSptInvalid,  LVType.UINT32) 
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
     dTValue: float                              = LV_field(0.0,                                   LVType.DOUBLE)
 
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # TODO DONE Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)
+    # uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)
 
     def __post_init__(self):
         object.__setattr__(self, "eType", OpticalSpectrumPointType(self.eType))
+        if "uiWavelength" in self._unknown_fields:
+            object.__setattr__(self, "dWavelength", self._unknown_fields["uiWavelength"])
 
 @dataclass(frozen=True, kw_only=True)
 class OpticalSpectrum(LVSerializable):
@@ -251,26 +253,7 @@ class OpticalSpectrum(LVSerializable):
 
     def __post_init__(self):
         object.__setattr__(self, "pPoint", {k: OpticalSpectrumPoint(**v) for k, v in self.pPoint.items()})
-
-    """
-    def __init__(   self,
-                    *,
-                    bPoints: bool = False,
-                    pPoint: dict|list[OpticalSpectrumPoint] = [],
-                    **kwargs):
-
-        object.__setattr__(self, 'bPoints', bPoints)
-        if type(pPoint) == dict and 'uiCount' in kwargs:
-            pPoint_ = []
-            for i in range(kwargs['uiCount']):
-                pPoint_.append(OpticalSpectrumPoint(**pPoint[f"Point{i}"]))
-            object.__setattr__(self, 'pPoint', pPoint_)
-        elif type(pPoint) == list and all(isinstance(item, OpticalSpectrumPoint) for item in pPoint):
-            object.__setattr__(self, 'pPoint', pPoint)
-        else:
-            object.__setattr__(self, 'pPoint', [])
-    """
-            
+           
     @property
     def isValid(self) -> bool:
         return 0 < len(self.pPoint)
@@ -435,7 +418,7 @@ class FluorescentProbe(LVSerializable):
         object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)
     """
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class OpticalFilter(LVSerializable):
     m_sName: str                            = LV_field("",                                      LVType.STRING)
     m_sUserName: str                        = LV_field("",                                      LVType.STRING)
@@ -449,7 +432,7 @@ class OpticalFilter(LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)
+    # m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)
 
     def __post_init__(self):
         object.__setattr__(self, "m_ePlacement", OpticalFilterPlacement(self.m_ePlacement))
@@ -460,29 +443,6 @@ class OpticalFilter(LVSerializable):
         object.__setattr__(self, "m_EmissionSpectrum", OpticalSpectrum(**self.m_EmissionSpectrum))
         object.__setattr__(self, "m_MirrorSpectrum", OpticalSpectrum(**self.m_MirrorSpectrum))
 
-    """
-    def __init__(   self,
-                    *,
-                    m_sName: str = "",
-                    m_sUserName: str = "",
-                    m_ePlacement: OpticalFilterPlacement = 0,
-                    m_eNature: OpticalFilterNature = 0,
-                    m_eSpctType: OpticalFilterSpectType = 0,
-                    m_uiColor: int = 0,
-                    m_ExcitationSpectrum: OpticalSpectrum|dict,
-                    m_EmissionSpectrum: OpticalSpectrum|dict,
-                    m_MirrorSpectrum: OpticalSpectrum|dict,
-                    **kwargs):
-        object.__setattr__(self, 'm_sName', m_sName)
-        object.__setattr__(self, 'm_sUserName', m_sUserName)
-        object.__setattr__(self, 'm_ePlacement', m_ePlacement)
-        object.__setattr__(self, 'm_eNature', m_eNature)
-        object.__setattr__(self, 'm_eSpctType', m_eSpctType)
-        object.__setattr__(self, 'm_uiColor', m_uiColor)
-        object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**m_ExcitationSpectrum) if type(m_ExcitationSpectrum) == dict else m_ExcitationSpectrum)
-        object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)
-        object.__setattr__(self, 'm_MirrorSpectrum', OpticalSpectrum(**m_MirrorSpectrum) if type(m_MirrorSpectrum) == dict else m_MirrorSpectrum)
-    """
         
 @dataclass(frozen=True, kw_only=True)
 class OpticalFilterPath(LVSerializable):
@@ -654,38 +614,28 @@ class PicturePlaneDesc(LVSerializable):
     sizeObjFullChip_cy: int                         = LV_field(0,                                           LVType.INT32)
 
 
-
+    """
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
+
     sOpticalConfigName: str                         = LV_field("",                                          LVType.STRING)
     sOpticalConfigFull: dict[str, str]              = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)
 
-    eModality: int                                  = LV_field(0,                                           LVType.UINT32)
+    eModality: int                                  = LV_field(0,                                           LVType.UINT32)                  #DONE
 
     sCameraSetting: dict[str, Any]                  = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)
     _00: object = LV_field(None, LVType.DO_NOT_ENCODE)
     _01: object = LV_field(None, LVType.DO_NOT_ENCODE)
+    """
 
-    def __init__(self, **kwargs):
-        known = set()
-        for field in fields(self):
-            known.add(field.name)
-            default = field.default if field.default is not MISSING else field.default_factory()
-            object.__setattr__(self, field.name, default)
-            
-        for name, value in kwargs.items():
-            if name in known:
-                object.__setattr__(self, name, value)
-            elif name == "sizeObjFullChip.cx":
-                object.__setattr__(self, "sizeObjFullChip_cx", value)
-            elif name == "sizeObjFullChip.cy":
-                object.__setattr__(self, "sizeObjFullChip_cy", value)
-            else:
-                raise ValueError(f"Unexpected argument: {name}")
-        
-        self.__post_init__()
-            
     def __post_init__(self):
+        if "sizeObjFullChip.cx" in self._unknown_fields:
+            object.__setattr__(self, "sizeObjFullChip_cx", self._unknown_fields["sizeObjFullChip.cx"])
+        if "sizeObjFullChip.cy" in self._unknown_fields:
+            object.__setattr__(self, "sizeObjFullChip_cy", self._unknown_fields["sizeObjFullChip.cy"])
+        if "eModality" in self._unknown_fields:
+            object.__setattr__(self, "uiModalityMask", PicturePlaneModalityFlags.from_modality(self._unknown_fields["eModality"]))
+
         object.__setattr__(self, "uiModalityMask", PicturePlaneModalityFlags(self.uiModalityMask))
         object.__setattr__(self, "pFluorescentProbe", FluorescentProbe(**self.pFluorescentProbe))
         object.__setattr__(self, "pFilterPath", OpticalFilterPath(**self.pFilterPath))
@@ -821,7 +771,7 @@ class ObjectiveSetting(LVSerializable):
     dOpticalAxis: float                     = LV_field(0.0,                 LVType.DOUBLE)
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class SampleSettings(LVSerializable):
     pCameraSetting: dict                    = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
     pDeviceSetting: dict                    = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
@@ -842,8 +792,8 @@ class SampleSettings(LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    eRepresentation: object                 = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
-    sOpticalConfigName: object              = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
+    # eRepresentation: object                 = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
+    # sOpticalConfigName: object              = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
 
     def __post_init__(self):
         self.pObjectiveSetting: dict
@@ -1077,15 +1027,16 @@ class PictureMetadata(LVSerializable):
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)
-    sCameraSetting: dict[str, Any]                      = LV_field(dict,                                LVType.ENCODING_NOT_IMPLEMENTED)
+    # dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)
+    # sCameraSetting: dict[str, Any]                      = LV_field(dict,                                LVType.ENCODING_NOT_IMPLEMENTED)
 
-    baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
+    # baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
     # Inter-modality registration support - CLxOpticalPathsCorrectionTable serialized to LiteVariant
 
-    uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)
-    dPinholeRadius: float                               = LV_field(0.0,                                 LVType.DOUBLE)
+    # uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)
+    # dPinholeRadius: float                               = LV_field(0.0,                                 LVType.DOUBLE)
 
+    """
     def __init__(self, **kwargs):
         known = set()
         for field in fields(self):
@@ -1102,6 +1053,8 @@ class PictureMetadata(LVSerializable):
                 raise ValueError(f"Unexpected argument: {name}")
         
         self.__post_init__()
+    """
+        
     
     def __post_init__(self):
         object.__setattr__(self, "eTimeSource", PictureMetadataTimeSourceType(self.eTimeSource))

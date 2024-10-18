@@ -1,15 +1,20 @@
+from datetime import datetime
 import limnd2
 from pathlib import Path
+import os, sys
 
-from limnd2.crawler import FileCrawler
 from limnd2.experiment_factory import *
 import limnd2.lite_variant
+from limnd2.util.crawler import FileCrawler
 import limnd2.variant
 
+util_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'util')
+sys.path.append(os.path.abspath(util_path))
 
 def file(nd2file, fail=True):
     """Opens nd2 file, reads attributes, experiments and metadata and encodes those."""
     if fail:
+        print(f"Processing: {nd2file}")
         nd2 = limnd2.Nd2Reader(nd2file)
         att = nd2.imageAttributes
         exp = nd2.experiment
@@ -155,10 +160,19 @@ def file_attributes():
     desc = f.customDescription
     print('\n'.join(f'{item.name}: {item.valueAsText}' for item in desc))
 
+def read_test():
+    tiffs = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert"
+    c = FileCrawler(tiffs, ["tif", "tiff"], recursive=True)
+    start = datetime.now()
+    res = c.run()
+    end = datetime.now()
+    print(f"It took {end - start} seconds to find {len(res)} tiff files.")
+
+
 if __name__ == "__main__":
     #running selected tests
-    nd2files = "C:\\Users\\lukas.jirusek\\Desktop\\files\\tiff\\nd2_files\\"
     tst_data = ".\\tst\\tst_data\\"
+
 
     #file(tst_data + "save 'Z-Series 10x.nd2")
     #folder(tst_data)
@@ -171,6 +185,10 @@ if __name__ == "__main__":
 
     #folder_copy(tst_data)
 
+    #read_test()
+
+    
+    
     
 
     

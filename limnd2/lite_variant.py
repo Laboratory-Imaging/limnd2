@@ -1,6 +1,6 @@
 import io, struct, zlib, abc, logging
 from typing import Any, Callable, Final, cast, Union, Self, ClassVar
-from dataclasses import field, fields, asdict
+from dataclasses import MISSING, field, fields, asdict
 from collections.abc import Mapping
 
 logger = logging.getLogger("limnd2")
@@ -114,34 +114,34 @@ class ELxLiteVariantType:
                 return key
         return "NOT ELxLiteVariantType TYPE"
 
-def LV_field(default: Any, variant_type: ELxLiteVariantType):
-    if callable(default):
-        return field(default_factory=default, metadata={"LVType": variant_type})
+def LV_field(default_or_default_factory: Any, variant_type: ELxLiteVariantType):
+    if callable(default_or_default_factory):
+        return field(default_factory=default_or_default_factory, metadata={"LVType": variant_type})
     else:
-        return field(default=default,         metadata={"LVType": variant_type})
+        return field(default=default_or_default_factory,         metadata={"LVType": variant_type})
 
 
 _PARSERS: dict[int, Callable[[io.BytesIO], Any]] = {
-    ELxLiteVariantType.BOOL: _unpack_bool,  # 1
-    ELxLiteVariantType.INT32: _unpack_int32,  # 2
-    ELxLiteVariantType.UINT32: _unpack_uint32,  # 3
-    ELxLiteVariantType.INT64: _unpack_int64,  # 4
-    ELxLiteVariantType.UINT64: _unpack_uint64,  # 5
-    ELxLiteVariantType.DOUBLE: _unpack_double,  # 6
+    ELxLiteVariantType.BOOL:        _unpack_bool,  # 1
+    ELxLiteVariantType.INT32:       _unpack_int32,  # 2
+    ELxLiteVariantType.UINT32:      _unpack_uint32,  # 3
+    ELxLiteVariantType.INT64:       _unpack_int64,  # 4
+    ELxLiteVariantType.UINT64:      _unpack_uint64,  # 5
+    ELxLiteVariantType.DOUBLE:      _unpack_double,  # 6
     ELxLiteVariantType.VOIDPOINTER: _unpack_void_pointer,  # 7
-    ELxLiteVariantType.STRING: _unpack_string,  # 8
-    ELxLiteVariantType.BYTEARRAY: _unpack_bytearray,  # 9
+    ELxLiteVariantType.STRING:      _unpack_string,  # 8
+    ELxLiteVariantType.BYTEARRAY:   _unpack_bytearray,  # 9
 }
 
 _ENCODERS: dict[ELxLiteVariantType, Callable[[Any, io.BytesIO], None]] = {
-    ELxLiteVariantType.BOOL: _encode_bool,
-    ELxLiteVariantType.INT32: _encode_int32,
-    ELxLiteVariantType.UINT32: _encode_uint32,
-    ELxLiteVariantType.INT64: _encode_int64,
-    ELxLiteVariantType.UINT64: _encode_uint64,
-    ELxLiteVariantType.DOUBLE: _encode_double,
-    ELxLiteVariantType.STRING: _encode_string,
-    ELxLiteVariantType.BYTEARRAY: _encode_bytes,
+    ELxLiteVariantType.BOOL:        _encode_bool,
+    ELxLiteVariantType.INT32:       _encode_int32,
+    ELxLiteVariantType.UINT32:      _encode_uint32,
+    ELxLiteVariantType.INT64:       _encode_int64,
+    ELxLiteVariantType.UINT64:      _encode_uint64,
+    ELxLiteVariantType.DOUBLE:      _encode_double,
+    ELxLiteVariantType.STRING:      _encode_string,
+    ELxLiteVariantType.BYTEARRAY:   _encode_bytes,
 }
 
 
@@ -391,6 +391,9 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
         return writer.getvalue(), offsets
     return writer.getvalue()
 
+def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
+    return _decode_lv(data, 1)
+
 COUNT = 0
 def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
     global COUNT
@@ -409,11 +412,51 @@ def encode_lv(data: dict[str, Union[dict, tuple[Any, ELxLiteVariantType]]]) -> b
 
 
 class LVSerializable(abc.ABC, Mapping):
+    """
+    Parent class for dataclasses that can be encoded with LV encoder.
+    Each attribute has to have LV_field defined, either with encodeable type,
+    or with not encoded type, those are stored in NOT_ENCODED_TYPES attribute in this class.
+
+    Each child dataclass will have one of those 2 dataclass decorators:
+
+    @dataclass(frozen=True, kw_only=True, init=True)
+    If attributes in nd2 files match attributes in the dataclass 1:1, 
+    let dataclass initiate its own __init__
+    
+    @dataclass(frozen=True, kw_only=True, init=False)
+    If there are more attributes in the nd2 file (either by mistake - like "dZlow#1",
+    from XML file or some that can not have corresponsing field - like "sizeObjFullChip.cx"),
+    use this decarator, any extra field is stored in _unknown_fields and they can be
+    parsed in __post_init__.
+
+    """
+    _unknown_fields: dict[str, Any]
+
     NOT_ENCODED_TYPES: ClassVar[tuple[ELxLiteVariantType]] = (
         ELxLiteVariantType.UNKNOWN,
         ELxLiteVariantType.ENCODING_NOT_IMPLEMENTED,
         ELxLiteVariantType.DO_NOT_ENCODE
     )
+
+    
+    def __init__(self, **kwargs):
+        object.__setattr__(self, "_unknown_fields", {})
+        known = set()
+        for field in fields(self):
+            known.add(field.name)
+            default = field.default if field.default is not MISSING else field.default_factory()
+            object.__setattr__(self, field.name, default)
+            
+        for name, value in kwargs.items():
+            if name in known:
+                object.__setattr__(self, name, value)
+            else:
+                self._unknown_fields[name] = value
+
+        self.__post_init__()
+    
+    def __post_init__(self):
+        pass
 
     @staticmethod
     def _to_serializable_dict(obj: dict | Self, parent_path: str = "") -> dict:

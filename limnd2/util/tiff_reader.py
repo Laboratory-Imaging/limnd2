@@ -7,7 +7,7 @@ import numpy as np
 import warnings
 import math
 
-from .attributes import ImageAttributes
+from limnd2.attributes import ImageAttributes
 
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="tifffile")
 logging.getLogger('tifffile').setLevel(logging.ERROR)
