@@ -130,6 +130,10 @@ def main():
     print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Getting files.")
     files = crawler.run(get_seq_numbers, {"regexp" : parsed.regexp}, True)
 
+    if len(files) == 0:
+        print("ERROR: No tiff files matching given criteria were found.")
+        return
+
     print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Checking if all files exist.")
     min_max = check_files(files, parsed)
     if not min_max:
