@@ -84,10 +84,12 @@ class TiffReader:
             raise ValueError(f"Invalid page index, requested index: {page_index}, valid indices: 0 - {self.number_of_pages - 1}")
         page = self.pages_metadata.pages[page_index]
         shape = page.shape
+        # print("bps", page.tags["BitsPerSample"]) was also 16
+        
         bits = page.dtype.itemsize * 8
         return ImageAttributes(
             uiWidth = shape[1],
-            uiWidthBytes= shape[1] * (1 if len(shape) <= 2 else shape[2]),
+            uiWidthBytes= shape[1] * (1 if len(shape) <= 2 else shape[2]) * page.dtype.itemsize,
             uiHeight = shape[0],
             uiComp = 1 if len(shape) <= 2 else shape[2],                   
             uiBpcInMemory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8,   

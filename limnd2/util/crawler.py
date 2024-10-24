@@ -1,22 +1,26 @@
 from pathlib import Path
+import re
 from typing import Union, Callable, Any
 import os
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 class FileCrawler:
     _folder: Path
     _file_extensions: Union[list[str], None] = None
     _recursive: bool = True
+    _regexp: re.Pattern
 
     def __init__(self, folder: Union[str, Path], 
                  file_extensions: Union[str, list[str], None] = None,
-                 recursive: bool = False
+                 recursive: bool = False,
+                 regexp: re.Pattern | str | None = None
                 ):
         
         self.folder = folder
         self.file_extensions = file_extensions
         self.recursive = recursive
+        self.regexp = regexp
     
     @property
     def folder(self) -> Path:
@@ -61,6 +65,21 @@ class FileCrawler:
     def recursive(self, recursive: bool):
         self._recursive = recursive
 
+    @property
+    def regexp(self) -> re.Pattern:
+        return self._regexp
+    
+    @regexp.setter
+    def regexp(self, regexp: re.Pattern | str | None) -> None:
+        if regexp is None:
+            self._regexp = None
+        if isinstance(regexp, re.Pattern):
+            self._regexp = regexp
+        if isinstance(regexp, str):
+            self._regexp = re.compile(regexp)
+
+
+
 
     def run(self, 
             function: Callable[[Path, ...], Any] = None,                # function to call for every path # type: ignore
@@ -73,7 +92,7 @@ class FileCrawler:
         If function is not provided, this method will return list of found paths.
         If function is provided, it will return dictionary mapping each path to the result of the function call.
         Function is called like this: function(path, **function_args).
-        If use_concurrency is set to true, function will be run with ProcessPoolExecutor() for each path.
+        If use_concurrency is set to true, function will be run with ThreadPoolExecutor() for each path.
         """
 
         if not function_args:
@@ -86,7 +105,7 @@ class FileCrawler:
 
         if function:
             if use_concurrency:
-                with ProcessPoolExecutor() as executor:
+                with ThreadPoolExecutor() as executor:
                     if self._recursive:
                         result = self._recursive_search_with_function(function, function_args, executor)
                     else:
@@ -98,9 +117,9 @@ class FileCrawler:
                         
             else:
                 if self._recursive:
-                    result =self._recursive_search_with_function(function, function_args)
+                    result = self._recursive_search_with_function(function, function_args)
                 else:
-                    result =self._non_recursive_search_with_function(function, function_args)
+                    result = self._non_recursive_search_with_function(function, function_args)
         else:
             if self._recursive:
                 result = self._recursive_search_without_function() 
@@ -112,12 +131,14 @@ class FileCrawler:
     def _recursive_search_with_function(self, 
                                         function: Callable[[Path, ...], Any] = None,                # function to call for every path # type: ignore
                                         function_args: Union[dict[str, Any], None] = None,          # additional function arguments -> function(path, **function_args)
-                                        executor: Union[ProcessPoolExecutor, None] = None
+                                        executor: Union[ThreadPoolExecutor, None] = None
                                        ) -> dict[Path, Any]:
         
         result = {}
         for root, _, files in os.walk(self._folder):
             for file in files:
+                if self.regexp and not re.fullmatch(self.regexp, Path(file).stem):
+                    continue
                 file_path = Path(root) / file
                 if self._file_extensions and file_path.suffix.lower() not in self._file_extensions:
                     continue
@@ -132,19 +153,23 @@ class FileCrawler:
     def _non_recursive_search_with_function(self,
                                             function: Callable[[Path, ...], Any] = None,                # function to call for every path # type: ignore
                                             function_args: Union[dict[str, Any], None] = None,          # additional function arguments -> function(path, **function_args)  
-                                            executor: Union[ProcessPoolExecutor, None] = None
+                                            executor: Union[ThreadPoolExecutor, None] = None
                                            ) -> dict[Path, Any]:
         
         result = {}
-        for file_path in self._folder.glob('*'):
-            if file_path.is_file():
-                if self._file_extensions and file_path.suffix.lower() not in self._file_extensions:
+        for root, _, files in os.walk(self._folder):
+            for file in files:
+                if self.regexp and not re.fullmatch(self.regexp, Path(file).stem):
+                    continue
+                path = Path(root) / file
+                if self._file_extensions and path.suffix.lower() not in self._file_extensions:
                     continue
                 
                 if executor:
-                    result[file_path] = executor.submit(function, file_path, **function_args)
+                    result[path] = executor.submit(function, path, **function_args)
                 else:
-                    result[file_path] = function(file_path, **function_args)
+                    result[path] = function(path, **function_args)
+            break # non recursive - break after first loop
         return result
     
 
@@ -152,6 +177,8 @@ class FileCrawler:
         paths = []
         for root, _, files in os.walk(self._folder):
             for file in files:
+                if self.regexp and not re.fullmatch(self.regexp, Path(file).stem):
+                    continue
                 path = Path(root) / file
                 if self._file_extensions and path.suffix.lower() not in self._file_extensions:
                     continue
@@ -160,11 +187,28 @@ class FileCrawler:
         
     def _non_recursive_search_without_function(self) -> list[Path]:
         paths = []
-        for path in self._folder.glob('*'):
-            if path.is_file():
+        for root, _, files in os.walk(self._folder):
+            for file in files:
+                if self.regexp and not re.fullmatch(self.regexp, Path(file).stem):
+                    continue
+                path = Path(root) / file
+
                 if not self._file_extensions:
                     paths.append(path)    
                 elif path.suffix.lower() in self._file_extensions:
                     paths.append(path)
+            break # non recursive - break after first loop
         return paths
-                
+    
+    def timed_run(self, 
+            function: Callable[[Path, ...], Any] = None,             # type: ignore
+            function_args: Union[dict[str, Any], None] = None,       
+            use_concurrency: bool = False                            
+           ) -> tuple[Union[list[Path], dict[Path, Any]], float]:
+        
+        import datetime
+
+        start = datetime.datetime.now()
+        result = self.run(function, function_args, use_concurrency)
+        end = datetime.datetime.now()
+        return result, (end - start).total_seconds()

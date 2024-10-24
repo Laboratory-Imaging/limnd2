@@ -312,7 +312,12 @@ class LimBinaryIOChunker(BaseChunker):
             shape=self.imageAttributes.shape,        
             strides=self.imageAttributes.strides,            
         )
-        np.copyto(tmp, image)
+        if len(image.shape) == 2:
+            target_array = np.zeros(self.imageAttributes.shape, dtype=image.dtype) 
+            target_array[:, :, 0] = image
+            np.copyto(tmp, target_array)
+        else:
+            np.copyto(tmp, image)
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, struct.pack("d", acqtime), buffer))
 
     def readDownsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:

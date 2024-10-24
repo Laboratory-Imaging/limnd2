@@ -402,6 +402,9 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
         if self.Points and isinstance(self.Points, dict):
             object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points(self.Points))
 
+        if self.Points and isinstance(self.Points, list):
+            object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points({i: p for i, p in enumerate(self.Points)}))
+
         elif all(key in self._unknown_fields for key in ("dPosX", "dPosY", "dPosZ", "dPFSOffset", "pPosName")):
             object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points_XML(self._unknown_fields.pop("dPosX"),
                                                                                           self._unknown_fields.pop("dPosY"), 

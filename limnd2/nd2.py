@@ -292,6 +292,9 @@ class Nd2Writer:
 
     def setChunk(self, name : bytes|str, data : bytes|memoryview) -> None:
         return self._chunker.setChunk(name, data)
+    
+    def setImage(self, seq_index: int, data: bytes) -> None:
+        return self._chunker.setImage(seq_index, data)
 
     def finalize(self) -> None:
         return self._chunker.finalize()
