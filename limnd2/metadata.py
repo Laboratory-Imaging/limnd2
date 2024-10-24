@@ -236,7 +236,7 @@ class OpticalSpectrumPoint(LVSerializable):
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
     dTValue: float                              = LV_field(0.0,                                   LVType.DOUBLE)
 
-    # TODO DONE Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # DONE Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
     # uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)
 
@@ -785,10 +785,10 @@ class SampleSettings(LVSerializable):
     dScalingToIntensity: float              = LV_field(0.0,                 LVType.DOUBLE)
     dRelayLensZoom: float                   = LV_field(1.0,                 LVType.DOUBLE)
     dObjectiveToPinholeZoom: float          = LV_field(1.0,                 LVType.DOUBLE)
-    uiOpticalConfigs: type                  = LV_field(0,                   LVType.UNKNOWN)
-    dZOffset: type                          = LV_field(0,                   LVType.UNKNOWN)
-    dCalibration1To1: type                  = LV_field(0,                   LVType.UNKNOWN)
-    dCameraCalibrationZoom: type            = LV_field(0,                   LVType.UNKNOWN)
+    uiOpticalConfigs: type                  = LV_field(0,                   LVType.UINT32)
+    dZOffset: type                          = LV_field(0.0,                 LVType.DOUBLE)
+    dCalibration1To1: type                  = LV_field(0.0,                 LVType.DOUBLE)
+    dCameraCalibrationZoom: type            = LV_field(1.0,                 LVType.DOUBLE)
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
@@ -887,7 +887,7 @@ class SampleSettings(LVSerializable):
         return [item.sOpticalConfigName for item in self.sOpticalConfigs]
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class PictureMetadataPicturePlanes(LVSerializable):
     uiCount: int                                                = LV_field(0,                                                       LVType.UINT32)                   # == len(sPlane)
     uiCompCount: int                                            = LV_field(0,                                                       LVType.UINT32)    # the sum of uiCompCount of all sPlane members
@@ -902,14 +902,14 @@ class PictureMetadataPicturePlanes(LVSerializable):
     sStimulationSetting: dict                                   = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
 
     # Temporary storage
-    sPlane: None                                                = LV_field(None,                                                    LVType.DO_NOT_ENCODE) 
+    # sPlane: None                                                = LV_field(None,                                                    LVType.DO_NOT_ENCODE) 
     # some ND2 files use sPlane, some use sPlaneNew attribute, some have both,
     # in __post_init__ set sPlaneNew to sPlane at first, replace it with sPlaneNew if it exists
 
     def __post_init__(self):
-        if self.sPlane:
+        if "sPlane" in self._unknown_fields:
             planes = {}
-            for key, plane in self.sPlane.items():
+            for key, plane in self._unknown_fields["sPlane"].items():
                 planes[key] = PicturePlaneDesc(**plane)
             object.__setattr__(self, "sPlaneNew", planes)
 

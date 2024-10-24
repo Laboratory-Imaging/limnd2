@@ -394,6 +394,10 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
 def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
     return _decode_lv(data, 1)
 
+
+
+# TODO RETURN THIS FUNCIION TO ORIGINAL STATE, THIS IS FOR DEBUG ONLY
+# ALSO REMOVE _decode_lv_exp FUNCTION, COUNT
 COUNT = 0
 def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
     global COUNT
@@ -406,6 +410,9 @@ def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
         with open(file, "a", encoding="utf-8") as f:
             return _decode_lv_exp(data, 1, file = f)
     #return _decode_lv(data, 1)
+
+
+
 
 def encode_lv(data: dict[str, Union[dict, tuple[Any, ELxLiteVariantType]]]) -> bytes:
     return _encode_lv(data)

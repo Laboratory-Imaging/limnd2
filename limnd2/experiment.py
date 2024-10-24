@@ -89,26 +89,26 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
     dMinPeriodDiff: float           = LV_field(0,                         LVType.DOUBLE)
     dMaxPeriodDiff: float           = LV_field(0,                         LVType.DOUBLE)
     dAvgPeriodDiff: float           = LV_field(0,                         LVType.DOUBLE)
-    wsPhaseName: str                = LV_field("",                        LVType.UNKNOWN)
+    wsPhaseName: str                = LV_field("",                        LVType.STRING)
     sAutoFocusBeforePeriod: dict    = LV_field(dict,                      LVType.ENCODING_NOT_IMPLEMENTED)
     sAutoFocusBeforeCapture: dict   = LV_field(dict,                      LVType.ENCODING_NOT_IMPLEMENTED)
-    uiLoopType: ExperimentType      = LV_field(ExperimentType.eEtDefault, LVType.UNKNOWN)  
+    uiLoopType: ExperimentType      = LV_field(ExperimentType.eEtDefault, LVType.UINT32)  
     # 0..default type, 1..Stimulation, 2..Bleaching, 32..Incubation
 
-    uiGroup: int                    = LV_field(0,                         LVType.UNKNOWN)  
+    uiGroup: int                    = LV_field(0,                         LVType.UINT32)  
     # 0..no group, HIWORD(uiGroup)..Index of group from 1, LOWORD(uiGroup)..Index inside group
 
-    uiStimulationCount: int         = LV_field(0,                         LVType.UNKNOWN)
+    uiStimulationCount: int         = LV_field(0,                         LVType.UINT32)
     bDurationPref: bool             = LV_field(None,                      LVType.BOOL)     
     # If true, time loop will stop at the dDuration time regardless uiCount
 
-    pIncubationData: bytes          = LV_field(b'',                       LVType.UNKNOWN)  
-    # parameters for incubation device
+    pIncubationData: bytes          = LV_field(b'',                       LVType.UNKNOWN)       # looks unused
+    # parameters for incubation device 
 
-    uiIncubationDataSize: int       = LV_field(0,                         LVType.UNKNOWN)
+    uiIncubationDataSize: int       = LV_field(0,                         LVType.UNKNOWN)       # looks unused
     wsInterfaceName: str            = LV_field("",                        LVType.STRING)
-    uiTreatment: int                = LV_field(0,                         LVType.UNKNOWN)
-    dIncubationDuration: float      = LV_field(-1,                        LVType.UNKNOWN)
+    uiTreatment: int                = LV_field(0,                         LVType.UINT32)
+    dIncubationDuration: float      = LV_field(-1.0,                      LVType.DOUBLE)
 
     def __post_init__(self):
         object.__setattr__(self, 'uiLoopType', ExperimentType(self.uiLoopType))
@@ -184,7 +184,7 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     # probably error in NIS elements, should be duplicate of dZLow
     #dZLow_1: float                          = LV_field("",    LVType.DO_NOT_ENCODE)                # DONE
 
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
 
     #sZDevice: object                        = LV_field(None,  LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
@@ -283,13 +283,12 @@ class ExperimentSpectralLoopPoint(LVSerializable):
     wsCommandAfterCapture: str                  = LV_field("",                              LVType.STRING)
 
     # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
-    # store them in encoded fields above, by default, they will not be encoded back
-    # pPlaneDesc: PicturePlaneDesc                = LV_field(PicturePlaneDesc,                LVType.LEVEL)
+    # store them in encoded fields above, by default, they will not be encoded back 
+    # pPlaneDesc: PicturePlaneDesc                = LV_field(PicturePlaneDesc,                LVType.LEVEL)             # no clue where this belongs
 
     def __post_init__(self):
-        #object.__setattr__(self, "pPlaneDesc", PicturePlaneDesc(**self.pPlaneDesc))
         pass
-
+        
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
@@ -300,32 +299,49 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     bAskForFilter: bool                         = LV_field(False,                           LVType.BOOL)
     Points: list[ExperimentSpectralLoopPoint]   = LV_field(list,                            LVType.LEVEL)
 
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
+    # Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
     # store them in encoded fields above, by default, they will not be encoded back
-    # pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)
-    # pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
-    # szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
-    # szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
-    # pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)
+    # pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)                     # DONE ?
+    # szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE  those 4 are sorted out if all 4 exist             
+    # szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
+    # pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
+    # pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
 
     def __post_init__(self):
-        self.pPlanes: dict
-        self.Points: dict
 
-        planes_args = {**(self.pPlanes)}
-        """
-        if self.pPlaneDesc:
-            planes_args["sPlane"] = self.pPlaneDesc
-            object.__setattr__(self, "pPlaneDesc", None)
-        """
-
-        object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**planes_args))
+        object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**self.pPlanes))
         
         if isinstance(self.Points, dict):
             points = [ExperimentSpectralLoopPoint(**point) for point in self.Points.values()]
             object.__setattr__(self, "Points", points)
         
         object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**self.pPlanes))
+
+        if "pAutoFocus" in self._unknown_fields and "szCommandBeforeCapture" in self._unknown_fields and \
+            "szCommandAfterCapture" in self._unknown_fields and "pZStackPos" in self._unknown_fields:
+            foc: dict = self._unknown_fields.pop("pAutoFocus")
+            bef: dict = self._unknown_fields.pop("szCommandBeforeCapture")
+            aft: dict = self._unknown_fields.pop("szCommandAfterCapture")
+            zpos: dict = self._unknown_fields.pop("pZStackPos")
+
+            points = []
+            for key in sorted(foc.keys()):
+                point = ExperimentSpectralLoopPoint(pAutoFocus = foc[key],
+                                                    pZStackPos = zpos[key],
+                                                    wsCommandBeforeCapture = bef[key],
+                                                    wsCommandAfterCapture = aft[key])
+                points.append(point)
+                object.__setattr__(self, "Points", points)
+
+            
+        if "pPlaneDesc" in self._unknown_fields:
+            planes: dict = self._unknown_fields.pop("pPlaneDesc")
+            planes_dict = {k: PicturePlaneDesc(**v) for k, v in planes.items() }
+            object.__setattr__(self.pPlanes, "sPlaneNew", planes_dict)
+            
+
+
+
         
     @property
     def info(self) -> list[dict[str, any]]:
@@ -396,7 +412,7 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     # pPosName: object                        = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
 
     # sAutoFocusBeforeCapture: object         = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    # uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)
+    # uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)       # NO IDEA WHAT THIS IS
 
     def __post_init__(self):
         if self.Points and isinstance(self.Points, dict):

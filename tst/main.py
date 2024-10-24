@@ -60,7 +60,7 @@ def crawler(path):
     crawler = FileCrawler(path, file_extensions=["nd2"], recursive=True)
 
     start = datetime.datetime.now()
-    count = crawler.run(function=file, use_concurrency=True, function_args={"fail" : False})
+    count = crawler.run(function=file, use_concurrency=False, function_args={"fail" : False})
     end = datetime.datetime.now()
     normal = end - start
 
@@ -172,11 +172,12 @@ def read_test():
 if __name__ == "__main__":
     #running selected tests
     tst_data = ".\\tst\\tst_data\\"
+    server = "\\\\cork\\images"
 
 
     #file(tst_data + "save 'Z-Series 10x.nd2")
     #folder(tst_data)
-    crawler("\\\\cork\\images")
+    #crawler("\\\\cork\\images")
 
     #copy(tst_data + "underwater_bmx_generated_by_NIS.nd2")
     #copy(tst_data + "Matthias.nd2")
@@ -184,7 +185,7 @@ if __name__ == "__main__":
     #copy(tst_data + "3d object over time changing shape_crop.nd2")
 
     #folder_copy(tst_data)
-
+    crawler(server)
     #read_test()
 
     
