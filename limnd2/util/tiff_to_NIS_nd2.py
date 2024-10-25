@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 from pathlib import Path
 from limnd2.attributes import ImageAttributes
 from limnd2.experiment import ExperimentLevel
@@ -41,7 +41,7 @@ def get_nd2_experiments(experiments: list) -> ExperimentLevel:
         return None
     return create_experiment(*exps)
 
-    
+
 
 def tiff_to_NIS_nd2(data: dict, tiff_folder: Path, nd2_path: Path):
     attr = get_nd2_image_attributes(data["attributes"])
@@ -56,17 +56,26 @@ def tiff_to_NIS_nd2(data: dict, tiff_folder: Path, nd2_path: Path):
         nd2.experiment = exp    
 
         image_count = 0
-        start = datetime.datetime.now()
+        start = datetime.now()
         for frame in data["frames"]:
             tiff_file = tiff_folder / frame["files"][0]
             nd2.setImage(image_count, TiffReader(tiff_file).get_array())
             image_count += 1
 
             # print progress to terminal:
-            if image_count % 1 == 0 and len(data["frames"]) > 100:
-                print(f"[{datetime.datetime.now():%H:%M:%S.%f}] {image_count} / {len(data["frames"])} ({(image_count / len(data["frames"])) * 100:.1f} %)", image_count, "/", len(data["frames"]), end="")
-                if image_count:
-                    time_taken = datetime.datetime.now() - start
-                    completed = image_count / len(data["frames"])
-                    total_time_estimated = time_taken / completed
-                    print(f", estimated remaining: {total_time_estimated - time_taken}", end="\r")
+            if image_count % 10 == 0 and len(data["frames"]) > 100:
+                completed = image_count / len(data["frames"])
+                print(f"[{datetime.now():%H:%M:%S.%f}] {image_count} / {len(data['frames'])} ({completed * 100:.1f} %)", end="")
+
+                time_taken = datetime.now() - start
+                total_time_estimated = time_taken / completed
+                print(f", time left: {datetime(1, 1, 1, 0, 0, 0) + (total_time_estimated - time_taken):%H:%M:%S}", end="")
+                
+
+                if image_count % 100 == 0:
+                    estimated_total_file_size = (nd2_path.stat().st_size) / completed
+                    print(f", estimated file size: {estimated_total_file_size / (1024 ** 2):.2f} MB", end="")
+
+                
+                print(end="\r")
+        print()

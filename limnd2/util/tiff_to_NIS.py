@@ -59,104 +59,57 @@ def get_seq_numbers(path: Path, regexp: re.Pattern) -> tuple[int]:
     # converts filename to tuple of found numbers using the regexp
     # tile_x045_y000123_z12 -> (45, 123, 12)
     match = regexp.search(path.name)
-
     return tuple(int(num) for num in match.groups())
 
-def test():
-    
-    local = "F:\\tillfiles"
-    local_sample = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs"
-    smaller = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\smaller"
-    remote = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
+# example usage:
+#                                   folder                               regexp           matching groups     step       output file         output folder
+# tiff_to_NIS.py "F:\tillfiles"                              'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -z 3 -zstep 225 --json sequence.json
+# tiff_to_NIS.py "C:\\Users\\lukas.jirusek\\Desktop\\tiffs"  'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -t 3            -n sequence_python.nd2  -o ./output/
 
-    args = [f"{local}",
-            r"tile_x(\d+)_y(\d+)_z(\d+)",
-            "-mx",
-            "1",
-            "-my",
-            "2",
-            "-z",
-            "3",
-            "-zstep",
-            "225",
-            "-j",
-            "sequence.json"
-            ]
-    
-    args = None if len(sys.argv) >= 2 else args
+def logprint(msg: str):
+    print(f"{sys.argv[0].split("\\")[-1]} [{datetime.now():%H:%M:%S.%f}] {msg}")
 
-    parsed: PathParserArgs = tiff_to_nis_argparser(args=args)
-    if not parsed:
-        sys.exit(1)
-    crawler = FileCrawler(parsed.folder, 
-                          file_extensions = ["tif", "tiff"], 
-                          regexp = parsed.regexp)
-    print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Getting files.")
-    files = crawler.run(get_seq_numbers, {"regexp" : parsed.regexp}, True)
-
-    print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Checking if all files exist")
-    min_max = check_files(files, parsed)
-    if not min_max:
-        sys.exit(1)
-
-    print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Describing output.")
-    describe_json = tiff_to_json(files, parsed, min_max)
-
-    if parsed.json_output:
-        import json
-        outpath = Path(parsed.folder) / parsed.json_output
-        with open(outpath, "w") as f:
-            json.dump(describe_json, f, indent=4)
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Describe sequence written to {outpath}.")
-    
-    elif parsed.nd2_output:
-        outpath = Path(parsed.folder) / parsed.nd2_output
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Creating ND2 file.")
-        tiff_to_NIS_nd2(describe_json, outpath)
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] ND2 file created as {outpath}.")
-
-# sample usage:
-#                   folder           regexp                  matching groups     step        output
-# tiff_to_NIS.py "F:\tillfiles" 'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -z 3 -zstep 225 --json sequence.json
 
 def main():
     parsed: PathParserArgs = tiff_to_nis_argparser()
     if not parsed:
         sys.exit(1)
+    
     crawler = FileCrawler(parsed.folder, 
                           file_extensions = ["tif", "tiff"], 
                           regexp = parsed.regexp)
     
-    print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Getting files.")
+    logprint("Getting files.")
     files = crawler.run(get_seq_numbers, {"regexp" : parsed.regexp}, True)
 
     if len(files) == 0:
         print("ERROR: No tiff files matching given criteria were found.")
-        return
+        sys.exit(1)
 
-    print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Checking if all files exist.")
+    logprint("Checking if all files exist.")
     min_max = check_files(files, parsed)
     if not min_max:
         sys.exit(1)
 
+
+    logprint("Describing output.")
     describe_json = tiff_to_json(files, parsed, min_max)
+
 
     if parsed.json_output:
         import json
-        outpath = Path(parsed.folder) / parsed.json_output
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Describing output.")
+        outpath = Path(parsed.output_dir) / parsed.json_output
         with open(outpath, "w") as f:
             json.dump(describe_json, f, indent=4)
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Describe sequence written to {outpath}.")
+        logprint(f"Describe JSON created at {outpath.absolute()}.")
     
     elif parsed.nd2_output:
-        outpath = Path(parsed.folder) / parsed.nd2_output
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] Creating ND2 file.")
+        outpath = Path(parsed.output_dir) / parsed.nd2_output
+        logprint("Creating ND2 file.")
         tiff_to_NIS_nd2(describe_json, parsed.folder, outpath)
-        print(f"{sys.argv[0]} [{datetime.now():%H:%M:%S.%f}] ND2 file created as {outpath}.")
+        logprint(f"ND2 file created at {outpath.absolute()}.")
 
 
 if __name__ == "__main__":
-    #test()
     main()
     

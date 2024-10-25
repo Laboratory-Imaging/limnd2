@@ -39,6 +39,10 @@ class N:
     SHORT = "n"
     LONG = "nd2"
 
+class O:
+    SHORT = "o"
+    LONG = "output_dir"
+
 @dataclass
 class PathParserArgs:
     folder: Path = None
@@ -51,6 +55,7 @@ class PathParserArgs:
 
     json_output: str | None = None
     nd2_output: str | None = None
+    output_dir: str | None = None
 
 
 def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
@@ -130,6 +135,9 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
     # OR THIS
     parser.add_argument("-" + N.SHORT, "--" + N.LONG, type=str, help="Store output in separate ND2 files (takes longer time).")
 
+    # OPTIONALLY ALSO THIS
+    parser.add_argument("-" + O.SHORT, "--" + O.LONG, type=str, help="Directory to save the output file. Defaults to TIFF folder if not specified.")
+
     parsed_args = parser.parse_args(args)
 
     # parse multidimensional args (MX, MY, M)
@@ -198,9 +206,20 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
 
     folder_path = Path(parsed_args.folder)
     if not (folder_path.exists() and folder_path.is_dir()):
-        print(f"ERROR: Folder {folder_path} does not exist.")
+        print(f"ERROR: TIFF Folder {folder_path} does not exist.")
         parser.print_usage()
         return
+    
+    output_dir = folder_path        # by default wirte output to same folder as tiff files
+    if parsed_args.output_dir:
+        output_dir = Path(parsed_args.output_dir)
+        if output_dir.exists() and not output_dir.is_dir():
+            print(f"ERROR: Output folder {folder_path} is actually existing file.")
+            parser.print_usage()
+            return
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+
 
     return PathParserArgs(folder = folder_path,
                           regexp = regexp,
@@ -208,7 +227,8 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
                           time_step = tstep,
                           z_step = zstep,
                           json_output = parsed_args.__dict__[J.LONG],
-                          nd2_output =  parsed_args.__dict__[N.LONG])
+                          nd2_output =  parsed_args.__dict__[N.LONG],
+                          output_dir = output_dir)
                           
 
 if __name__ == "__main__":
