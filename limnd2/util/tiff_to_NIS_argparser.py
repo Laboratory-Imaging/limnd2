@@ -123,12 +123,12 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
     # IF THIS
     parser.add_argument("-" + Z.SHORT, "--" + Z.LONG, type=int, help="Capture group index for Z-stack.")
     # THEN THIS CAN EXIST
-    parser.add_argument("-" + ZSTEP.SHORT, "--" + ZSTEP.LONG, type=int, help="Z-stack step in micrometers.")      # TODO check units
+    parser.add_argument("-" + ZSTEP.SHORT, "--" + ZSTEP.LONG, type=int, help="Z-stack step in micrometers.")
 
     # IF THIS
     parser.add_argument("-" + T.SHORT, "--" + T.LONG, type=int, help="Capture group index for time index.")
     # THEN THIS CAN EXIST
-    parser.add_argument("-" + TSTEP.SHORT, "--" + TSTEP.LONG, type=int, help="Time step in miliseconds")          # TODO check units
+    parser.add_argument("-" + TSTEP.SHORT, "--" + TSTEP.LONG, type=int, help="Time step in miliseconds")
 
     # EITHER THIS
     parser.add_argument("-" + J.SHORT, "--" + J.LONG, type=str, help="Store output in sequence JSON file.")

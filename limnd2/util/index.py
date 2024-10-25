@@ -148,12 +148,10 @@ def _index_files(
     paths: Iterable[Path], recurse: bool = False, glob: str = "*.nd2", format="table"
 ) -> list[Record]:
 
-
     files = _gather_files(paths, recurse, glob)
     results = []
     error = False
 
-    # TODO maybe convert logic back to multithreading ?
     for file_path in files:
         try:
             results.append(index_file(file_path))

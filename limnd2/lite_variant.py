@@ -434,7 +434,7 @@ class LVSerializable(abc.ABC, Mapping):
     If there are more attributes in the nd2 file (either by mistake - like "dZlow#1",
     from XML file or some that can not have corresponsing field - like "sizeObjFullChip.cx"),
     use this decarator, any extra field is stored in _unknown_fields and they can be
-    parsed in __post_init__.
+    parsed in __post_init__, once they are parsed, they are removed.
 
     """
     _unknown_fields: dict[str, Any]
@@ -461,6 +461,14 @@ class LVSerializable(abc.ABC, Mapping):
                 self._unknown_fields[name] = value
 
         self.__post_init__()
+
+        """ # code for printing unparsed attributes
+        if self._unknown_fields:
+            for key, val in self._unknown_fields.items():
+                print(key, type(val), repr(val)[:100])
+            print()
+        """
+        
     
     def __post_init__(self):
         pass

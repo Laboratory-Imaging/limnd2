@@ -236,14 +236,15 @@ class OpticalSpectrumPoint(LVSerializable):
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
     dTValue: float                              = LV_field(0.0,                                   LVType.DOUBLE)
 
-    # DONE Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
-    # store them in encoded fields above, by default, they will not be encoded back
-    # uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)
+    """
+    Atributes found in XML variant, but not in LV
+    uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)    #DONE
+    """
 
     def __post_init__(self):
         object.__setattr__(self, "eType", OpticalSpectrumPointType(self.eType))
         if "uiWavelength" in self._unknown_fields:
-            object.__setattr__(self, "dWavelength", self._unknown_fields["uiWavelength"])
+            object.__setattr__(self, "dWavelength", self._unknown_fields.pop("uiWavelength"))
 
 @dataclass(frozen=True, kw_only=True)
 class OpticalSpectrum(LVSerializable):
@@ -430,9 +431,10 @@ class OpticalFilter(LVSerializable):
     m_EmissionSpectrum: OpticalSpectrum     = LV_field(OpticalSpectrum,                         LVType.LEVEL)
     m_MirrorSpectrum: OpticalSpectrum       = LV_field(OpticalSpectrum,                         LVType.LEVEL)
 
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
-    # store them in encoded fields above, by default, they will not be encoded back
-    # m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)
+    """
+    Atributes found in XML variant, but not in LV
+    m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)     # always "" ? 
+    """
 
     def __post_init__(self):
         object.__setattr__(self, "m_ePlacement", OpticalFilterPlacement(self.m_ePlacement))
@@ -442,6 +444,9 @@ class OpticalFilter(LVSerializable):
         object.__setattr__(self, "m_ExcitationSpectrum", OpticalSpectrum(**self.m_ExcitationSpectrum))
         object.__setattr__(self, "m_EmissionSpectrum", OpticalSpectrum(**self.m_EmissionSpectrum))
         object.__setattr__(self, "m_MirrorSpectrum", OpticalSpectrum(**self.m_MirrorSpectrum))
+
+        if "m_wcTiName" in self._unknown_fields:
+            self._unknown_fields.pop("m_wcTiName")
 
         
 @dataclass(frozen=True, kw_only=True)
@@ -615,30 +620,31 @@ class PicturePlaneDesc(LVSerializable):
 
 
     """
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
-    # store them in encoded fields above, by default, they will not be encoded back
+    Atributes found in XML variant, but not in LV
+    eModality: int                                  = LV_field(0,                                           LVType.UINT32)                      #DONE
 
-    sOpticalConfigName: str                         = LV_field("",                                          LVType.STRING)
-    sOpticalConfigFull: dict[str, str]              = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)
-
-    eModality: int                                  = LV_field(0,                                           LVType.UINT32)                  #DONE
-
-    sCameraSetting: dict[str, Any]                  = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)
-    _00: object = LV_field(None, LVType.DO_NOT_ENCODE)
-    _01: object = LV_field(None, LVType.DO_NOT_ENCODE)
+    sOpticalConfigName: str                         = LV_field("",                                          LVType.STRING)                      #TODO
+    sOpticalConfigFull: dict[str, str]              = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)    #TODO
+    sCameraSetting: dict[str, Any]                  = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)    #TODO
     """
 
     def __post_init__(self):
         if "sizeObjFullChip.cx" in self._unknown_fields:
-            object.__setattr__(self, "sizeObjFullChip_cx", self._unknown_fields["sizeObjFullChip.cx"])
+            object.__setattr__(self, "sizeObjFullChip_cx", self._unknown_fields.pop("sizeObjFullChip.cx"))
         if "sizeObjFullChip.cy" in self._unknown_fields:
-            object.__setattr__(self, "sizeObjFullChip_cy", self._unknown_fields["sizeObjFullChip.cy"])
+            object.__setattr__(self, "sizeObjFullChip_cy", self._unknown_fields.pop("sizeObjFullChip.cy"))
         if "eModality" in self._unknown_fields:
-            object.__setattr__(self, "uiModalityMask", PicturePlaneModalityFlags.from_modality(self._unknown_fields["eModality"]))
+            object.__setattr__(self, "uiModalityMask", PicturePlaneModalityFlags.from_modality(self._unknown_fields.pop("eModality")))
+
+        if "sOpticalConfigName" in self._unknown_fields: self._unknown_fields.pop("sOpticalConfigName")
+        if "sOpticalConfigFull" in self._unknown_fields: self._unknown_fields.pop("sOpticalConfigFull")
+        if "sCameraSetting" in self._unknown_fields: self._unknown_fields.pop("sCameraSetting")
 
         object.__setattr__(self, "uiModalityMask", PicturePlaneModalityFlags(self.uiModalityMask))
         object.__setattr__(self, "pFluorescentProbe", FluorescentProbe(**self.pFluorescentProbe))
         object.__setattr__(self, "pFilterPath", OpticalFilterPath(**self.pFilterPath))
+
+
 
     def to_serializable_dict(self, parent_path=""):
         result = super().to_serializable_dict(parent_path)
@@ -790,10 +796,11 @@ class SampleSettings(LVSerializable):
     dCalibration1To1: type                  = LV_field(0.0,                 LVType.DOUBLE)
     dCameraCalibrationZoom: type            = LV_field(1.0,                 LVType.DOUBLE)
 
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
-    # store them in encoded fields above, by default, they will not be encoded back
-    # eRepresentation: object                 = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
-    # sOpticalConfigName: object              = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)
+    """
+    Atributes found in XML variant, but not in LV
+    eRepresentation: object                 = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)    # always 0
+    sOpticalConfigName: object              = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)    # always empty string
+    """
 
     def __post_init__(self):
         self.pObjectiveSetting: dict
@@ -807,52 +814,12 @@ class SampleSettings(LVSerializable):
             else:
                 object.__setattr__(self, "sOpticalConfigs", None)
 
-    """
-    def __init__(   self,
-                    *,
-                    pCameraSetting: dict = {},
-                    pDeviceSetting: dict = {},
-                    pObjectiveSetting: dict = {},
-                    sOpticalConfigs: list|dict = [],
-                    sSpecSettings: str = "",
-                    uiModeFQ: int = 0,
-                    baScanArea: bytes = b"",
-                    matCameraToStage: np.ndarray = np.eye(2, 2),
-                    dExposureTime: float = 0.0,
-                    dScalingToIntensity: float = 0.0,
-                    dRelayLensZoom: float = 1.0,
-                    dObjectiveToPinholeZoom: float = 1.0,
-                    **kwargs):
-
-        object.__setattr__(self, 'pCameraSetting', pCameraSetting)
-        object.__setattr__(self, 'pDeviceSetting', pDeviceSetting)
-
-        if type(pObjectiveSetting) == dict:
-            object.__setattr__(self, 'pObjectiveSetting', ObjectiveSetting(**pObjectiveSetting))
-        elif isinstance(pObjectiveSetting, ObjectiveSetting):
-            object.__setattr__(self, 'pObjectiveSetting', pObjectiveSetting)
-
-        sOpticalConfigs_: list = []
-        if type(sOpticalConfigs) == dict:
-            for _, item in sOpticalConfigs.items():
-                if type(item) == dict:
-                    sOpticalConfigs_.append(SampleSettingsOC(**item))
-                elif type(item) == str:
-                    sOpticalConfigs_.append(SampleSettingsOC(sOpticalConfigName=item))
-
-        elif type(sOpticalConfigs) == list and all(isinstance(item, SampleSettingsOC) for item in sOpticalConfigs):
-            sOpticalConfigs = sOpticalConfigs_
-
-        object.__setattr__(self, 'sOpticalConfigs', sOpticalConfigs_)
-        object.__setattr__(self, 'sSpecSettings', sSpecSettings)
-        object.__setattr__(self, 'uiModeFQ', uiModeFQ)
-        object.__setattr__(self, 'baScanArea', baScanArea)
-        object.__setattr__(self, 'matCameraToStage', matCameraToStage)
-        object.__setattr__(self, 'dExposureTime', dExposureTime)
-        object.__setattr__(self, 'dScalingToIntensity', dScalingToIntensity)
-        object.__setattr__(self, 'dRelayLensZoom', dRelayLensZoom)
-        object.__setattr__(self, 'dObjectiveToPinholeZoom', dObjectiveToPinholeZoom)
-    """
+        if "eRepresentation" in self._unknown_fields:
+            self._unknown_fields.pop("eRepresentation")
+        
+        if "sOpticalConfigName" in self._unknown_fields:
+            self._unknown_fields.pop("sOpticalConfigName")
+                
 
     @property
     def cameraName(self) -> str:
@@ -901,17 +868,13 @@ class PictureMetadataPicturePlanes(LVSerializable):
     iStimulationSettingsCount: int                              = LV_field(0,                                                       LVType.INT32)
     sStimulationSetting: dict                                   = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
 
-    # Temporary storage
-    # sPlane: None                                                = LV_field(None,                                                    LVType.DO_NOT_ENCODE) 
-    # some ND2 files use sPlane, some use sPlaneNew attribute, some have both,
-    # in __post_init__ set sPlaneNew to sPlane at first, replace it with sPlaneNew if it exists
-
     def __post_init__(self):
         if "sPlane" in self._unknown_fields:
             planes = {}
             for key, plane in self._unknown_fields["sPlane"].items():
                 planes[key] = PicturePlaneDesc(**plane)
             object.__setattr__(self, "sPlaneNew", planes)
+            self._unknown_fields.pop("sPlane")
 
         if self.sPlaneNew:
             planes = {}
@@ -1023,38 +986,21 @@ class PictureMetadata(LVSerializable):
     dStgLgCT12: float                                   = LV_field(0.0,                                 LVType.DOUBLE)
     dStgLgCT22: float                                   = LV_field(1.0,                                 LVType.DOUBLE)
     # transformation matrix, more general than dAngle
+    
+    baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
 
-
-    # TODO Atributes found in XML variant, but not in LV, should be checked what is inside and possibly 
-    # store them in encoded fields above, by default, they will not be encoded back
-    # dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)
-    # sCameraSetting: dict[str, Any]                      = LV_field(dict,                                LVType.ENCODING_NOT_IMPLEMENTED)
-
-    # baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
-    # Inter-modality registration support - CLxOpticalPathsCorrectionTable serialized to LiteVariant
-
-    # uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)
-    # dPinholeRadius: float                               = LV_field(0.0,                                 LVType.DOUBLE)
 
     """
-    def __init__(self, **kwargs):
-        known = set()
-        for field in fields(self):
-            known.add(field.name)
-            default = field.default if field.default is not MISSING else field.default_factory()
-            object.__setattr__(self, field.name, default)
+    Atributes found in XML variant, but not in LV
+    # dPinholeRadius: float                               = LV_field(0.0,                                 LVType.DOUBLE)        #DONE
 
-        for name, value in kwargs.items():
-            if name in known:
-                object.__setattr__(self, name, value)
-            elif name.lower() == "uicon20(l":
-                object.__setattr__(self, "uicon20_L", value)
-            else:
-                raise ValueError(f"Unexpected argument: {name}")
-        
-        self.__post_init__()
+    # sCameraSetting: dict[str, Any]                      = LV_field(dict,                                LVType.UNKNOWN)       # only seems to hold default values
+    # dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)        # looks unused even in NIS
+
+    # Probably error in NIS? should be uiCol
+    # uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)        
     """
-        
+       
     
     def __post_init__(self):
         object.__setattr__(self, "eTimeSource", PictureMetadataTimeSourceType(self.eTimeSource))
@@ -1066,14 +1012,22 @@ class PictureMetadata(LVSerializable):
 
         object.__setattr__(self, "ePictureXAxis", PictureMetadataAxisDescription(self.ePictureXAxis))
         object.__setattr__(self, "ePictureYAxis", PictureMetadataAxisDescription(self.ePictureYAxis))
+
+        if "dPinholeRadius" in self._unknown_fields:
+            radius = self._unknown_fields.pop("dPinholeRadius")
+            for plane in self.sPicturePlanes.sPlaneNew.values():
+                object.__setattr__(plane, "dPinholeDiameter", radius)
+
+        if "dProjectiveMag" in self._unknown_fields:
+            self._unknown_fields.pop("dProjectiveMag")
+
+        if "uiCon20(L" in self._unknown_fields:
+            self._unknown_fields.pop("uiCon20(L")
+
+        if "sCameraSetting" in self._unknown_fields:
+            self._unknown_fields.pop("sCameraSetting")
+
         
-
-    def to_serializable_dict(self, parent_path=""):
-        result = super().to_serializable_dict(parent_path)
-        if "uicon20_L" in result:
-            result["uicon20(L"] = result.pop("uicon20_L")
-        return result
-
     @property
     def valid(self) -> bool:
         return self.sPicturePlanes.valid
