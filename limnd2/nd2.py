@@ -22,10 +22,10 @@ class Nd2Reader:
 
     def __init__(self, file : FileLikeObject, *, chunker_kwargs:dict = {}) -> None:
         self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_value, traceback):
         self.finalize()
 
@@ -133,20 +133,19 @@ class Nd2Reader:
     @functools.cached_property
     def generalImageInfo(self) -> dict[str, any]:
         ia = self.imageAttributes
-        stat = os.stat(self.filename)
         loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in self.experiment if 0 < exp_level.count ]) if self.experiment else ""
         filename = os.path.basename(self.filename)
         path = os.path.dirname(self.filename)
         bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
         frame_res = f"{ia.width} x {ia.height}"
         dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
-        file_size = _size_fmt(stat.st_size)
+        file_size = self.chunker.filesize
         frame_size = _size_fmt(ia.height*ia.widthBytes)
         z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0
         volume_size = _size_fmt(ia.height*ia.widthBytes*z_count)
-        sizes = f"{_size_fmt(stat.st_size)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
+        sizes = f"{_size_fmt(self.chunker.filesize)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
         calibration = f"{self.pictureMetadata.dCalibration:.3f} µm/px" if self.pictureMetadata.bCalibrated else "Uncalibrated"
-        mtime = f"{datetime.datetime.fromtimestamp(stat.st_mtime).strftime('%x %X')}"
+        mtime = f"{self.chunker.filelastmodified.strftime('%x %X')}"
         app_created = self.appInfo.software
         return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, file_size=file_size, frame_res=frame_res, volume_size=volume_size, sizes=sizes, calibration=calibration, mtime=mtime, app_created=app_created)
 
@@ -232,7 +231,7 @@ class Nd2Reader:
 
 class Nd2Writer:
     """
-    Very experimental nd2 file writer, will NOT ENCODE a lot of data (see usage of 
+    Very experimental nd2 file writer, will NOT ENCODE a lot of data (see usage of
     LVType.UNKNOWN, LVType.ENCODING_NOT_IMPLEMENTED), those will need further work, but should not be needed for working nd2 file.
     Also does not encode wellplates, binaries and ROIs at all, only supported chunks for writing are:
     Images, Attributes, Metadata and Experiments chunks,
@@ -246,7 +245,7 @@ class Nd2Writer:
 
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_value, traceback):
         self.finalize()
 
@@ -274,7 +273,7 @@ class Nd2Writer:
     def experiment(self, val: ExperimentLevel) -> None:
         if val != None:
             self._chunker.experiment = val
-    
+
 
     @property
     def pictureMetadata(self) -> PictureMetadata:
@@ -292,7 +291,7 @@ class Nd2Writer:
 
     def setChunk(self, name : bytes|str, data : bytes|memoryview) -> None:
         return self._chunker.setChunk(name, data)
-    
+
     def setImage(self, seq_index: int, data: bytes) -> None:
         return self._chunker.setImage(seq_index, data)
 

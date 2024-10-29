@@ -233,7 +233,7 @@ class OpticalSpectrumPointType(enum.IntEnum):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class OpticalSpectrumPoint(LVSerializable):
-    eType: OpticalSpectrumPointType             = LV_field(OpticalSpectrumPointType.eSptInvalid,  LVType.UINT32) 
+    eType: OpticalSpectrumPointType             = LV_field(OpticalSpectrumPointType.eSptInvalid,  LVType.UINT32)
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
     dTValue: float                              = LV_field(0.0,                                   LVType.DOUBLE)
 
@@ -436,7 +436,7 @@ class OpticalFilter(LVSerializable):
 
     """
     Atributes found in XML variant, but not in LV
-    m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)     # always "" ? 
+    m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)     # always "" ?
     """
 
     def __post_init__(self):
@@ -451,7 +451,7 @@ class OpticalFilter(LVSerializable):
         if "m_wcTiName" in self._unknown_fields:
             self._unknown_fields.pop("m_wcTiName")
 
-        
+
 @dataclass(frozen=True, kw_only=True)
 class OpticalFilterPath(LVSerializable):
     m_sDescr: str                       = LV_field("",          LVType.STRING)
@@ -552,7 +552,7 @@ class OpticalFilterPath(LVSerializable):
         for flt in self.m_pFilter:
             if flt.m_ePlacement in (OpticalFilterPlacement.eOfpExcitation, OpticalFilterPlacement.eOfpFilterTurret, OpticalFilterPlacement.eOfpLamp) and flt.m_ExcitationSpectrum.isValid:
                 if flt.m_ExcitationSpectrum.pPoint[0].eType == OpticalSpectrumPointType.eSptRaisingEdge and 2 == flt.m_ExcitationSpectrum.count:
-                    wl = (flt.m_ExcitationSpectrum.pPoint[0] + flt.m_ExcitationSpectrum.pPoint[1]) / 2
+                    wl = (flt.m_ExcitationSpectrum.pPoint[0].dWavelength + flt.m_ExcitationSpectrum.pPoint[1].dWavelength) / 2
                     d = 10000.0 if emission < wl else 0.0
                     d += abs(d-emission)
                     if d < dist:
@@ -656,7 +656,7 @@ class PicturePlaneDesc(LVSerializable):
         if "sizeObjFullChip_cx" in result:
             result["sizeObjFullChip.cx"] = result.pop("sizeObjFullChip_cx")
         return result
-    
+
 
 
     """
@@ -833,10 +833,10 @@ class SampleSettings(LVSerializable):
 
         if "eRepresentation" in self._unknown_fields:
             self._unknown_fields.pop("eRepresentation")
-        
+
         if "sOpticalConfigName" in self._unknown_fields:
             self._unknown_fields.pop("sOpticalConfigName")
-                
+
 
     @property
     def cameraName(self) -> str:
@@ -977,16 +977,16 @@ class PictureMetadata(LVSerializable):
     dAngle: float                                       = LV_field(0.0,                                 LVType.DOUBLE)
     sPicturePlanes: PictureMetadataPicturePlanes        = LV_field(PictureMetadataPicturePlanes,        LVType.LEVEL)
     dTemperK: float                                     = LV_field(293.0,                               LVType.DOUBLE)
-    # temperature (in Kelvins)  
+    # temperature (in Kelvins)
 
     dCalibration: float                                 = LV_field(-1,                                  LVType.DOUBLE)
-    # microns to pixel  
+    # microns to pixel
 
     dAspect: float                                      = LV_field(-1,                                  LVType.DOUBLE)
-    # pixel aspect ratio    
+    # pixel aspect ratio
 
     dCalibPrecision: float                              = LV_field(-1,                                  LVType.DOUBLE)
-    # calibration precision in microns  
+    # calibration precision in microns
 
     bCalibrated: bool                                   = LV_field(False,                               LVType.BOOL)
     # is calibration valid
@@ -1015,7 +1015,7 @@ class PictureMetadata(LVSerializable):
     dStgLgCT12: float                                   = LV_field(0.0,                                 LVType.DOUBLE)
     dStgLgCT22: float                                   = LV_field(1.0,                                 LVType.DOUBLE)
     # transformation matrix, more general than dAngle
-    
+
     baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
 
 
@@ -1027,17 +1027,17 @@ class PictureMetadata(LVSerializable):
     # dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)        # looks unused even in NIS
 
     # Probably error in NIS? should be uiCol
-    # uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)        
+    # uicon20_L: int                                      = LV_field(0,                                   LVType.UINT32)
     """
-       
-    
+
+
     def __post_init__(self):
         object.__setattr__(self, "eTimeSource", PictureMetadataTimeSourceType(self.eTimeSource))
         object.__setattr__(self, "sPicturePlanes", PictureMetadataPicturePlanes(**self.sPicturePlanes))
 
         if isinstance(self.pPhysicalVar, dict):
             physical = [PictureMetadataPhysicalQuantity(**p) for p in self.pPhysicalVar.values()]
-            object.__setattr__(self, "pPhysicalVar", physical)        
+            object.__setattr__(self, "pPhysicalVar", physical)
 
         object.__setattr__(self, "ePictureXAxis", PictureMetadataAxisDescription(self.ePictureXAxis))
         object.__setattr__(self, "ePictureYAxis", PictureMetadataAxisDescription(self.ePictureYAxis))
@@ -1056,7 +1056,7 @@ class PictureMetadata(LVSerializable):
         if "sCameraSetting" in self._unknown_fields:
             self._unknown_fields.pop("sCameraSetting")
 
-        
+
     @property
     def valid(self) -> bool:
         return self.sPicturePlanes.valid
@@ -1071,6 +1071,10 @@ class PictureMetadata(LVSerializable):
     @property
     def channels(self) -> list[PicturePlaneDesc]:
         return self.sPicturePlanes.sPlaneNew
+
+    @property
+    def channelNames(self) -> list[str]:
+        return [ "RGB" if 3 == plane.uiCompCount else plane.sDescription for plane in self.sPicturePlanes.sPlane ]
 
     @property
     def componentNames(self) -> list[str]:
@@ -1119,11 +1123,29 @@ class PictureMetadata(LVSerializable):
         except (AttributeError, IndexError):
             return ""
 
+    def refractiveIndex(self, plane: int = 0) -> float:
+        try:
+            return self.sampleSettings(plane).refractiveIndex
+        except (AttributeError, IndexError):
+            return -1.0
+
     def objectiveName(self, plane: int = 0) -> str:
         try:
             return self.sampleSettings(plane).objectiveName
         except (AttributeError, IndexError):
             return ""
+
+    def objectiveMagnification(self, plane: int = 0) -> float:
+        try:
+            return self.sampleSettings(plane).objectiveMagnification
+        except (AttributeError, IndexError):
+            return -1.0
+
+    def objectiveNumericAperture(self, plane: int = 0) -> float:
+        try:
+            return self.sampleSettings(plane).objectiveNumericAperture
+        except (AttributeError, IndexError):
+            return -1.0
 
     def opticalConfigurations(self, plane: int = 0) -> list[str]:
         try:
