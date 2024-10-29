@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import abc, io, itertools, re, struct, typing, zlib
+import abc, datetime, io, itertools, re, struct, typing, zlib
 import numpy as np
 from .attributes import ImageAttributes, NumpyArrayLike
 from .binary import BinaryRleMetadata, BinaryRasterMetadata
@@ -119,6 +119,16 @@ class BaseChunker(abc.ABC):
     @property
     @abc.abstractmethod
     def filename(self) -> str|None:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def filesize(self) -> int:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def filelastmodified(self) -> datetime.datetime:
         pass
 
     @property
@@ -244,7 +254,7 @@ class BaseChunker(abc.ABC):
             if spectralLoop is not None and self.pictureMetadata is not None:
                 spectralLoop.uLoopPars.replacePlanes(self.pictureMetadata.sPicturePlanes)
         return self._experiment
-    
+
     @experiment.setter
     def experiment(self, val: ExperimentLevel) -> None:
         if self.is_readonly:

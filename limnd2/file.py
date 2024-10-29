@@ -1,4 +1,4 @@
-import collections, mmap, os, struct, typing
+import collections, datetime, mmap, os, struct, typing
 from .base import *
 from .attributes import ImageAttributesCompression
 
@@ -29,10 +29,10 @@ def _ceil_align(x: int, alignment: int) -> int:
     return (x + (alignment - 1)) // alignment * alignment
 
 class LimBinaryIOChunker(BaseChunker):
-    def __init__(self, fh: typing.BinaryIO, 
-                 *, 
+    def __init__(self, fh: typing.BinaryIO,
+                 *,
                  nommap:bool = False,
-                 filename: str = None, 
+                 filename: str = None,
                  with_image_attributes: ImageAttributes|None = None,
                  with_binary_raster_metadata: BinaryRasterMetadata|None = None):
         super().__init__(with_image_attributes=with_image_attributes, with_binary_raster_metadata=with_binary_raster_metadata)
@@ -57,7 +57,7 @@ class LimBinaryIOChunker(BaseChunker):
             # 2. check the header and version
             self._version = self.read_file_header()
             if self._version is None:
-                raise RuntimeError("Not a valid ND2 file format")            
+                raise RuntimeError("Not a valid ND2 file format")
             # 3. read the chunk map
             self._chunkmap = self._read_chunkmap()
         else:
@@ -65,7 +65,7 @@ class LimBinaryIOChunker(BaseChunker):
                 if Nd2LoggerEnabled:
                     logger.info(f"Opening {self._filename} Chunker for APPENDING.")
                 # 1. check the header and version
-                self._version = self.read_file_header()                
+                self._version = self.read_file_header()
                 if self._version is None:
                     raise RuntimeError("Not a valid ND2 file format")
                 # 2. read the chunk map
@@ -85,6 +85,14 @@ class LimBinaryIOChunker(BaseChunker):
         return None if self._filename is None else os.path.abspath(self._filename)
 
     @property
+    def filesize(self) -> int:
+        return self._file_size()
+
+    @property
+    def filelastmodified(self) -> datetime.datetime:
+        return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime) if self._filename else datetime.now
+
+    @property
     def fileVersion(self) -> tuple[int, int]:
         return self._version
 
@@ -95,9 +103,9 @@ class LimBinaryIOChunker(BaseChunker):
     @property
     def is_readonly(self):
         return "rb" == self._fh.mode
-    
+
     @property
-    def is_appending(self):        
+    def is_appending(self):
         return "rb+" == self._fh.mode
 
     def _file_size(self):
@@ -107,17 +115,17 @@ class LimBinaryIOChunker(BaseChunker):
             fh.seek(curr)
             return size
         return self._mmap.size() if self._mmap else calcsize(self._fh)
-    
+
     def _currpos(self) -> int:
         return self._fh.tell()
-    
+
     def _get_buffer_and_offset(self, start : int, len : int) -> bytes:
         if self._mmap is None:
             self._fh.seek(start)
             return self._fh.read(len), 0
         else:
             return (self._mmap, start)
-           
+
     def _read_struct_at(self, s : struct.Struct, pos : int) -> bytes:
         if self._mmap is None:
             self._fh.seek(pos)
@@ -131,13 +139,13 @@ class LimBinaryIOChunker(BaseChunker):
             raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
         buffer, offset = self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
         return buffer[offset:offset+data_length]
-    
+
     def _get_chunk_buffer_and_offset(self, pos: int) -> tuple[bytes, int]:
         magic, name_length, data_length = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, pos))
         if magic != ND2_CHUNK_MAGIC:
-            raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")        
+            raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
         return self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
-    
+
     def _write_chunk(self, pos: int, name: bytes, data1: bytes|None, data2: bytes|None = None) -> tuple[int, int]:
         name_len = len(name)
         data1_len = len(data1) if data1 is not None else 0
@@ -181,7 +189,7 @@ class LimBinaryIOChunker(BaseChunker):
             raise None
         # data will now be something like Ver2.0, Ver3.0, etc.
         return (int(chr(data[3])), int(chr(data[5])))
-    
+
     def write_file_header(self, version: tuple[int, int]) -> None:
         self._fh.seek(0)
         data = f'Ver{version[0]}.{version[1]}'.encode('ascii')
@@ -202,7 +210,7 @@ class LimBinaryIOChunker(BaseChunker):
             raise UnsupportedChunkmapError(self._version, sig)
         self._original_chunkmap_chunk = self._read_chunk(self._original_chunkmap_offset)
         QQ = struct.Struct("QQ")
-        current_position = 0            
+        current_position = 0
         chunk_list = []
         while True:
             p = self._original_chunkmap_chunk.index(b"!", current_position) + 1
@@ -221,7 +229,7 @@ class LimBinaryIOChunker(BaseChunker):
         if Nd2LoggerEnabled:
             logger.debug(f"CHUNKMAP read: itemcount={len(chunk_map)}")
         return chunk_map
-    
+
     def _write_chunkmap(self, pos: int, chmap: collections.OrderedDict) -> bytes:
         map_len: int = 32 + 8
         for chunk_name in chmap.keys():
@@ -239,11 +247,11 @@ class LimBinaryIOChunker(BaseChunker):
         data += ND2_CHUNKMAP_SIGNATURE
         data += struct.pack("Q", pos)
         return data
-    
+
     @property
     def chunk_names(self) -> list[bytes]:
         return list(self._chunkmap.keys())
-    
+
     def _update_chunkmap(self, name: bytes, item: tuple) -> None:
         self._chunkmap[name] = item
         self._chunkmap_is_dirty = True
@@ -253,7 +261,7 @@ class LimBinaryIOChunker(BaseChunker):
             return self._chunkmap[name][0]
         except KeyError:
             raise NameNotInChunkmapError(name)
-    
+
     def chunk(self, name: bytes|str) -> bytes|memoryview|None:
         if type(name) == str:
             name = name.encode("ascii")
@@ -264,7 +272,7 @@ class LimBinaryIOChunker(BaseChunker):
             return self._read_chunk(pos)
         except NameNotInChunkmapError:
             return None
-        
+
     def setChunk(self, name: bytes|str, data: bytes|memoryview) -> None:
         if type(name) == str:
             name = name.encode("ascii")
@@ -273,7 +281,7 @@ class LimBinaryIOChunker(BaseChunker):
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
         self._set_metadata(name, data)
 
-    def image(self, seqindex: int) -> NumpyArrayLike:        
+    def image(self, seqindex: int) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
         pos = None
         try:
@@ -286,19 +294,19 @@ class LimBinaryIOChunker(BaseChunker):
             return np.ndarray(
                 buffer = buffer,
                 offset = 0,
-                dtype = self.imageAttributes.dtype,            
-                shape = self.imageAttributes.shape,        
+                dtype = self.imageAttributes.dtype,
+                shape = self.imageAttributes.shape,
                 strides = self.imageAttributes.strides,
-            )    
+            )
         elif self.imageAttributes.eCompression == ImageAttributesCompression.ictNone:
             buffer, offset = self._get_chunk_buffer_and_offset(pos)
             return np.ndarray(
                 buffer = buffer,
                 offset = offset + 8,
-                dtype = self.imageAttributes.dtype,            
-                shape = self.imageAttributes.shape,        
+                dtype = self.imageAttributes.dtype,
+                shape = self.imageAttributes.shape,
                 strides = self.imageAttributes.strides,
-            )            
+            )
         else:
             raise NotImplementedError("Compression ImageAttributesCompression.ictLossy (1) not supported")
 
@@ -309,11 +317,11 @@ class LimBinaryIOChunker(BaseChunker):
         tmp = np.ndarray(
             buffer=buffer,
             dtype=self.imageAttributes.dtype,
-            shape=self.imageAttributes.shape,        
-            strides=self.imageAttributes.strides,            
+            shape=self.imageAttributes.shape,
+            strides=self.imageAttributes.strides,
         )
         if len(image.shape) == 2:
-            target_array = np.zeros(self.imageAttributes.shape, dtype=image.dtype) 
+            target_array = np.zeros(self.imageAttributes.shape, dtype=image.dtype)
             target_array[:, :, 0] = image
             np.copyto(tmp, target_array)
         else:
@@ -327,19 +335,19 @@ class LimBinaryIOChunker(BaseChunker):
         buffer, offset = self._get_chunk_buffer_and_offset(pos)
         return np.ndarray(
             buffer=buffer, offset=offset,
-            dtype=attrs.dtype,            
-            shape=attrs.shape,        
+            dtype=attrs.dtype,
+            shape=attrs.shape,
             strides=attrs.strides,
         )
 
-    def setDownsampledImage(self, seqindex: int, downsize: int, image: NumpyArrayLike) -> None:    
+    def setDownsampledImage(self, seqindex: int, downsize: int, image: NumpyArrayLike) -> None:
         attrs = self.imageAttributes.makeDownsampled(downsize)
         name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
         buffer = bytearray(attrs.imageBytes)
         tmp = np.ndarray(
             buffer=buffer,
             dtype=attrs.dtype,
-            shape=attrs.shape,        
+            shape=attrs.shape,
             strides=attrs.strides
         )
         np.copyto(tmp, image)
@@ -352,7 +360,7 @@ class LimBinaryIOChunker(BaseChunker):
         pos = self._chunk_pos(binmeta.dataChunkName(seqindex))
         data = self._read_chunk(pos)
         return self.rleChunkToArray(data, no_obj_info)
-    
+
     def binaryRleData(self, binid: int, seqindex: int, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         try:
             return self.readBinaryRleData(binid, seqindex, no_obj_info)
@@ -378,7 +386,7 @@ class LimBinaryIOChunker(BaseChunker):
                     strides=binmeta.tileStrides
                 )[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start]
         return ret
-    
+
     def binaryRasterData(self, binid: int, seqindex: int) -> NumpyArrayLike:
         try:
             return self.readBinaryRasterData(binid, seqindex)
@@ -398,9 +406,9 @@ class LimBinaryIOChunker(BaseChunker):
             raise BinaryIdNotFountError(binid)
         for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
             for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
-                name = ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p % (binid, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)                
+                name = ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p % (binid, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
                 y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
-                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))                
+                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
                 buffer = bytearray(binmeta.tileBytes)
                 tile = np.ndarray(
                     buffer=buffer,
@@ -431,7 +439,7 @@ class LimBinaryIOChunker(BaseChunker):
                     strides=binmeta.tileStrides
                 )[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start]
         return ret
-    
+
     def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
@@ -441,7 +449,7 @@ class LimBinaryIOChunker(BaseChunker):
             for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
                 name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, downsize, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
                 y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
-                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))                
+                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
                 buffer = bytearray(binmeta.tileBytes)
                 tile = np.ndarray(
                     buffer=buffer,
@@ -479,7 +487,7 @@ class LimBinaryIOChunker(BaseChunker):
             if Nd2LoggerEnabled:
                 logger.debug(f"Deleting {self._filename}")
             os.unlink(fname)
-            return    
+            return
         self._fh.seek(self._original_chunkmap_offset)
         pos = self._currpos()
         self._write_chunk(pos, ND2_FILEMAP_SIGNATURE, self._original_chunkmap_chunk)
