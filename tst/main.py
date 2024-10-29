@@ -19,6 +19,7 @@ def file(nd2file, fail=True):
         att = nd2.imageAttributes
         exp = nd2.experiment
         met = nd2.pictureMetadata
+
         
         if att:
             att.to_lv()
@@ -172,13 +173,12 @@ def read_test():
 if __name__ == "__main__":
     #running selected tests
     tst_data = ".\\tst\\tst_data\\"
-    server = "\\\\cork\\images"
+    server = "\\\\cork\\assays\\"
 
 
     #file(tst_data + "save 'Z-Series 10x.nd2")
     #folder(tst_data)
-    #crawler("\\\\cork\\images")
-
+    
     #copy(tst_data + "underwater_bmx_generated_by_NIS.nd2")
     #copy(tst_data + "Matthias.nd2")
     #copy(tst_data + "multipage.nd2")

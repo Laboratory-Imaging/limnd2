@@ -221,102 +221,6 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
             output[name] = value
     return output
 
-def _decode_lv_exp(data: bytes|memoryview|io.BytesIO, _count: int, depth = 0, file=None) -> dict[str, Any]:
-    # FUNCTION FOR DEBUGGING TYPES
-    # you can provide it a file and into this file it will output each attribute decoded by 
-    # the decode and THE TYPE of each attribute
-
-    output: dict[str, Any] = {}
-    if not data:
-        return output
-
-    stream = data if isinstance(data, io.BytesIO) else io.BytesIO(data)
-    for _ in range(_count):
-        curs = stream.tell()
-
-        name, data_type = _chunk_name_and_dtype(stream)
-
-
-        def get_enum_name_by_value(value, enum_class):
-            for key, val in enum_class.__dict__.items():
-                if val == value:
-                    return key
-            return None
-
-
-        if data_type == ELxLiteVariantType.COMPRESS:
-            stream.seek(10, 1)
-            deflated = zlib.decompress(stream.read())
-            return _decode_lv_exp(deflated, 1)
-
-        if data_type == -1:
-            # never seen this, but it's in the sdk
-            break  # pragma: no cover
-
-        value: Any
-        if data_type == ELxLiteVariantType.LEVEL:
-            item_count, length = strctIQ.unpack(stream.read(strctIQ.size))
-            next_data_length = stream.read(length - (stream.tell() - curs))
-
-            if file:
-                print(f'{"    " * depth}"{name}": {"{"}', file=file)
-            val: dict = _decode_lv_exp(next_data_length, item_count, depth+1, file)
-            if file:
-                print(f'{"    " * depth}{"}"},', file=file)
-
-            stream.seek(item_count * 8, 1)
-            # levels with a single "" key are actually lists
-            if len(val) == 1 and "" in val:
-                value = val[""]
-                if not isinstance(value, list):
-                    value = [value]
-                value = {f"i{n:010}": x for n, x in enumerate(value)}
-            else:
-                value = val
-
-        elif data_type in _PARSERS:
-            value = _PARSERS[data_type](stream)
-        else:
-            # also never seen this
-            value = None  # pragma: no cover
-        if name == "" and name in output:
-            if not isinstance(output[name], list):
-                output[name] = [output[name]]
-            cast(list, output[name]).append(value)
-            if type(value) == str:
-                value = '"' + value + '"'
-            pad = 70 - len(name) - len("    " * depth)
-            if data_type != 11:
-                value = str(value).replace("\n", "\\n").replace("\r", "") + ","
-                if file:
-                    print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
-
-        elif name in output:
-            i = 1
-            uname = f'{name}#{i}'
-            while uname in output:
-                i += 1
-                uname = f'{name}#{i}'
-            output[uname] = value
-            if type(value) == str:
-                value = '"' + value + '"'
-            pad = 70 - len(name) - len("    " * depth)
-            if data_type != 11:
-                value = str(value).replace("\n", "\\n").replace("\r", "") + ","
-                if file:
-                    print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
-
-        else:
-            output[name] = value
-            if type(value) == str:
-                value = '"' + value + '"'
-            pad = 70 - len(name) - len("    " * depth)
-            if data_type != 11:
-                value = str(value).replace("\n", "\\n").replace("\r", "") + ","
-                if file:
-                    print(f'{"    " * depth}"{name}":{" " * pad}({value:<14}ELxLiteVariantType.{get_enum_name_by_value(data_type, ELxLiteVariantType)}),', file=file)
-
-    return output
 
 def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
     def header_encode(attribute: str, LVType: ELxLiteVariantType, writer: io.BytesIO) -> None:
@@ -396,21 +300,8 @@ def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
 
 
 
-# TODO RETURN THIS FUNCIION TO ORIGINAL STATE, THIS IS FOR DEBUG ONLY
-# ALSO REMOVE _decode_lv_exp FUNCTION, COUNT
-COUNT = 0
 def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
-    global COUNT
-    file = "decoder_types.txt"
-    if COUNT == 0:
-        COUNT = 1
-        with open(file, "w", encoding="utf-8") as f:
-            return _decode_lv_exp(data, 1, file = f)
-    else:
-        with open(file, "a", encoding="utf-8") as f:
-            return _decode_lv_exp(data, 1, file = f)
-    #return _decode_lv(data, 1)
-
+    return _decode_lv(data, 1)
 
 
 

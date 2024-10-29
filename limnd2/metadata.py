@@ -858,9 +858,9 @@ class SampleSettings(LVSerializable):
 class PictureMetadataPicturePlanes(LVSerializable):
     uiCount: int                                                = LV_field(0,                                                       LVType.UINT32)                   # == len(sPlane)
     uiCompCount: int                                            = LV_field(0,                                                       LVType.UINT32)    # the sum of uiCompCount of all sPlane members
-    sPlaneNew: dict[str, PicturePlaneDesc]                      = LV_field(dict,                                                    LVType.LEVEL) 
+    sPlaneNew: list[PicturePlaneDesc]                           = LV_field(dict,                                                    LVType.LEVEL) 
     uiSampleCount: int                                          = LV_field(0,                                                       LVType.UINT32) 
-    sSampleSetting: dict[str, SampleSettings]                   = LV_field(dict,                                                    LVType.LEVEL) 
+    sSampleSetting: list[SampleSettings]                        = LV_field(dict,                                                    LVType.LEVEL) 
     sDescription: str                                           = LV_field("",                                                      LVType.STRING) 
     eRepresentation: PictureMetadataPicturePlanesRepresentation = LV_field(PictureMetadataPicturePlanesRepresentation.eRepDefault,  LVType.UINT32)
     iExperimentSettingsCount: int                               = LV_field(0,                                                       LVType.INT32)
@@ -869,25 +869,26 @@ class PictureMetadataPicturePlanes(LVSerializable):
     sStimulationSetting: dict                                   = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
 
     def __post_init__(self):
-        if "sPlane" in self._unknown_fields:
-            planes = {}
-            for key, plane in self._unknown_fields["sPlane"].items():
-                planes[key] = PicturePlaneDesc(**plane)
+
+        if self.sPlaneNew and isinstance(self.sPlaneNew, dict):
+            planes = []
+            for key in sorted(self.sPlaneNew):
+                planes.append(PicturePlaneDesc(**self.sPlaneNew[key]))
+            object.__setattr__(self, "sPlaneNew", planes)
+
+        if "sPlane" in self._unknown_fields and isinstance(self._unknown_fields["sPlane"], dict):
+            planes = []
+            for key in sorted(self._unknown_fields["sPlane"]):
+                planes.append(PicturePlaneDesc(**self._unknown_fields["sPlane"][key]))
             object.__setattr__(self, "sPlaneNew", planes)
             self._unknown_fields.pop("sPlane")
 
-        if self.sPlaneNew:
-            planes = {}
-            for key, plane in self.sPlaneNew.items():
-                planes[key] = PicturePlaneDesc(**plane)
-            object.__setattr__(self, "sPlaneNew", planes)
 
-        object.__setattr__(self, "sPlane", None)
-
-        ssettings = {}
-        for key, setting in self.sSampleSetting.items():
-            ssettings[key] = SampleSettings(**setting)
-        object.__setattr__(self, "sSampleSetting", ssettings)
+        if isinstance(self.sSampleSetting, dict):
+            ssettings = []
+            for setting in self.sSampleSetting.values():
+                ssettings.append(SampleSettings(**setting))
+            object.__setattr__(self, "sSampleSetting", ssettings)
 
         object.__setattr__(self, "eRepresentation", PictureMetadataPicturePlanesRepresentation(self.eRepresentation))
 
@@ -1006,16 +1007,16 @@ class PictureMetadata(LVSerializable):
         object.__setattr__(self, "eTimeSource", PictureMetadataTimeSourceType(self.eTimeSource))
         object.__setattr__(self, "sPicturePlanes", PictureMetadataPicturePlanes(**self.sPicturePlanes))
 
-        self.pPhysicalVar : dict
-        physical = [PictureMetadataPhysicalQuantity(**p) for p in self.pPhysicalVar.values()]
-        object.__setattr__(self, "pPhysicalVar", physical)        
+        if isinstance(self.pPhysicalVar, dict):
+            physical = [PictureMetadataPhysicalQuantity(**p) for p in self.pPhysicalVar.values()]
+            object.__setattr__(self, "pPhysicalVar", physical)        
 
         object.__setattr__(self, "ePictureXAxis", PictureMetadataAxisDescription(self.ePictureXAxis))
         object.__setattr__(self, "ePictureYAxis", PictureMetadataAxisDescription(self.ePictureYAxis))
 
         if "dPinholeRadius" in self._unknown_fields:
             radius = self._unknown_fields.pop("dPinholeRadius")
-            for plane in self.sPicturePlanes.sPlaneNew.values():
+            for plane in self.sPicturePlanes.sPlaneNew:
                 object.__setattr__(plane, "dPinholeDiameter", radius)
 
         if "dProjectiveMag" in self._unknown_fields:

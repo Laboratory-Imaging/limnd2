@@ -3,6 +3,7 @@ from pathlib import Path
 from limnd2.attributes import ImageAttributes
 from limnd2.experiment import ExperimentLevel
 from limnd2.experiment_factory import *
+from limnd2.metadata import PictureMetadata
 from limnd2.nd2 import Nd2Writer
 from limnd2.util.tiff_reader import TiffReader
 
@@ -53,7 +54,8 @@ def tiff_to_NIS_nd2(data: dict, tiff_folder: Path, nd2_path: Path):
 
     with Nd2Writer(nd2_path) as nd2:
         nd2.imageAttributes = attr
-        nd2.experiment = exp    
+        nd2.experiment = exp
+        nd2.pictureMetadata = PictureMetadata()         # currently empty metadata, in the future maybe you can get some data from tiff metadata ?
 
         image_count = 0
         start = datetime.now()

@@ -293,8 +293,6 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     """
 
     def __post_init__(self):
-
-        
         if isinstance(self.Points, dict):
             points = [ExperimentSpectralLoopPoint(**point) for point in self.Points.values()]
             object.__setattr__(self, "Points", points)
@@ -428,10 +426,10 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     def info(self) -> list[dict[str, any]]:
         ret = []
         for i in range(self.uiCount):
-            name = self.pPosName[i] if i < len(self.pPosName) and self.pPosName[i] else f"#{i}"
-            d = dict(Name=name, X=self.dPosX[i], Y=self.dPosY[i])
-            if self.bUseZ and self.uiCount == len(self.dPosZ):
-                d['Z'] = self.dPosZ[i]
+            name = self.Points[i].dPosName if i < len(self.Points) and self.Points[i].dPosName else f"#{i}"
+            d = dict(Name=name, X=self.Points[i].dPosX, Y=self.Points[i].dPosY)
+            if self.bUseZ and self.uiCount == len(self.Points):
+                d['Z'] = self.Points[i].dPosZ
             ret.append(d)
         return ret
 
