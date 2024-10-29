@@ -1,8 +1,7 @@
 from copy import deepcopy
 from pathlib import Path
-from limnd2.util.tiff_to_NIS_argparser import PathParserArgs
-from limnd2.util.tiff_reader import TiffReader
-
+from tiff_to_NIS_argparser import PathParserArgs
+from tiff_reader import TiffReader
 
 def get_attributes(sample_file: Path, counts: list[int]) -> dict:
     attributes_template = {

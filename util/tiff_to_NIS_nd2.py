@@ -5,7 +5,7 @@ from limnd2.experiment import ExperimentLevel
 from limnd2.experiment_factory import *
 from limnd2.metadata import PictureMetadata
 from limnd2.nd2 import Nd2Writer
-from limnd2.util.tiff_reader import TiffReader
+from tiff_reader import TiffReader
 
 #from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 #import multiprocessing

@@ -1,3 +1,5 @@
 numpy
+
+# only required for util scripts
 tifffile
 imagecodecs

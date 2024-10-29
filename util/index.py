@@ -4,7 +4,6 @@ import argparse
 import json
 import sys
 from argparse import RawTextHelpFormatter
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import (

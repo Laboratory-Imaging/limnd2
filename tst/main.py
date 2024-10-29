@@ -5,8 +5,8 @@ import os, sys
 
 from limnd2.experiment_factory import *
 import limnd2.lite_variant
-from limnd2.util.crawler import FileCrawler
 import limnd2.variant
+from util.crawler import FileCrawler
 
 util_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'util')
 sys.path.append(os.path.abspath(util_path))
@@ -185,17 +185,10 @@ if __name__ == "__main__":
     #copy(tst_data + "3d object over time changing shape_crop.nd2")
 
     #folder_copy(tst_data)
-    #crawler(server)
+    crawler(tst_data)
     #read_test()
 
-    nd2 = limnd2.Nd2Reader(tst_data + "10x eating 2.tmp.nd2")
-    print(nd2.generateLoopIndexes())
-    for e in nd2.experiment:
-        print(e.count)
-        print(e.shortName)
-        print(e.name)
-    print("Channel Info:", [f"{ch.sDescription} (Em: {ch.emissionWavelengthNm:.0f}nm, Ex: {ch.excitationWavelengthNm:.0f}nm)" for ch in nd2.pictureMetadata.channels])
-
+   
     
     
     

@@ -2,12 +2,12 @@ from datetime import datetime
 import itertools
 from pathlib import Path
 import re
-from limnd2.util.crawler import FileCrawler
-from limnd2.util.tiff_to_NIS_json import tiff_to_json
-from limnd2.util.tiff_to_NIS_argparser import tiff_to_nis_argparser, PathParserArgs
+from crawler import FileCrawler
+from tiff_to_NIS_json import tiff_to_json
+from tiff_to_NIS_argparser import tiff_to_nis_argparser, PathParserArgs
 import sys
 
-from limnd2.util.tiff_to_NIS_nd2 import tiff_to_NIS_nd2
+from tiff_to_NIS_nd2 import tiff_to_NIS_nd2
 
 def compare_speed():
     local = "F:\\tillfiles"
@@ -70,7 +70,7 @@ def logprint(msg: str):
     print(f"{sys.argv[0].split("\\")[-1]} [{datetime.now():%H:%M:%S.%f}] {msg}")
 
 
-def main():
+def tiff_to_NIS():
     parsed: PathParserArgs = tiff_to_nis_argparser()
     if not parsed:
         sys.exit(1)
@@ -111,5 +111,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    tiff_to_NIS()
     
