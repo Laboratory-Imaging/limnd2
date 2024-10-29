@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime, enum, numpy as np, operator
+from functools import cached_property
 from typing import Any
 from dataclasses import MISSING, dataclass, field, fields
 
@@ -250,10 +251,11 @@ class OpticalSpectrumPoint(LVSerializable):
 class OpticalSpectrum(LVSerializable):
     uiCount: int                                = LV_field(0,           LVType.UINT32)
     bPoints: bool                               = LV_field(False,       LVType.BOOL)
-    pPoint: dict[str, OpticalSpectrumPoint]     = LV_field(dict,        LVType.LEVEL)
+    pPoint: list[OpticalSpectrumPoint]          = LV_field(list,        LVType.LEVEL)
 
     def __post_init__(self):
-        object.__setattr__(self, "pPoint", {k: OpticalSpectrumPoint(**v) for k, v in self.pPoint.items()})
+        if isinstance(self.pPoint, dict):
+            object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**self.pPoint[k]) for k in sorted(self.pPoint)])
            
     @property
     def isValid(self) -> bool:
@@ -276,7 +278,7 @@ class OpticalSpectrum(LVSerializable):
             while tmax == self.pPoint[ilast].dTValue:
                ilast += 1
             ilast -= 1
-            peak = (self.pPoint[ifirst].wavelength + self.pPoint[ilast].wavelength) / 2;
+            peak = (self.pPoint[ifirst].dWavelength + self.pPoint[ilast].dWavelength) / 2
             while ilast < len(self.pPoint) and halftmax < self.pPoint[ilast].dTValue:
                 ilast += 1
             while 0 <= ifirst and halftmax < self.pPoint[ifirst].dTValue:
@@ -287,9 +289,10 @@ class OpticalSpectrum(LVSerializable):
         else:
             for index, pt in enumerate(self.pPoint):
                 if pt.eType == OpticalSpectrumPointType.eSptRaisingEdge and index + 1 < len(self.pPoint) and self.pPoint[index + 1].eType == OpticalSpectrumPointType.eSptFallingEdge:
-                   return (pt.wavelength + self.pPoint[index + 1].wavelength) / 2, pt.dWavelength, self.pPoint[index + 1].wavelength
+                   return (pt.dWavelength + self.pPoint[index + 1].dWavelength) / 2, pt.dWavelength, self.pPoint[index + 1].dWavelength
                 elif pt.eType == OpticalSpectrumPointType.eSptPeak:
                     return pt.dWavelength, pt.dWavelength, pt.dWavelength
+            return 0, 0, 0      # more error handling?
 
     def singleWavelength(self) -> float:
         try:
@@ -715,7 +718,21 @@ class PicturePlaneDesc(LVSerializable):
         if self.excitationWavelengthNm is None and self.emissionWavelengthNm is not None and self.pFilterPath.isValid:
             object.__setattr__(self, 'excitationWavelengthNm', self.pFilterPath.closestExcitationWavelength(self.emissionWavelengthNm))
     """
-            
+    @cached_property
+    def emissionWavelengthNm(self) -> float:
+        if self.pFluorescentProbe.m_EmissionSpectrum.isValid:
+            return self.pFluorescentProbe.m_EmissionSpectrum.singleWavelength()
+        elif self.pFilterPath.isValid:
+            return self.pFilterPath.meanEmissionWavelength()
+        return 0.0
+    
+    @cached_property
+    def excitationWavelengthNm(self) -> float:
+        if self.pFluorescentProbe.m_ExcitationSpectrum.isValid:
+            return self.pFluorescentProbe.m_ExcitationSpectrum.singleWavelength()
+        elif self.emissionWavelengthNm is not None and self.pFilterPath.isValid:
+            return self.pFilterPath.closestExcitationWavelength(self.emissionWavelengthNm)
+        return 0.0
             
     @property
     def isBrightfield(self) -> bool:
@@ -851,16 +868,18 @@ class SampleSettings(LVSerializable):
 
     @property
     def opticalConfigurations(self) -> list[str]:
-        return [item.sOpticalConfigName for item in self.sOpticalConfigs]
+        if not self.sOpticalConfigs:
+            return []
+        return [item.sOpticalConfigName for item in self.sOpticalConfigs]        
 
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class PictureMetadataPicturePlanes(LVSerializable):
     uiCount: int                                                = LV_field(0,                                                       LVType.UINT32)                   # == len(sPlane)
     uiCompCount: int                                            = LV_field(0,                                                       LVType.UINT32)    # the sum of uiCompCount of all sPlane members
-    sPlaneNew: list[PicturePlaneDesc]                           = LV_field(dict,                                                    LVType.LEVEL) 
+    sPlaneNew: list[PicturePlaneDesc]                           = LV_field(list,                                                    LVType.LEVEL) 
     uiSampleCount: int                                          = LV_field(0,                                                       LVType.UINT32) 
-    sSampleSetting: list[SampleSettings]                        = LV_field(dict,                                                    LVType.LEVEL) 
+    sSampleSetting: list[SampleSettings]                        = LV_field(list,                                                    LVType.LEVEL) 
     sDescription: str                                           = LV_field("",                                                      LVType.STRING) 
     eRepresentation: PictureMetadataPicturePlanesRepresentation = LV_field(PictureMetadataPicturePlanesRepresentation.eRepDefault,  LVType.UINT32)
     iExperimentSettingsCount: int                               = LV_field(0,                                                       LVType.INT32)
@@ -913,14 +932,23 @@ class PictureMetadataPicturePlanes(LVSerializable):
         col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
         settings = self.sSampleSetting
         for plane in self.sPlaneNew:
-            setting = settings[plane.uiSampleIndex]
-            camera = setting.cameraName or "Unknown camera"
-            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value=','.join(oc for oc in setting.opticalConfigurations)))
-            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Microscope name:", value=setting.microscopeName))
-            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective name:", value=setting.objectiveName))
-            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value=setting.objectiveMagnification))
-            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value=setting.objectiveNumericAperture))
-            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value=setting.refractiveIndex))
+            setting = settings[plane.uiSampleIndex] if 0 <= plane.uiSampleIndex < len(settings) else None
+            if setting:
+                camera = setting.cameraName or "Unknown camera"
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value=','.join(oc for oc in setting.opticalConfigurations)))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Microscope name:", value=setting.microscopeName))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective name:", value=setting.objectiveName))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value=setting.objectiveMagnification))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value=setting.objectiveNumericAperture))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value=setting.refractiveIndex))
+            else:
+                camera = "Unknown camera"
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value='N/A'))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Microscope name:", value='N/A'))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective name:", value='N/A'))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value='N/A'))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value='N/A'))
+                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value='N/A'))
         rows.sort(key=lambda row: row["camera"])
         return dict(coldefs=col_defs, groups=create_treeview_grouping(rows, ['camera', 'channel']), rowdata=rows)
 

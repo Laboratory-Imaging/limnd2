@@ -444,7 +444,7 @@ class WellplateDesc:
 
     @staticmethod
     def from_lv(data: bytes|memoryview) -> WellplateDesc:
-        decoded = None #decode_lv(data)
+        decoded = decode_lv(data)
         return WellplateDesc(**decoded.get('PlateDesc', {}))
 
 @dataclass(init=False, frozen=True)
@@ -619,7 +619,7 @@ class ExperimentLevel(LVSerializable):
 
     @property
     def count(self) -> int:
-        return len([item for item in self.pItemValid if item]) if self.pItemValid is not None else self.uLoopPars.uiCount
+        return len([item for item in self.pItemValid if item]) if self.pItemValid and len(self.pItemValid) else self.uLoopPars.uiCount
 
     @property
     def name(self) -> str:

@@ -173,7 +173,7 @@ def read_test():
 if __name__ == "__main__":
     #running selected tests
     tst_data = ".\\tst\\tst_data\\"
-    server = "\\\\cork\\assays\\"
+    server = "\\\\cork\\images\\"
 
 
     #file(tst_data + "save 'Z-Series 10x.nd2")
@@ -185,8 +185,16 @@ if __name__ == "__main__":
     #copy(tst_data + "3d object over time changing shape_crop.nd2")
 
     #folder_copy(tst_data)
-    crawler(server)
+    #crawler(server)
     #read_test()
+
+    nd2 = limnd2.Nd2Reader(tst_data + "10x eating 2.tmp.nd2")
+    print(nd2.generateLoopIndexes())
+    for e in nd2.experiment:
+        print(e.count)
+        print(e.shortName)
+        print(e.name)
+    print("Channel Info:", [f"{ch.sDescription} (Em: {ch.emissionWavelengthNm:.0f}nm, Ex: {ch.excitationWavelengthNm:.0f}nm)" for ch in nd2.pictureMetadata.channels])
 
     
     
