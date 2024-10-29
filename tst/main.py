@@ -1,15 +1,12 @@
 from datetime import datetime
 import limnd2
 from pathlib import Path
-import os, sys
 
 from limnd2.experiment_factory import *
 import limnd2.lite_variant
 import limnd2.variant
 from util.crawler import FileCrawler
 
-util_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'util')
-sys.path.append(os.path.abspath(util_path))
 
 def file(nd2file, fail=True):
     """Opens nd2 file, reads attributes, experiments and metadata and encodes those."""
