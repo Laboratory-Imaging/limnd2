@@ -43,6 +43,10 @@ class O:
     SHORT = "o"
     LONG = "output_dir"
 
+class S:
+    SHORT = "s"
+    LONG = "simple_regexp"
+
 @dataclass
 class PathParserArgs:
     folder: Path = None
@@ -60,19 +64,19 @@ class PathParserArgs:
 
 def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
 
-    def highlight_group(re_string: str, group_number: int) -> None:
+    def highlight_group(re_string: re.Pattern, group_number: int) -> None:
         match_count = 0
-        for match in re.finditer(r'(\(.*?\))', re_string):
+        for match in re.finditer(r'(\(.*?\))', re_string.pattern):
             match_count += 1
             if match_count == group_number:
                 start = match.start()
                 len = match.end() - start
-                print(re_string, " " * start + "^" * len, sep="\n")
+                print(re_string.pattern, " " * start + "^" * len, sep="\n")
 
     def get_groups(parsed_args: argparse.Namespace, compiled_regexp: re.Pattern) -> dict[int, str]:
         capture_indices = [MX.LONG, MY.LONG, M.LONG, Z.LONG, T.LONG]             # arguments used as indexes for capture groups
         groups = {}
-        expected_groups = re.compile(compiled_regexp).groups
+        expected_groups = compiled_regexp.groups
 
         for arg in capture_indices:
             value = parsed_args.__dict__[arg]
@@ -82,7 +86,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
             if value <= 0:
                 print(f"ERROR: Group number '{value}' for argument '{arg}' can not be negative, exiting.")
                 return False
-            
+
             if value > expected_groups:
                 print(f"ERROR: Group number '{value}' for argument '{arg}' bigger than number of capturing groups ({expected_groups}), exiting.")
                 return False
@@ -92,15 +96,15 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
             else:
                 print()
                 print(f"ERROR: Arguments '{groups[value]}' and '{arg}' were both used for highlighted capture group {value}, exiting.")
-                highlight_group(parsed_args.regexp, value)
+                highlight_group(compiled_regexp, value)
                 print()
                 return False
-        
+
         for i in range(1, expected_groups + 1):
             if i not in groups:
                 print()
                 print(f"ERROR: Capture group number {i} does not have any corresponding argument.")
-                highlight_group(parsed_args.regexp, i)
+                highlight_group(compiled_regexp, i)
                 print()
                 return False
         return groups
@@ -114,7 +118,14 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
     parser.add_argument("regexp", help="The regular expression with capture groups to match filenames.")
 
     # optional arguments
-    # BOTH 
+
+    parser.add_argument("-" + S.SHORT, "--" + S.LONG, action="store_true",
+                        help="Use simplified regular expression with following capture groups:\n"
+                        "# - number or float\n"
+                        "? - Single character\n"
+                        "{option1|option2|option3} - One of several options.")
+
+    # BOTH
     parser.add_argument("-" + MX.SHORT, "--" + MX.LONG, type=int, help="Capture group index for multipoint x-axis.")
     parser.add_argument("-" + MY.SHORT, "--" + MY.LONG, type=int, help="Capture group index for multipoint y-axis.")
     # OR
@@ -150,7 +161,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         print(f"ERROR: Argument --{MX.LONG} must be used with --{MY.LONG} argument.")
         parser.print_usage()
         return
-    
+
     if (parsed_args.__dict__[MX.LONG] is None and parsed_args.__dict__[MY.LONG] is not None):
         print(f"ERROR: Argument --{MY.LONG} must be used with --{MX.LONG} argument.")
         parser.print_usage()
@@ -161,7 +172,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         print(f"ERROR: Argument --{TSTEP.LONG} must be used with --{T.LONG} argument.")
         parser.print_usage()
         return
-    
+
     tstep = 0.0
     if parsed_args.__dict__[TSTEP.LONG] is not None:
         tstep = float(parsed_args.__dict__[TSTEP.LONG])
@@ -171,7 +182,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         print(f"ERROR: Argument --{ZSTEP.LONG} must be used with --{Z.LONG} argument.")
         parser.print_usage()
         return
-    
+
     zstep = 0.0
     if parsed_args.__dict__[ZSTEP.LONG] is not None:
         zstep = float(parsed_args.__dict__[ZSTEP.LONG])
@@ -182,21 +193,28 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         parser.print_usage()
         return
 
+    def parse_simple_regexp(regexp: str) -> str:
+        number = "(\\d+\\.\\d+|\\d+)"      # capture group for float or integer number
+        character = "([A-Za-z])"          # capture group for single character          - used for wellplate
+
+        regexp = regexp.replace("#", number)
+        regexp = regexp.replace("?", character)
+
+        while match := re.search(r"\{(.*?)\}", regexp):
+            replacement = "(" + match.group(1) + ")"
+            regexp = re.sub(r"\{(.*?)\}", replacement, regexp, count=1)
+
+        return regexp
+
     try:
-        regexp = re.compile(parsed_args.regexp)
+        if parsed_args.simple_regexp:
+            regexp = re.compile(parse_simple_regexp(parsed_args.regexp))
+        else:
+            regexp = re.compile(parsed_args.regexp)
     except re.error as e:
         print(f"ERROR: Invalid regex pattern: {e}")
         return
-    
-    if parsed_args.regexp.count("\\d+") != regexp.groups:
-        # if user inputs number sequence without capture group like:
-        # 'tile_x(\d+)_y\d+_z(\d+)'
-        #               ^^^
-        #            uncaptured sequence
-        # script will fail as we dont know what to do with the extra dimension
 
-        print("ERROR: Using '\\d+' without capture group is not allowed, insert sequence as dimension.")
-        return 
 
     # check if groups properly match arguments
     groups = get_groups(parsed_args, regexp)
@@ -209,7 +227,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         print(f"ERROR: TIFF Folder {folder_path} does not exist.")
         parser.print_usage()
         return
-    
+
     output_dir = folder_path        # by default wirte output to same folder as tiff files
     if parsed_args.output_dir:
         output_dir = Path(parsed_args.output_dir)
@@ -229,16 +247,16 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
                           json_output = parsed_args.__dict__[J.LONG],
                           nd2_output =  parsed_args.__dict__[N.LONG],
                           output_dir = output_dir)
-                          
+
 
 if __name__ == "__main__":
-    
+
     local = "F:\\tillfiles"
     remote = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
 
 
     args = [f"{local}",
-            r"tile_x(\d)_y(\d)_z(\d)",
+            r"tile_x{001|002}_y#_z#",
             "-mx",
             "1",
             "-z",
@@ -246,6 +264,7 @@ if __name__ == "__main__":
             "-my",
             "2",
             "--json",
-            "sequence.json"
+            "sequence.json",
+            "-s"
             ]
     print(tiff_to_nis_argparser(args=args))
