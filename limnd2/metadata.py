@@ -256,7 +256,7 @@ class OpticalSpectrum(LVSerializable):
     def __post_init__(self):
         if isinstance(self.pPoint, dict):
             object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**self.pPoint[k]) for k in sorted(self.pPoint)])
-           
+
     @property
     def isValid(self) -> bool:
         return 0 < len(self.pPoint)
@@ -456,7 +456,7 @@ class OpticalFilter(LVSerializable):
 class OpticalFilterPath(LVSerializable):
     m_sDescr: str                       = LV_field("",          LVType.STRING)
     m_uiCount: int                      = LV_field(0,           LVType.UINT32)
-    m_pFilter: list[OpticalFilter]      = LV_field(None,        LVType.LEVEL)
+    m_pFilter: list[OpticalFilter]      = LV_field(list,        LVType.LEVEL)
 
     def __post_init__(self):
         if isinstance(self.m_pFilter, dict):
@@ -725,7 +725,7 @@ class PicturePlaneDesc(LVSerializable):
         elif self.pFilterPath.isValid:
             return self.pFilterPath.meanEmissionWavelength()
         return 0.0
-    
+
     @cached_property
     def excitationWavelengthNm(self) -> float:
         if self.pFluorescentProbe.m_ExcitationSpectrum.isValid:
@@ -733,7 +733,7 @@ class PicturePlaneDesc(LVSerializable):
         elif self.emissionWavelengthNm is not None and self.pFilterPath.isValid:
             return self.pFilterPath.closestExcitationWavelength(self.emissionWavelengthNm)
         return 0.0
-            
+
     @property
     def isBrightfield(self) -> bool:
         return (self.uiModalityMask & PicturePlaneModalityFlags.modBrightfield)
@@ -870,17 +870,17 @@ class SampleSettings(LVSerializable):
     def opticalConfigurations(self) -> list[str]:
         if not self.sOpticalConfigs:
             return []
-        return [item.sOpticalConfigName for item in self.sOpticalConfigs]        
+        return [item.sOpticalConfigName for item in self.sOpticalConfigs]
 
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class PictureMetadataPicturePlanes(LVSerializable):
     uiCount: int                                                = LV_field(0,                                                       LVType.UINT32)                   # == len(sPlane)
     uiCompCount: int                                            = LV_field(0,                                                       LVType.UINT32)    # the sum of uiCompCount of all sPlane members
-    sPlaneNew: list[PicturePlaneDesc]                           = LV_field(list,                                                    LVType.LEVEL) 
-    uiSampleCount: int                                          = LV_field(0,                                                       LVType.UINT32) 
-    sSampleSetting: list[SampleSettings]                        = LV_field(list,                                                    LVType.LEVEL) 
-    sDescription: str                                           = LV_field("",                                                      LVType.STRING) 
+    sPlaneNew: list[PicturePlaneDesc]                           = LV_field(list,                                                    LVType.LEVEL)
+    uiSampleCount: int                                          = LV_field(0,                                                       LVType.UINT32)
+    sSampleSetting: list[SampleSettings]                        = LV_field(list,                                                    LVType.LEVEL)
+    sDescription: str                                           = LV_field("",                                                      LVType.STRING)
     eRepresentation: PictureMetadataPicturePlanesRepresentation = LV_field(PictureMetadataPicturePlanesRepresentation.eRepDefault,  LVType.UINT32)
     iExperimentSettingsCount: int                               = LV_field(0,                                                       LVType.INT32)
     sExperimentSetting: dict                                    = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
