@@ -48,6 +48,16 @@ class S:
     LONG = "simple_regexp"
 
 @dataclass
+class MicroscopeSettings:
+    pixel_calibration: float = 1.0
+    objective_magnification: float = 10.0
+    objective_numerical_aperture: float = 0.45
+    projective_magnification: float = 1.0
+    zoom_magnification: float = 1.2
+    immersion_refractive_index: float = 1.0
+    pinhole_diameter: float = 50.0
+
+@dataclass
 class PathParserArgs:
     folder: Path = None
     regexp: re.Pattern = None
@@ -60,6 +70,10 @@ class PathParserArgs:
     json_output: str | None = None
     nd2_output: str | None = None
     output_dir: str | None = None
+
+    microscope_settings: MicroscopeSettings = None
+
+    multiprocessing: bool = False
 
 
 def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
@@ -147,7 +161,20 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
     parser.add_argument("-" + N.SHORT, "--" + N.LONG, type=str, help="Store output in separate ND2 files (takes longer time).")
 
     # OPTIONALLY ALSO THIS
-    parser.add_argument("-" + O.SHORT, "--" + O.LONG, type=str, help="Directory to save the output file. Defaults to TIFF folder if not specified.")
+    parser.add_argument("-" + O.SHORT, "--" + O.LONG, type=str, help="Directory to save the output ND2 file. Defaults to TIFF folder if not specified.")
+
+    parser.add_argument("--multiprocessing", action="store_true", help="EXPERIMENTAL: Write into nd2 file with multiprocessing.")
+
+
+    # OPTIONAL MICROSCOPE SETTINGS
+    parser.add_argument("--ms-pixel_calibration", type=float, default=1.0, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-objective_magnification", type=float, default=10.0, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-objective_numerical_aperture", type=float, default=0.45, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-projective_magnification", type=float, default=1.0, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-zoom_magnification", type=float, default=1.2, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-immersion_refractive_index", type=float, default=1.0, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-pinhole_diameter", type=float, default=50.0, help=argparse.SUPPRESS)
+
 
     parsed_args = parser.parse_args(args)
 
@@ -173,7 +200,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         parser.print_usage()
         return
 
-    tstep = 0.0
+    tstep = 100.0
     if parsed_args.__dict__[TSTEP.LONG] is not None:
         tstep = float(parsed_args.__dict__[TSTEP.LONG])
 
@@ -193,17 +220,24 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         parser.print_usage()
         return
 
+    if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[O.LONG] is not None:
+        print(f"ERROR: Argument --{O.LONG} can not be used with --{J.LONG} argument.")
+        parser.print_usage()
+        return
+
     def parse_simple_regexp(regexp: str) -> str:
         number = "(\\d+\\.\\d+|\\d+)"      # capture group for float or integer number
-        character = "([A-Za-z])"          # capture group for single character          - used for wellplate
+        character = "([A-Za-z])"           # capture group for single character          - used for wellplate
+        anything = "(.+?)"                  # capture group for anything, but non greedily
 
         regexp = regexp.replace("#", number)
         regexp = regexp.replace("?", character)
+        regexp = regexp.replace("*", anything)
 
         while match := re.search(r"\{(.*?)\}", regexp):
             replacement = "(" + match.group(1) + ")"
             regexp = re.sub(r"\{(.*?)\}", replacement, regexp, count=1)
-
+        print("DEBUG: Final regexp:", regexp)
         return regexp
 
     try:
@@ -239,6 +273,20 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
 
 
 
+    microscope_settings = MicroscopeSettings(
+        pixel_calibration = parsed_args.ms_pixel_calibration,
+        objective_magnification = parsed_args.ms_objective_magnification,
+        objective_numerical_aperture = parsed_args.ms_objective_numerical_aperture,
+        projective_magnification = parsed_args.ms_projective_magnification,
+        zoom_magnification = parsed_args.ms_zoom_magnification,
+        immersion_refractive_index = parsed_args.ms_immersion_refractive_index,
+        pinhole_diameter = parsed_args.ms_pinhole_diameter
+    )
+
+
+
+
+
     return PathParserArgs(folder = folder_path,
                           regexp = regexp,
                           groups = groups,
@@ -246,12 +294,14 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
                           z_step = zstep,
                           json_output = parsed_args.__dict__[J.LONG],
                           nd2_output =  parsed_args.__dict__[N.LONG],
-                          output_dir = output_dir)
+                          output_dir = output_dir,
+                          microscope_settings = microscope_settings,
+                          multiprocessing = parsed_args.multiprocessing)
 
 
 if __name__ == "__main__":
 
-    local = "F:\\tillfiles"
+    local = "D:\\tillfiles"
     remote = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
 
 

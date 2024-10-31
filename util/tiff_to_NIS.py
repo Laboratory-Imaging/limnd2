@@ -7,7 +7,7 @@ from tiff_to_NIS_json import tiff_to_json
 from tiff_to_NIS_argparser import tiff_to_nis_argparser, PathParserArgs
 import sys
 
-from tiff_to_NIS_nd2 import tiff_to_NIS_nd2
+from tiff_to_NIS_nd2 import tiff_to_NIS_nd2, tiff_to_NIS_nd2_multiprocessing
 
 def compare_speed():
     local = "F:\\tillfiles"
@@ -26,35 +26,31 @@ def compare_speed():
     #               recursive (uses os.walk)    non recursive (uses Path.glob())          non recursive (after rewrite to os.walk)
     # local              1.33 sec                         7.81 sec                                      1.38 sec
     # server             9.75 sec                       245.88 sec                                      8.48 sec
-    """
-def check_files(files: dict[Path, tuple[int]], args: PathParserArgs):
-    # check if all files exist in found folder, if not print missing indices, if they are return how many files will be in each capture group.
 
-    found_files = set(files.values())
-    zipped_values = list(zip(*files.values()))
+def convert_to_numbers_or_keep_strings(lst):
+    try:
+        converted = [int(item) for item in lst]
+        return converted
+    except ValueError:
+        pass
+    try:
+        converted = [float(item) for item in lst]
+        return converted
+    except ValueError:
+        pass
+    return lst
 
-    # Get min and max for each capture group
-    min_values = [min(group) for group in zipped_values]
-    max_values = [max(group) for group in zipped_values]
+def convert_values(files: dict[Path, list[list[str]]]):
+    keys = list(files.keys())
+    values = list(files.values())
+    #print(list(zip(*values)), sep="\n")
 
-    # create ranged from min and maximum for each group
-    ranges = [range(start, end + 1) for start, end in zip(min_values, max_values)]
+    new = list(zip(*[convert_to_numbers_or_keep_strings(new) for new in list(zip(*values))]))
 
-    expected_files = set(itertools.product(*ranges))
+    for key, new_val in zip(keys, new):
+        files[key] = list(new_val)
 
-    missing = expected_files - found_files
 
-    if len(missing):
-        print("ERROR: one or more sequence files are missing:")
-        for file in missing:
-            print("Missing file: ", end = "")
-            for index in range(len(file)):
-                print(f"{args.groups[index + 1]}: {file[index]} ", end="")
-            print()
-        return False
-    else:
-        return min_values, max_values
-    """
 
 def check_files(files_values: list[list[int | float | str]]):
     found_values = [set() for _ in range(len(files_values[0]))]
@@ -71,22 +67,11 @@ def check_files(files_values: list[list[int | float | str]]):
     return found_values
 
 
-def get_group_values(path: Path, regexp: re.Pattern) -> list[list[int | float | str]]:
+def get_group_values(path: Path, regexp: re.Pattern) -> list[list[str]]:
     # converts filename to list with found values using the regexp
-    # file_C01_z152.334254997503_t19.tif -> ['C', 1, 152.334254997503, 19]
-    results = []
+    # file_C01_z152.334254997503_t19.tif -> ['C', "1", "152.334254997503", "19"]
     match = regexp.search(path.name)
-    for group in match.groups():
-        try:
-            group = int(group)
-        except ValueError:
-            try:
-                group = float(group)
-            except ValueError:
-                group = group
-
-        results.append(group)
-    return results
+    return [group for group in match.groups()]
 
 # example usage:
 #                                   folder                               regexp           matching groups     step       output file         output folder
@@ -115,10 +100,15 @@ def tiff_to_NIS(args: list[str] | None = None):
         print("ERROR: No tiff files matching given criteria were found.")
         sys.exit(1)
 
+
+    logprint("Converting capturing groups to numbers if possible.")
+    found_values = convert_values(files)
+
     logprint("Checking if all files exist.")
     found_values = check_files(list(files.values()))
     if not found_values:
         sys.exit(1)
+
 
     logprint("Describing output.")
     describe_json = tiff_to_json(files, parsed_args, found_values)
@@ -132,15 +122,19 @@ def tiff_to_NIS(args: list[str] | None = None):
 
     elif parsed_args.nd2_output:
         outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
-        logprint("Creating ND2 file.")
-        tiff_to_NIS_nd2(describe_json, parsed_args.folder, outpath)
+        if parsed_args.multiprocessing:
+            logprint("Creating ND2 file (with experimental multiprocessing).")
+            tiff_to_NIS_nd2_multiprocessing(describe_json, parsed_args.folder, outpath)
+        else:
+            logprint("Creating ND2 file.")
+            tiff_to_NIS_nd2(describe_json, parsed_args.folder, outpath)
         logprint(f"ND2 file created at {outpath.absolute()}.")
 
 
 if __name__ == "__main__":
     #folders for testing
-    local_big = "F:\\tillfiles"
-    local_medium = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs"
+    local_big = "D:\\tillfiles"
+    local_medium = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\medium"
     local_small = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\smaller"
 
     local_dummy = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\dummy"
@@ -150,6 +144,7 @@ if __name__ == "__main__":
     #args for testing
     args = [f"{local_dummy}",
             r"file_?#_z#_t#",
+            "-s",
             "-mx",
             "1",
             "-my",
@@ -159,9 +154,27 @@ if __name__ == "__main__":
             "-t",
             "4",
             "--json",
-            "sequence.json",
-            "-s"
-            ]
+            "sequence.json"
+        ]
+
+    args = [f"{local_big}",
+            r"tile_x(.*)_y(.*)_z(.*).tif",
+            "-mx",
+            "1",
+            "-my",
+            "2",
+            "-z",
+            "3",
+            "-zstep",
+            "225",
+            "-n",
+            "bigfile3.nd2",
+            "--multiprocessing"
+        ]
+
+    import sys
+    if len(sys.argv) >= 2:          # if provided args, use those instead
+        args = None
 
     #use either test args or None = command like args
     tiff_to_NIS(args=args)

@@ -149,6 +149,39 @@ def get_experiments(files: dict[Path, list[int | float | str | tuple]],
 
     return experiments
 
+def get_metadata(arguments: PathParserArgs,
+                 experiments_count: dict[str, int]):
+    channel_minimal = {
+        "microscope": {
+          "immersionRefractiveIndex": arguments.microscope_settings.immersion_refractive_index,
+          "objectiveMagnification": arguments.microscope_settings.objective_magnification,
+          "objectiveNumericalAperture": arguments.microscope_settings.objective_numerical_aperture,
+          "pinholeDiameterUm": arguments.microscope_settings.pinhole_diameter,
+          "projectiveMagnification": arguments.microscope_settings.projective_magnification,
+          "zoomMagnification": arguments.microscope_settings.zoom_magnification
+        },
+        "volume": {
+          "axesCalibrated": [
+            True,
+            True,
+            "zstack" in experiments_count
+          ],
+          "axesCalibration": [
+            arguments.microscope_settings.pixel_calibration,
+            arguments.microscope_settings.pixel_calibration,
+            1.0 if "zstack" not in experiments_count else arguments.z_step
+          ],
+          "axesInterpretation": [
+            "distance",
+            "distance",
+            "distance"
+          ]
+        }
+    }
+
+    return {"channels": [channel_minimal]}
+
+
 
 def tiff_to_json(files: dict[Path, list[int | float | str | tuple]], args: PathParserArgs, found_values: list[set[int | float | str]]):
     groups_count = [len(s) for s in found_values]
@@ -160,25 +193,11 @@ def tiff_to_json(files: dict[Path, list[int | float | str | tuple]], args: PathP
     sorted_paths = [file.name for file in sorted(files, key=lambda k: files[k])]
     frames = [{"files" : [path]} for path in sorted_paths]
 
-    attributes_template = {
-        "bitsPerComponentInMemory": 0,
-        "bitsPerComponentSignificant": 0,
-        "componentCount": 1,                        # so far only one channel images are supported
-        "compressionLevel": 0.0,
-        "compressionType": "none",
-        "heightPx": 0,
-        "pixelDataType": "unsigned",
-        "sequenceCount": 0,
-        "tileHeightPx": 0,
-        "tileWidthPx": 0,
-        "widthBytes": 0,
-        "widthPx": 0
-    }
-
     result = {
         "attributes" : get_attributes(list(files.keys())[0], groups_count),
         "experiment" : exp,
-        "frames" : frames
+        "frames" : frames,
+        "metadata" : get_metadata(args, exp_count)
     }
 
     return result
