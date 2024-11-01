@@ -74,11 +74,13 @@ def get_group_values(path: Path, regexp: re.Pattern) -> list[list[str]]:
     return [group for group in match.groups()]
 
 # example usage:
-#                                   folder                               regexp           matching groups     step       output file         output folder
-# tiff_to_NIS.py "F:\tillfiles"                              'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -z 3 -zstep 225 --json sequence.json
-# tiff_to_NIS.py "C:\\Users\\lukas.jirusek\\Desktop\\tiffs"  'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -t 3            -n sequence_python.nd2  -o ./output/
-# tiff_to_NIS.py "F:\tillfiles"                              'tile_x#_y#_z#'     -s      -mx 1 -my 2 -z 3            -n sequence_python.nd2  -o ./output/
-# tiff_to_NIS.py "C:\\Users\\lukas.jirusek\\Desktop\\tiffs"  'tile_x#_y#_z#'     -s      -mx 1 -my 2 -z 3            -n sequence_python.nd2  -o ./output/
+#                                   folder                                     regexp             matching groups     step       output file         output folder
+# tiff_to_NIS.py "F:\tillfiles"                                      'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -z 3 -zstep 225 --json sequence.json
+# tiff_to_NIS.py "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\medium"  'tile_x(\d+)_y(\d+)_z(\d+)' -mx 1 -my 2 -t 3            -n sequence_python.nd2  -o ./output/
+# tiff_to_NIS.py "F:\tillfiles"                                      'tile_x#_y#_z#'     -s      -mx 1 -my 2 -z 3            -n sequence_python.nd2  -o ./output/
+# tiff_to_NIS.py "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\medium"  'tile_x#_y#_z#'     -s      -mx 1 -my 2 -z 3            -n sequence_python.nd2  -o ./output/
+
+# tiff_to_NIS.py "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\medium"    -s "tile_x*_y*_z*.tif"    -mx 1 -my 2 -z 3 -zstep 1000 -n output.nd2          -o ./output --multiprocessing
 
 def logprint(msg: str):
     print(f"{sys.argv[0].split("\\")[-1]} [{datetime.now():%H:%M:%S.%f}] {msg}")
@@ -110,25 +112,41 @@ def tiff_to_NIS(args: list[str] | None = None):
         sys.exit(1)
 
 
-    logprint("Describing output.")
-    describe_json = tiff_to_json(files, parsed_args, found_values)
+    groups_count = [len(s) for s in found_values]
+    exp_order = [parsed_args.groups[k] for k in sorted(parsed_args.groups)]
+    exp_count = {exp: count for exp, count in zip(exp_order, groups_count)}
 
-    if parsed_args.json_output:
+    if parsed_args.json_output or parsed_args.nd2_output:
+        logprint("Describing output.")
+        describe_json = tiff_to_json(files, parsed_args, exp_count)
         import json
-        outpath = Path(parsed_args.output_dir) / parsed_args.json_output
-        with open(outpath, "w") as f:
-            json.dump(describe_json, f, indent=4)
-        logprint(f"Describe JSON created at {outpath.absolute()}.")
 
-    elif parsed_args.nd2_output:
-        outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
-        if parsed_args.multiprocessing:
-            logprint("Creating ND2 file (with experimental multiprocessing).")
-            tiff_to_NIS_nd2_multiprocessing(describe_json, parsed_args.folder, outpath)
-        else:
-            logprint("Creating ND2 file.")
-            tiff_to_NIS_nd2(describe_json, parsed_args.folder, outpath)
-        logprint(f"ND2 file created at {outpath.absolute()}.")
+        if parsed_args.json_output:
+            outpath = Path(parsed_args.output_dir) / parsed_args.json_output
+            with open(outpath, "w") as f:
+                json.dump(describe_json, f, indent=4)
+
+            logprint(f"Describe JSON created at {outpath.absolute()}.")
+            return 0
+
+        elif parsed_args.nd2_output:
+            outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
+
+            if parsed_args.multiprocessing:
+                logprint("Creating ND2 file (with experimental multiprocessing).")
+                tiff_to_NIS_nd2_multiprocessing(describe_json, parsed_args.folder, outpath)
+            else:
+                logprint("Creating ND2 file.")
+                tiff_to_NIS_nd2(describe_json, parsed_args.folder, outpath)
+
+            logprint(f"ND2 file created at {outpath.absolute()}.")
+            return 0
+
+    else:
+        print(exp_count)
+        print(found_values)
+
+
 
 
 if __name__ == "__main__":
@@ -138,12 +156,13 @@ if __name__ == "__main__":
     local_small = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\smaller"
 
     local_dummy = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\dummy"
+    local_export = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export"
 
     remote_big = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
 
     #args for testing
-    args = [f"{local_dummy}",
-            r"file_?#_z#_t#",
+    args1 = [f"{local_dummy}",
+            r"file_?*_z*_*_t*",
             "-s",
             "-mx",
             "1",
@@ -151,25 +170,35 @@ if __name__ == "__main__":
             "2",
             "-z",
             "3",
-            "-t",
+            "-c",
             "4",
-            "--json",
-            "sequence.json"
+            "-t",
+            "5"
         ]
 
-    args = [f"{local_big}",
-            r"tile_x(.*)_y(.*)_z(.*).tif",
+
+    args2 = [f"{local_big}",
+            r"tile_x001_y(.*)_z(.*).tif",
             "-mx",
             "1",
             "-my",
             "2",
-            "-z",
-            "3",
-            "-zstep",
-            "225",
             "-n",
             "bigfile3.nd2",
             "--multiprocessing"
+        ]
+
+    args3 = [f"{local_export}",
+            r"convallaria_flimA#z#c#.tif",
+            "-s",
+            "-m",
+            "1",
+            "-z",
+            "2",
+            "-c",
+            "3",
+            "-j",
+            "sequence_python.json"
         ]
 
     import sys
@@ -177,4 +206,4 @@ if __name__ == "__main__":
         args = None
 
     #use either test args or None = command like args
-    tiff_to_NIS(args=args)
+    tiff_to_NIS(args=args3)

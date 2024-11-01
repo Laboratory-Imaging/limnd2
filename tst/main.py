@@ -17,7 +17,7 @@ def file(nd2file, fail=True):
         exp = nd2.experiment
         met = nd2.pictureMetadata
 
-        
+
         if att:
             att.to_lv()
         if exp:
@@ -30,7 +30,7 @@ def file(nd2file, fail=True):
             att = nd2.imageAttributes
             exp = nd2.experiment
             met = nd2.pictureMetadata
-            
+
             if att:
                 att.to_lv()
             if exp:
@@ -64,7 +64,7 @@ def crawler(path):
 
     print(sum(count.values()), "/", len(count), "files converted successfully.")
     print("Time taken:", normal)
-    
+
 
 def copy(file):
     """
@@ -76,7 +76,7 @@ def copy(file):
 
     if copy_file.exists():
         copy_file.unlink()
-        
+
     with limnd2.Nd2Reader(file) as reader, limnd2.Nd2Writer(copy_file) as writer:
         writer.imageAttributes = reader.imageAttributes
         for i in range(reader.imageAttributes.uiSequenceCount):
@@ -175,19 +175,17 @@ if __name__ == "__main__":
 
     #file(tst_data + "save 'Z-Series 10x.nd2")
     #folder(tst_data)
-    
+
     #copy(tst_data + "underwater_bmx_generated_by_NIS.nd2")
     #copy(tst_data + "Matthias.nd2")
     #copy(tst_data + "multipage.nd2")
     #copy(tst_data + "3d object over time changing shape_crop.nd2")
 
     #folder_copy(tst_data)
-    crawler(tst_data)
+    #crawler(tst_data)
     #read_test()
 
-   
-    
-    
-    
 
-    
+
+
+

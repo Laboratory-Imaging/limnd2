@@ -17,6 +17,13 @@
             "request": "launch",
             "program": "./limnd2/index.py",
             "console": "integratedTerminal",
+        },
+        {
+            "name": "TiffToNis.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./util/tiff_to_NIS.py",
+            "console": "integratedTerminal",
         }
     ]
 }

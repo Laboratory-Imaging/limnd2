@@ -31,6 +31,10 @@ class ZSTEP:
     SHORT = "zstep"
     LONG = "zstack_step"
 
+class C:
+    SHORT = "c"
+    LONG = "channel"
+
 class J:
     SHORT = "j"
     LONG = "json"
@@ -88,7 +92,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
                 print(re_string.pattern, " " * start + "^" * len, sep="\n")
 
     def get_groups(parsed_args: argparse.Namespace, compiled_regexp: re.Pattern) -> dict[int, str]:
-        capture_indices = [MX.LONG, MY.LONG, M.LONG, Z.LONG, T.LONG]             # arguments used as indexes for capture groups
+        capture_indices = [MX.LONG, MY.LONG, M.LONG, Z.LONG, T.LONG, C.LONG]             # arguments used as indexes for capture groups
         groups = {}
         expected_groups = compiled_regexp.groups
 
@@ -155,6 +159,9 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
     # THEN THIS CAN EXIST
     parser.add_argument("-" + TSTEP.SHORT, "--" + TSTEP.LONG, type=int, help="Time step in miliseconds")
 
+
+    parser.add_argument("-" + C.SHORT, "--" + C.LONG, type=int, help="Capture group index for channels.")
+
     # EITHER THIS
     parser.add_argument("-" + J.SHORT, "--" + J.LONG, type=str, help="Store output in sequence JSON file.")
     # OR THIS
@@ -215,7 +222,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         zstep = float(parsed_args.__dict__[ZSTEP.LONG])
 
     # parse output
-    if (parsed_args.__dict__[J.LONG] is None and parsed_args.__dict__[N.LONG] is None) or (parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[N.LONG] is not None):
+    if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[N.LONG] is not None:
         print(f"ERROR: You must select output type (either --{J.LONG} or --{N.LONG})")
         parser.print_usage()
         return

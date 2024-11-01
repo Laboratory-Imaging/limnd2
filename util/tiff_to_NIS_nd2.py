@@ -1,9 +1,11 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 from threading import Lock
-from limnd2.attributes import ImageAttributes
+
+import numpy as np
+from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
 from limnd2.experiment import ExperimentLevel
 from limnd2.experiment_factory import *
 from limnd2.metadata import PictureMetadata
@@ -18,13 +20,26 @@ def get_nd2_image_attributes(attributes: dict) -> ImageAttributes:
     """
     Convert dictionary with attributes into ImageAttributes object
     """
-    return ImageAttributes(uiWidth = attributes["widthPx"],
-                           uiWidthBytes = attributes["widthBytes"],
-                           uiHeight = attributes["heightPx"],
-                           uiSequenceCount = attributes["sequenceCount"],
+
+    pixelType: ImageAttributesPixelType = 0
+    if attributes["pixelDataType"] == "signed":
+        pixelType = ImageAttributesPixelType.pxtSigned
+    elif attributes["pixelDataType"] == "unsigned":
+        pixelType = ImageAttributesPixelType.pxtUnsigned
+    elif attributes["pixelDataType"] == "float":
+        pixelType = ImageAttributesPixelType.pxtReal
+
+    return ImageAttributes(
                            uiBpcInMemory = attributes["bitsPerComponentInMemory"],
                            uiBpcSignificant = attributes["bitsPerComponentSignificant"],
-                           uiComp = 1                   # so far only 1 channel tiff files are supported (not RGB)
+                           uiHeight = attributes["heightPx"],
+                           uiWidthBytes = attributes["widthBytes"],
+                           uiWidth = attributes["widthPx"],
+
+                           uiComp = attributes["componentCount"],
+                           ePixelType = pixelType,
+                           uiSequenceCount = attributes["sequenceCount"],
+                           uiVirtualComponents = attributes["componentCount"]
                            )
 
 def get_nd2_experiments(experiments: list) -> ExperimentLevel:
@@ -45,28 +60,73 @@ def get_nd2_experiments(experiments: list) -> ExperimentLevel:
 def logprint(msg: str, **args):
     print(f"{sys.argv[0].split("\\")[-1]} [{datetime.now():%H:%M:%S.%f}] {msg}", **args)
 
-def store_frame(nd2: Nd2Writer, image_count: int, tiff_file: str, lock, progress_counter, total, start, nd2_path):
-    nd2.setImage(image_count, TiffReader(tiff_file).get_array())
+class Progress:
+    done: int
+    done_lock: Lock
+    total: int
+    nd2_path: Path
+    start_time: datetime
+    done_percentage: float
+
+    elapsed: timedelta
+    remaining: datetime
+    filesize: str
 
 
-    # progress print
-    with lock:
-        progress_counter[0] += 1
+    STEP: int = 50
+    MINIMUM: int = 100
+    last_detected: int
 
-        # print progress to terminal:
-        if (progress_counter[0] % 20 == 0 and total > 100) or progress_counter[0] == total:
-            completed = progress_counter[0] / total
-            logprint(f"{progress_counter[0]} / {total} ({completed * 100:.1f} %)", end="")
+    def __init__(self, path: Path, total: int = 100):
+        self.done = 0
+        self.done_lock = Lock()
+        self.total = total
+        self.start_time = datetime.now()
 
-            time_taken = datetime.now() - start
-            total_time_estimated = time_taken / completed
-            print(f", time left: {datetime(1, 1, 1, 0, 0, 0) + (total_time_estimated - time_taken):%H:%M:%S}", end="")
+        self.nd2_path = path
+        self.last_detected = 0
 
-            if progress_counter[0] == 20 or progress_counter[0] == 100 or progress_counter[0] % 500 == 0:
-                estimated_total_file_size = (nd2_path.stat().st_size) / completed
-                print(f", estimated file size: {estimated_total_file_size / (1024 ** 2):.2f} MB", end="")
+    def increase(self, increment: int = 1):
+        with self.done_lock:
+            self.done += increment
 
-            print(end="\r")
+            current_multiple = (self.done // self.STEP) * self.STEP
+            if current_multiple > self.last_detected and self.total > self.MINIMUM:
+                self.last_detected = current_multiple
+                self.update_and_print()
+            if self.done == self.total and self.total > self.MINIMUM:
+                print()
+
+    def update_and_print(self):
+        self.done_percentage = self.done / self.total
+        logprint(f"{self.done} / {self.total} ({self.done_percentage * 100:.1f} %)", end="")
+
+        self.elapsed = datetime.now() - self.start_time
+        total_time_estimated = self.elapsed / self.done_percentage
+        self.remaining = datetime(1, 1, 1, 0, 0, 0) + total_time_estimated - self.elapsed
+        print(f", time left: {self.remaining:%H:%M:%S}", end="")
+
+        self.filesize = (self.nd2_path.stat().st_size / self.done_percentage ) / (1024 ** 2)
+        print(f", estimated file size: {self.filesize:.2f} MB", end="")
+        print("\r", end="")
+
+
+def store_frame(nd2: Nd2Writer, image_seq_index: int, tiff_file: str, nd2_file_lock: Lock, progress: Progress):
+    arr = TiffReader(tiff_file).get_array()
+
+    with nd2_file_lock:
+        nd2.setImage(image_seq_index, arr)
+
+    progress.increase()
+
+def store_frames(nd2: Nd2Writer, image_seq_index: int, tiff_files: list[str], parent_folder: Path, nd2_file_lock: Lock, progress: Progress):
+    arrays = tuple(TiffReader(parent_folder / file).get_array() for file in tiff_files)
+    array = np.stack(arrays, axis = -1)
+
+    with nd2_file_lock:
+        nd2.setImage(image_seq_index, array)
+
+    progress.increase(len(tiff_files))
 
 def tiff_to_NIS_nd2_multiprocessing(data: dict, tiff_folder: Path, nd2_path: Path):
     attr = get_nd2_image_attributes(data["attributes"])
@@ -81,21 +141,19 @@ def tiff_to_NIS_nd2_multiprocessing(data: dict, tiff_folder: Path, nd2_path: Pat
         nd2.experiment = exp
         nd2.pictureMetadata = PictureMetadata()         # currently empty metadata, in the future maybe you can get some data from tiff metadata ?
 
-        image_count = 0
+        progress = Progress(nd2_path, len(data["frames"]) * len(data["frames"][0]["files"]))
+        nd2_file_lock = Lock()
 
-        progress = [0]
-        lock = Lock()
         with ThreadPoolExecutor(max_workers=100) as executor:
             futures = []
-            start = datetime.now()
-            for frame in data["frames"]:
-                tiff_file = tiff_folder / frame["files"][0]
-                futures.append(executor.submit(store_frame, nd2, image_count, tiff_file, lock, progress, len(data["frames"]), start, nd2_path))
-                image_count += 1
+            for image_seq_index, frames in enumerate(data["frames"]):
+                if len(frames["files"]) == 1:
+                    tiff_file = tiff_folder / frames["files"][0]
+                    futures.append(executor.submit(store_frame, nd2, image_seq_index, tiff_file, nd2_file_lock, progress))
+                else:
+                    futures.append(executor.submit(store_frames, nd2, image_seq_index, frames["files"], tiff_folder, nd2_file_lock, progress))
 
-
-        print()
-        logprint("Waiting for processes to finish.")
+        logprint(f"Waiting for processes to finish.")
         wait(futures)
         logprint("Finalizing ND2 file.")
 
@@ -113,28 +171,17 @@ def tiff_to_NIS_nd2(data: dict, tiff_folder: Path, nd2_path: Path):
         nd2.experiment = exp
         nd2.pictureMetadata = PictureMetadata()         # currently empty metadata, in the future maybe you can get some data from tiff metadata ?
 
-        image_count = 0
-        start = datetime.now()
-        for frame in data["frames"]:
-            tiff_file = tiff_folder / frame["files"][0]
-            nd2.setImage(image_count, TiffReader(tiff_file).get_array())
-            image_count += 1
+        progress = Progress(nd2_path, len(data["frames"]) * len(data["frames"][0]["files"]))
 
-            # print progress to terminal:
-            if (image_count % 10 == 0 and len(data["frames"]) > 100) or image_count == len(data["frames"]):
-                completed = image_count / len(data["frames"])
-                logprint(f"{image_count} / {len(data['frames'])} ({completed * 100:.1f} %)", end="")
+        for image_seq_index, frame in enumerate(data["frames"]):
+            if len(frame["files"]) == 1:
+                tiff_file = tiff_folder / frame["files"][0]
+                nd2.setImage(image_seq_index, TiffReader(tiff_file).get_array())
+                progress.increase()
+            else:
+                arrays = tuple(TiffReader(tiff_folder / file).get_array() for file in frame["files"])
+                array = np.stack(arrays, axis = -1)
+                nd2.setImage(image_seq_index, array)
+                progress.increase(len(frame["files"]))
 
-                time_taken = datetime.now() - start
-                total_time_estimated = time_taken / completed
-                print(f", time left: {datetime(1, 1, 1, 0, 0, 0) + (total_time_estimated - time_taken):%H:%M:%S}", end="")
-
-
-                if image_count % 100 == 0:
-                    estimated_total_file_size = (nd2_path.stat().st_size) / completed
-                    print(f", estimated file size: {estimated_total_file_size / (1024 ** 2):.2f} MB", end="")
-
-
-                print(end="\r")
-        print()
         logprint("Finalizing ND2 file.")
