@@ -112,7 +112,10 @@ class Progress:
 
 
 def store_frame(nd2: Nd2Writer, image_seq_index: int, tiff_file: str, nd2_file_lock: Lock, progress: Progress):
-    arr = TiffReader(tiff_file).get_array()
+    arr = TiffReader(tiff_file).get_array()                 # TODO - for multichannel images, you should probably do data[:,:,::-1]
+
+    if arr.ndim == 3:
+        arr = arr[:,:,::-1]
 
     with nd2_file_lock:
         nd2.setImage(image_seq_index, arr)
@@ -120,7 +123,9 @@ def store_frame(nd2: Nd2Writer, image_seq_index: int, tiff_file: str, nd2_file_l
     progress.increase()
 
 def store_frames(nd2: Nd2Writer, image_seq_index: int, tiff_files: list[str], parent_folder: Path, nd2_file_lock: Lock, progress: Progress):
-    arrays = tuple(TiffReader(parent_folder / file).get_array() for file in tiff_files)
+    arrays = tuple(TiffReader(parent_folder / file).get_array() for file in tiff_files)         # TODO - for multichannel images, you should probably do data[:,:,::-1]
+    if arrays[0].ndim == 3:
+        arrays = tuple(arr[:,:,::-1] for arr in arrays)
     array = np.stack(arrays, axis = -1)
 
     with nd2_file_lock:
@@ -128,7 +133,7 @@ def store_frames(nd2: Nd2Writer, image_seq_index: int, tiff_files: list[str], pa
 
     progress.increase(len(tiff_files))
 
-def tiff_to_NIS_nd2_multiprocessing(data: dict, tiff_folder: Path, nd2_path: Path):
+def tiff_to_NIS_nd2_multiprocessing(data: dict, tiff_folder: Path, nd2_path: Path, multiprocessing: bool = False):
     attr = get_nd2_image_attributes(data["attributes"])
     exp = get_nd2_experiments(data["experiment"])
 
@@ -142,46 +147,38 @@ def tiff_to_NIS_nd2_multiprocessing(data: dict, tiff_folder: Path, nd2_path: Pat
         nd2.pictureMetadata = PictureMetadata()         # currently empty metadata, in the future maybe you can get some data from tiff metadata ?
 
         progress = Progress(nd2_path, len(data["frames"]) * len(data["frames"][0]["files"]))
-        nd2_file_lock = Lock()
 
-        with ThreadPoolExecutor(max_workers=100) as executor:
-            futures = []
-            for image_seq_index, frames in enumerate(data["frames"]):
-                if len(frames["files"]) == 1:
-                    tiff_file = tiff_folder / frames["files"][0]
-                    futures.append(executor.submit(store_frame, nd2, image_seq_index, tiff_file, nd2_file_lock, progress))
+
+        if multiprocessing:
+            nd2_file_lock = Lock()
+            with ThreadPoolExecutor(max_workers=100) as executor:
+                futures = []
+                for image_seq_index, frames in enumerate(data["frames"]):
+                    if len(frames["files"]) == 1:
+                        tiff_file = tiff_folder / frames["files"][0]
+                        futures.append(executor.submit(store_frame, nd2, image_seq_index, tiff_file, nd2_file_lock, progress))
+                    else:
+                        futures.append(executor.submit(store_frames, nd2, image_seq_index, frames["files"], tiff_folder, nd2_file_lock, progress))
+
+            logprint(f"Waiting for processes to finish.")
+            wait(futures)
+
+
+        else:
+            for image_seq_index, frame in enumerate(data["frames"]):
+                if len(frame["files"]) == 1:
+                    tiff_file = tiff_folder / frame["files"][0]
+                    arr = TiffReader(tiff_file).get_array()
+                    if arr.ndim == 3:
+                        arr = arr[:,:,::-1]
+                    nd2.setImage(image_seq_index,)                # TODO - for multichannel images, you should probably do data[:,:,::-1]
+                    progress.increase()
                 else:
-                    futures.append(executor.submit(store_frames, nd2, image_seq_index, frames["files"], tiff_folder, nd2_file_lock, progress))
-
-        logprint(f"Waiting for processes to finish.")
-        wait(futures)
-        logprint("Finalizing ND2 file.")
-
-
-def tiff_to_NIS_nd2(data: dict, tiff_folder: Path, nd2_path: Path):
-    attr = get_nd2_image_attributes(data["attributes"])
-    exp = get_nd2_experiments(data["experiment"])
-
-
-    if nd2_path.is_file():
-        nd2_path.unlink()
-
-    with Nd2Writer(nd2_path) as nd2:
-        nd2.imageAttributes = attr
-        nd2.experiment = exp
-        nd2.pictureMetadata = PictureMetadata()         # currently empty metadata, in the future maybe you can get some data from tiff metadata ?
-
-        progress = Progress(nd2_path, len(data["frames"]) * len(data["frames"][0]["files"]))
-
-        for image_seq_index, frame in enumerate(data["frames"]):
-            if len(frame["files"]) == 1:
-                tiff_file = tiff_folder / frame["files"][0]
-                nd2.setImage(image_seq_index, TiffReader(tiff_file).get_array())
-                progress.increase()
-            else:
-                arrays = tuple(TiffReader(tiff_folder / file).get_array() for file in frame["files"])
-                array = np.stack(arrays, axis = -1)
-                nd2.setImage(image_seq_index, array)
-                progress.increase(len(frame["files"]))
+                    arrays = tuple(TiffReader(tiff_folder / file).get_array() for file in frame["files"])               # TODO - for multichannel images, you should probably do data[:,:,::-1]
+                    if arrays[0].ndim == 3:
+                        arrays = tuple(arr[:,:,::-1] for arr in arrays)
+                    array = np.stack(arrays, axis = -1)
+                    nd2.setImage(image_seq_index, array)
+                    progress.increase(len(frame["files"]))
 
         logprint("Finalizing ND2 file.")

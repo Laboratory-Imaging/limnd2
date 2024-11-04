@@ -7,7 +7,7 @@ from tiff_to_NIS_json import tiff_to_json
 from tiff_to_NIS_argparser import tiff_to_nis_argparser, PathParserArgs
 import sys
 
-from tiff_to_NIS_nd2 import tiff_to_NIS_nd2, tiff_to_NIS_nd2_multiprocessing
+from tiff_to_NIS_nd2 import tiff_to_NIS_nd2_multiprocessing
 
 def compare_speed():
     local = "F:\\tillfiles"
@@ -87,6 +87,10 @@ def logprint(msg: str):
 
 
 def tiff_to_NIS(args: list[str] | None = None):
+
+    start = datetime.now()
+    logprint("Starting script.")
+
     parsed_args: PathParserArgs = tiff_to_nis_argparser(args)
     if not parsed_args:
         sys.exit(1)
@@ -127,26 +131,22 @@ def tiff_to_NIS(args: list[str] | None = None):
                 json.dump(describe_json, f, indent=4)
 
             logprint(f"Describe JSON created at {outpath.absolute()}.")
-            return 0
 
         elif parsed_args.nd2_output:
             outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
 
-            if parsed_args.multiprocessing:
-                logprint("Creating ND2 file (with experimental multiprocessing).")
-                tiff_to_NIS_nd2_multiprocessing(describe_json, parsed_args.folder, outpath)
-            else:
-                logprint("Creating ND2 file.")
-                tiff_to_NIS_nd2(describe_json, parsed_args.folder, outpath)
+            logprint(f"Creating ND2 file{' (with experimental multiprocessing)' if parsed_args.multiprocessing else ''}.")
+            tiff_to_NIS_nd2_multiprocessing(describe_json, parsed_args.folder, outpath, parsed_args.multiprocessing)
 
             logprint(f"ND2 file created at {outpath.absolute()}.")
-            return 0
 
     else:
+        # experimental branch if output not selected
         print(exp_count)
         print(found_values)
 
-
+    logprint(f"Ending script, total time taken: {datetime.now() - start}")
+    return 0
 
 
 if __name__ == "__main__":
@@ -157,6 +157,8 @@ if __name__ == "__main__":
 
     local_dummy = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\dummy"
     local_export = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export"
+    local_export2 = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export2"
+    local_export3 = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export3"
 
     remote_big = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
 
@@ -184,8 +186,7 @@ if __name__ == "__main__":
             "-my",
             "2",
             "-n",
-            "bigfile3.nd2",
-            "--multiprocessing"
+            "bigfile3.nd2"
         ]
 
     args3 = [f"{local_export}",
@@ -197,13 +198,46 @@ if __name__ == "__main__":
             "2",
             "-c",
             "3",
-            "-j",
-            "sequence_python.json"
+            "-n",
+            "sequence_python.nd2",
+            "--multiprocessing"
         ]
+
+    args4 = [f"{local_export2}",
+            r"convallaria_flim?#c#z#.tif",
+            "-s",
+            "-mx",
+            "1",
+            "-my",
+            "2",
+            "-c",
+            "3",
+            "-z",
+            "4",
+            "-n",
+            "sequence_python.nd2",
+            "--multiprocessing"
+        ]
+
+    args5 = [f"{local_export3}",
+            r"convallaria_flim?#z#.tif",
+            "-s",
+            "-mx",
+            "1",
+            "-my",
+            "2",
+            "-z",
+            "3",
+            "-n",
+            "sequence_python.nd2",
+            "--multiprocessing"
+        ]
+
+    args=None       # select testing args list here
 
     import sys
     if len(sys.argv) >= 2:          # if provided args, use those instead
         args = None
 
     #use either test args or None = command like args
-    tiff_to_NIS(args=args3)
+    tiff_to_NIS(args=args)
