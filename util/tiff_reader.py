@@ -72,14 +72,14 @@ class TiffReader:
     def __str__(self) -> str:
         return str(self.path) + str(self.pages_metadata)
 
-    def get_array(self, page_index: int = 0) -> np.array:
+    def asarray(self, page_index: int = 0) -> np.array:
         if page_index < 0 or page_index >= self.number_of_pages:
             raise ValueError(f"Invalid page index, requested index: {page_index}, valid indices: 0 - {self.number_of_pages - 1}")
 
         with tifffile.TiffFile(self.path) as tif:
             return tif.pages[page_index].asarray()
 
-    def get_nd2_attributes(self, page_index: int = 0):
+    def get_nd2_attributes(self, page_index: int = 0, *, sequence_count = 1):
         if page_index < 0 or page_index >= self.number_of_pages:
             raise ValueError(f"Invalid page index, requested index: {page_index}, valid indices: 0 - {self.number_of_pages - 1}")
         page = self.pages_metadata.pages[page_index]
@@ -106,7 +106,7 @@ class TiffReader:
             uiComp = components,
             uiBpcInMemory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8,
             uiBpcSignificant = bits,
-            uiSequenceCount = 1,
+            uiSequenceCount = sequence_count,
             uiTileWidth = shape[1],
             uiTileHeight = shape[0],
             uiVirtualComponents = components,

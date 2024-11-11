@@ -112,7 +112,7 @@ class Progress:
 
 
 def store_frame(nd2: Nd2Writer, image_seq_index: int, tiff_file: str, nd2_file_lock: Lock, progress: Progress):
-    arr = TiffReader(tiff_file).get_array()                 # TODO - for multichannel images, you should probably do data[:,:,::-1]
+    arr = TiffReader(tiff_file).asarray()                 # TODO - for multichannel images, you should probably do data[:,:,::-1]
 
     if arr.ndim == 3:
         arr = arr[:,:,::-1]
@@ -123,7 +123,7 @@ def store_frame(nd2: Nd2Writer, image_seq_index: int, tiff_file: str, nd2_file_l
     progress.increase()
 
 def store_frames(nd2: Nd2Writer, image_seq_index: int, tiff_files: list[str], parent_folder: Path, nd2_file_lock: Lock, progress: Progress):
-    arrays = tuple(TiffReader(parent_folder / file).get_array() for file in tiff_files)         # TODO - for multichannel images, you should probably do data[:,:,::-1]
+    arrays = tuple(TiffReader(parent_folder / file).asarray() for file in tiff_files)         # TODO - for multichannel images, you should probably do data[:,:,::-1]
     if arrays[0].ndim == 3:
         arrays = tuple(arr[:,:,::-1] for arr in arrays)
     array = np.stack(arrays, axis = -1)
@@ -168,13 +168,13 @@ def tiff_to_NIS_nd2_multiprocessing(data: dict, tiff_folder: Path, nd2_path: Pat
             for image_seq_index, frame in enumerate(data["frames"]):
                 if len(frame["files"]) == 1:
                     tiff_file = tiff_folder / frame["files"][0]
-                    arr = TiffReader(tiff_file).get_array()
+                    arr = TiffReader(tiff_file).asarray()
                     if arr.ndim == 3:
                         arr = arr[:,:,::-1]
                     nd2.setImage(image_seq_index,)                # TODO - for multichannel images, you should probably do data[:,:,::-1]
                     progress.increase()
                 else:
-                    arrays = tuple(TiffReader(tiff_folder / file).get_array() for file in frame["files"])               # TODO - for multichannel images, you should probably do data[:,:,::-1]
+                    arrays = tuple(TiffReader(tiff_folder / file).asarray() for file in frame["files"])               # TODO - for multichannel images, you should probably do data[:,:,::-1]
                     if arrays[0].ndim == 3:
                         arrays = tuple(arr[:,:,::-1] for arr in arrays)
                     array = np.stack(arrays, axis = -1)

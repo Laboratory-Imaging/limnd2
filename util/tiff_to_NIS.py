@@ -108,7 +108,7 @@ def tiff_to_NIS(args: list[str] | None = None):
 
 
     logprint("Converting capturing groups to numbers if possible.")
-    found_values = convert_values(files)
+    convert_values(files)
 
     logprint("Checking if all files exist.")
     found_values = check_files(list(files.values()))
@@ -141,9 +141,12 @@ def tiff_to_NIS(args: list[str] | None = None):
             logprint(f"ND2 file created at {outpath.absolute()}.")
 
     else:
-        # experimental branch if output not selected
-        print(exp_count)
-        print(found_values)
+        res = {}
+        for exp, values in zip(exp_count.keys(), found_values):
+            res[exp] = {"count" : len(values),
+                        "items" : list(values)}
+
+        print(res)
 
     logprint(f"Ending script, total time taken: {datetime.now() - start}")
     return 0
