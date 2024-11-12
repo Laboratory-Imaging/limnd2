@@ -1,11 +1,18 @@
 # limnd2
 
-## prerequisites
+`.nd2` (Nikon NIS Elements) file reader and writer in Python.
 
-- min Python version 3.12.0
+## Prerequisites
 
-install script:
+- python>=3.12.0
+- numpy
 
-powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Laboratory-Imaging/limnd2/refs/heads/main/setup_project.bat?token=GHSAT0AAAAAACXVJUPXU2CVVY2XWUYXO4XOZZTFDXA' -OutFile 'setup_project.bat'; & '.\setup_project.bat'; Remove-Item 'setup_project.bat'"
+## Installation
 
+### Windows
 
+Run following command with Powershell in folder where you want to install this library.
+
+```powershell
+powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Laboratory-Imaging/Laboratory-Imaging.github.io/refs/heads/main/limnd2/setup.bat' -OutFile 'setup_project.bat'; & '.\setup_project.bat'; Remove-Item 'setup_project.bat'"
+```
