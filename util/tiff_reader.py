@@ -101,7 +101,7 @@ class TiffReader:
 
         return ImageAttributes(
             uiWidth = shape[1],
-            uiWidthBytes= shape[1] * components * page.dtype.itemsize,
+            uiWidthBytes = shape[1] * components * page.dtype.itemsize,
             uiHeight = shape[0],
             uiComp = components,
             uiBpcInMemory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8,
@@ -114,5 +114,5 @@ class TiffReader:
         )
 
 if __name__ == "__main__":
-    a = TiffReader("C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export\\convallaria_flimA1z1c1.tif")
+    a = TiffReader("C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export\\file.tif")
     print(a.get_nd2_attributes())

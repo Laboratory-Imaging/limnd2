@@ -11,7 +11,7 @@ from tiff_to_NIS_nd2 import tiff_to_NIS_nd2_multiprocessing
 
 def compare_speed():
     local = "F:\\tillfiles"
-    remote = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
+    remote = "\\\\cork\\images"
 
     crawler = FileCrawler(local, [".tif", ".tiff"], recursive=False)
 
@@ -43,7 +43,6 @@ def convert_to_numbers_or_keep_strings(lst):
 def convert_values(files: dict[Path, list[list[str]]]):
     keys = list(files.keys())
     values = list(files.values())
-    #print(list(zip(*values)), sep="\n")
 
     new = list(zip(*[convert_to_numbers_or_keep_strings(new) for new in list(zip(*values))]))
 
@@ -163,7 +162,6 @@ if __name__ == "__main__":
     local_export2 = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export2"
     local_export3 = "C:\\Users\\lukas.jirusek\\Desktop\\tiffs\\export3"
 
-    remote_big = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
 
     #args for testing
     args1 = [f"{local_dummy}",

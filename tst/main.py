@@ -135,7 +135,7 @@ def experiment_factory():
     rich.print(NET.create_experiment_level())
 
 def file_attributes():
-    f = limnd2.Nd2Reader("d:\\10x eating 2.tmp.nd2")
+    f = limnd2.Nd2Reader("d:\\file.nd2")
     print("limnd2 is imported from: ", limnd2.__file__)
 
     print("File version:", f.version)
@@ -159,7 +159,7 @@ def file_attributes():
     print('\n'.join(f'{item.name}: {item.valueAsText}' for item in desc))
 
 def read_test():
-    tiffs = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert"
+    tiffs = "\\\\cork\\images\\"
     c = FileCrawler(tiffs, ["tif", "tiff"], recursive=True)
     start = datetime.now()
     res = c.run()

@@ -309,7 +309,6 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
 if __name__ == "__main__":
 
     local = "D:\\tillfiles"
-    remote = "\\\\cork\\devimages\\Nikky\\BTID_133291 Lots of tiffs for convert\\PVA108BB\\PVA108BB"
 
 
     args = [f"{local}",

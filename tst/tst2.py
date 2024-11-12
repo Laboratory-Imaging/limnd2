@@ -3,7 +3,7 @@ import limnd2
 from pathlib import Path
 
 # def
-ldrive_nd2=Path(r"C:\images\Nikky Tatiana ND2")
+ldrive_nd2=Path("C:\\images\\")
 df = pd.DataFrame(columns=["filename","file version", "microscope","modality","camera", "objective","refraction index", "numerical aperture", "zoom", "offset", "pinhole", "offset", "exposure (µs)", "excitation wavelength and power", "channels", "software", "dimension_xy", "bit_depth"])
 
 
