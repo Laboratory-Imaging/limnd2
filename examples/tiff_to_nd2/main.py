@@ -27,12 +27,13 @@ def extract_t_z(filename):
 
 
 # prepare input files
-TIFF_FOLDER = Path("./tiffs")
+script_dir = Path(__file__).resolve().parent
+TIFF_FOLDER = script_dir / "../tiffs"
 tiff_files = [TIFF_FOLDER / file_path.name for file_path in sorted(TIFF_FOLDER.glob('*.tif'), key=extract_t_z)]      # files must be sorted with respect to dimensions
 
 
 # prepare output file
-OUTPUT_FILE = Path("./output.nd2")
+OUTPUT_FILE = script_dir / "./output.nd2"
 if OUTPUT_FILE.exists() and OUTPUT_FILE.is_file():                                  # delete file if it exists
     OUTPUT_FILE.unlink()
 
@@ -49,7 +50,7 @@ TSTEP = 150
 ZSTEP = 100
 
 
-with limnd2.Nd2Writer("output.nd2") as nd2:
+with limnd2.Nd2Writer(OUTPUT_FILE) as nd2:
 
     # get nd2 attributes
     sample_tiff = tiff_reader.TiffReader(tiff_files[0])

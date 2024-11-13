@@ -92,18 +92,18 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
     wsPhaseName: str                = LV_field("",                        LVType.STRING)
     sAutoFocusBeforePeriod: dict    = LV_field(dict,                      LVType.ENCODING_NOT_IMPLEMENTED)
     sAutoFocusBeforeCapture: dict   = LV_field(dict,                      LVType.ENCODING_NOT_IMPLEMENTED)
-    uiLoopType: ExperimentType      = LV_field(ExperimentType.eEtDefault, LVType.UINT32)  
+    uiLoopType: ExperimentType      = LV_field(ExperimentType.eEtDefault, LVType.UINT32)
     # 0..default type, 1..Stimulation, 2..Bleaching, 32..Incubation
 
-    uiGroup: int                    = LV_field(0,                         LVType.UINT32)  
+    uiGroup: int                    = LV_field(0,                         LVType.UINT32)
     # 0..no group, HIWORD(uiGroup)..Index of group from 1, LOWORD(uiGroup)..Index inside group
 
     uiStimulationCount: int         = LV_field(0,                         LVType.UINT32)
-    bDurationPref: bool             = LV_field(None,                      LVType.BOOL)     
+    bDurationPref: bool             = LV_field(None,                      LVType.BOOL)
     # If true, time loop will stop at the dDuration time regardless uiCount
 
     pIncubationData: bytes          = LV_field(b'',                       LVType.UNKNOWN)       # looks unused
-    # parameters for incubation device 
+    # parameters for incubation device
 
     uiIncubationDataSize: int       = LV_field(0,                         LVType.UNKNOWN)       # looks unused
     wsInterfaceName: str            = LV_field("",                        LVType.STRING)
@@ -138,7 +138,7 @@ class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
     wsCommandBeforePeriod: dict                             = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
     wsCommandAfterPeriod: dict                              = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
     pPeriodValid: bytes                                     = LV_field(bytes,           LVType.BYTEARRAY)
-    
+
     def __post_init__(self):
         if isinstance(self.pPeriod, dict):
             periods = []
@@ -196,15 +196,15 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
 
         if 'dZLow#1' in self._unknown_fields:
             self._unknown_fields.pop('dZLow#1')
-        
+
         if "sCommandAfterCapture" in self._unknown_fields:
-            object.__setattr__(self, 'wsCommandBeforeCapture', self._unknown_fields.pop('sCommandAfterCapture'))    
-        
+            object.__setattr__(self, 'wsCommandBeforeCapture', self._unknown_fields.pop('sCommandAfterCapture'))
+
         if "sCommandBeforeCapture" in self._unknown_fields:
-            object.__setattr__(self, 'wsCommandBeforeCapture', self._unknown_fields.pop('sCommandBeforeCapture'))    
+            object.__setattr__(self, 'wsCommandBeforeCapture', self._unknown_fields.pop('sCommandBeforeCapture'))
 
         if "sZDevice" in self._unknown_fields:
-            object.__setattr__(self, 'wsZDevice', self._unknown_fields.pop('sZDevice'))    
+            object.__setattr__(self, 'wsZDevice', self._unknown_fields.pop('sZDevice'))
 
         object.__setattr__(self, 'iType', ZStackType(self.iType))
 
@@ -272,7 +272,7 @@ class ExperimentSpectralLoopPoint(LVSerializable):
     def __post_init__(self):
         if "pPlaneDesc" in self._unknown_fields:
             self._unknown_fields.pop("pPlaneDesc")
-        
+
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
@@ -286,7 +286,7 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     """
     Atributes found in XML variant, but not in LV
     pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)                     # DONE
-    szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE 
+    szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
     szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
     pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
     pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
@@ -296,7 +296,7 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
         if isinstance(self.Points, dict):
             points = [ExperimentSpectralLoopPoint(**point) for point in self.Points.values()]
             object.__setattr__(self, "Points", points)
-        
+
         object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**self.pPlanes))
 
 
@@ -311,21 +311,21 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
                                                     wsCommandAfterCapture = uf.get("szCommandAfterCapture", {}).get(key, ""))
                 points.append(point)
                 object.__setattr__(self, "Points", points)
-            
+
             if "pAutoFocus" in uf: uf.pop("pAutoFocus")
             if "szCommandBeforeCapture" in uf: uf.pop("szCommandBeforeCapture")
             if "szCommandAfterCapture" in uf: uf.pop("szCommandAfterCapture")
             if "pZStackPos" in uf: uf.pop("pZStackPos")
-            
+
         if "pPlaneDesc" in self._unknown_fields:
             planes: dict = self._unknown_fields.pop("pPlaneDesc")
             planes_dict = {k: PicturePlaneDesc(**v) for k, v in planes.items() }
             object.__setattr__(self.pPlanes, "sPlaneNew", planes_dict)
-            
 
 
 
-        
+
+
     @property
     def info(self) -> list[dict[str, any]]:
         ret = []
@@ -352,18 +352,18 @@ class ExperimentXYPosLoopPoint(LVSerializable):
         for point in points.values():
             points_list.append(ExperimentXYPosLoopPoint(**point))
         return points_list
-    
-    def create_points_XML(xdict: dict[str, float], 
-                          ydict: dict[str, float], 
-                          zdict: dict[str, float], 
-                          offdict: dict[str, float], 
+
+    def create_points_XML(xdict: dict[str, float],
+                          ydict: dict[str, float],
+                          zdict: dict[str, float],
+                          offdict: dict[str, float],
                           namedict: dict[str, str]):
         points = []
         for key in xdict:
-            points.append(ExperimentXYPosLoopPoint(dPosX=xdict[key], 
-                                                   dPosY=ydict[key], 
-                                                   dPosZ=zdict[key], 
-                                                   dPFSOffset=offdict[key], 
+            points.append(ExperimentXYPosLoopPoint(dPosX=xdict[key],
+                                                   dPosY=ydict[key],
+                                                   dPosZ=zdict[key],
+                                                   dPFSOffset=offdict[key],
                                                    dPosName=namedict[key]))
         return points
 
@@ -407,9 +407,9 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
         elif all(key in self._unknown_fields for key in ("dPosX", "dPosY", "dPosZ", "dPFSOffset", "pPosName")):
             object.__setattr__(self, 'Points', ExperimentXYPosLoopPoint.create_points_XML(self._unknown_fields.pop("dPosX"),
-                                                                                          self._unknown_fields.pop("dPosY"), 
-                                                                                          self._unknown_fields.pop("dPosZ"), 
-                                                                                          self._unknown_fields.pop("dPFSOffset"), 
+                                                                                          self._unknown_fields.pop("dPosY"),
+                                                                                          self._unknown_fields.pop("dPosZ"),
+                                                                                          self._unknown_fields.pop("dPFSOffset"),
                                                                                           self._unknown_fields.pop("pPosName")))
 
         if "sAutoFocusBeforeCapture" in self._unknown_fields:
@@ -417,11 +417,11 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
         if "uiRelativeIdx" in self._unknown_fields:
             self._unknown_fields.pop("uiRelativeIdx")
-        
 
 
 
-        
+
+
     @property
     def info(self) -> list[dict[str, any]]:
         ret = []
@@ -511,14 +511,14 @@ class ExperimentIterator:
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentLevel(LVSerializable):
-    eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)     
+    eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)
     # Type of the current loop, determines the union member to be used
 
-    wsApplicationDesc: str                  = LV_field("",                                LVType.STRING)     
+    wsApplicationDesc: str                  = LV_field("",                                LVType.STRING)
     # Unique identification of the application which created the image (experiment)
 
     wsUserDesc: str                         = LV_field("",                                LVType.STRING)
-    aMeasProbesBase64: str                  = LV_field("",                                LVType.STRING)     
+    aMeasProbesBase64: str                  = LV_field("",                                LVType.STRING)
     # Time measurement probes definition
 
     wsCameraName: str                       = LV_field("",                                LVType.STRING)
@@ -526,7 +526,7 @@ class ExperimentLevel(LVSerializable):
     # A specification of parameters of the current level loop.
     # The structure depends on the content of eType member variable.
 
-    
+
     pItemValid: bytes                       = LV_field(None,                              LVType.BYTEARRAY)
     # A list of bools specifying whether the items are branched in a next level.
     # This is the only possibility how to break experiment orthogonality.
@@ -545,38 +545,38 @@ class ExperimentLevel(LVSerializable):
     bUseTiRecipe: bool                      = LV_field(False,                             LVType.BOOL)
     bUseIntenzityCorrection: bool           = LV_field(False,                             LVType.BOOL)
     bUseTriggeredAcquisition: bool          = LV_field(False,                             LVType.BOOL)
-    bTriggeredStimulation: bool             = LV_field(False,                             LVType.BOOL)                          
-    # Ax + GalvoXY triggered sequential stimulation = Ax se triggeruje na end 
+    bTriggeredStimulation: bool             = LV_field(False,                             LVType.BOOL)
+    # Ax + GalvoXY triggered sequential stimulation = Ax se triggeruje na end
     # TTL Outu na galvu a galvo se triggeruje na pulzik na TTL Inu vygenerovany Axem.
 
     bKeepObject: bool                       = LV_field(False,                             LVType.BOOL)
-    RecordAllData: bool                     = LV_field(False,                             LVType.BOOL)                          
+    RecordAllData: bool                     = LV_field(False,                             LVType.BOOL)
     # used in JOBS via expression. Determines (in job only) whether all data should be recorded
 
-    vectStimulationConfigurations: list     = LV_field(list,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    vectStimulationConfigurations: list     = LV_field(list,                              LVType.ENCODING_NOT_IMPLEMENTED)
     # phase, list SC
 
     vectStimulationConfigurationsSize: int  = LV_field(0,                                 LVType.INT32)
-    uiRepeatCount: int                      = LV_field(1,                                 LVType.UINT32)                        
+    uiRepeatCount: int                      = LV_field(1,                                 LVType.UINT32)
     # Number of repeatings (how many times must be the current subexperiment repeated)
 
     uiNextLevelCount: int                   = LV_field(0,                                 LVType.UINT32)
-    ppNextLevelEx: list[ExperimentLevel]    = LV_field(None,                              LVType.LEVEL)                         
+    ppNextLevelEx: list[ExperimentLevel]    = LV_field(None,                              LVType.LEVEL)
     # A list of subloops
 
-    pLargeImage: dict | None                = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    pLargeImage: dict | None                = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
     # A pointer to a LargeImage description structure or None, if the LargeImage is not defined in this loop
 
-    pNIExperiment: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    pNIExperiment: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
     # A pointer to a NICard description structure or None, if the NICard description is not defined in this loop
 
-    pRecordedData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    pRecordedData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
     # A pointer to a Recorded Data description structure or None, if Recorded Data is not defined in this loop
 
-    sParallelExperiment: dict | None        = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    sParallelExperiment: dict | None        = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
     # Parallel experiments description
 
-    pExternalData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)      
+    pExternalData: dict | None              = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)
     # External data (liquid handling)
 
     iRecipeDSCPort: int                     = LV_field(None,                              LVType.INT32)
@@ -588,7 +588,7 @@ class ExperimentLevel(LVSerializable):
 
     def __post_init__(self):
         if isinstance(self.pItemValid, dict):
-            object.__setattr__(self, 'pItemValid', bytes(self.pItemValid.values()))    
+            object.__setattr__(self, 'pItemValid', bytes(self.pItemValid.values()))
         object.__setattr__(self, 'eType', ExperimentLoopType(self.eType))
         object.__setattr__(self, 'ppNextLevelEx', ExperimentLevel.createExperimentLevels(self.ppNextLevelEx))
         object.__setattr__(self, 'uLoopPars', ExperimentLoop.createExperimentLoop(self.eType, self.uLoopPars))

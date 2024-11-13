@@ -12,18 +12,26 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Index.py",
+            "name": "util/Index.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "./limnd2/index.py",
+            "program": "./util/index.py",
             "console": "integratedTerminal",
         },
         {
-            "name": "TiffToNis.py",
+            "name": "util/TiffToNis.py",
             "type": "debugpy",
             "request": "launch",
             "program": "./util/tiff_to_NIS.py",
             "console": "integratedTerminal",
+        },
+        {
+            "name": "tst/LegacyTest.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./tst/legacy_test.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
         }
     ]
 }
