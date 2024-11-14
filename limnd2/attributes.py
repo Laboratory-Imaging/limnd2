@@ -86,14 +86,18 @@ class ImageAttributes(LVSerializable):
         return (width * comps * (bits + 7) // 8 + 3) // 4 * 4
 
     @staticmethod
-    def create(shape: tuple[int], bits: int, sequence_count: int) -> ImageAttributes:
+    def create(width: int, height: int, component_count: int, bits: int, sequence_count: int) -> ImageAttributes:
         """
         Create ImageAttributes instance from simplified parameters:
 
-        shape: tuple[int]   - tuple in following format: (width_pixels, height_pixels, [component_count]), component count is optional, 1 by default
-        bits: int           - number of bits per pixel component
-        sequence_count: int - total number of frames in ND2 file (product of size of each dimension)
+        width: int              - width in pixels
+        height: int             - height in pixels
+        component_count: int    - number of components
+        bits: int               - number of bits per pixel component
+        sequence_count: int     - total number of frames in ND2 file (product of size of each dimension)
         """
+        shape = (width, height, component_count)
+
         if bits == 32:
             pixel_type = ImageAttributesPixelType.pxtReal
         else:
