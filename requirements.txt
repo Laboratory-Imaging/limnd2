@@ -1,6 +1,2 @@
 python>=3.12.0
 numpy
-
-# only required for util scripts
-tifffile
-imagecodecs
