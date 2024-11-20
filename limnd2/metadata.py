@@ -15,6 +15,50 @@ def jdn_now():
    result += 2_440_587.5    # JDN EPOCH
    return result
 
+def calculateColor(color_string: str) -> int:
+        """
+        Calculates channel color integer (used as uiColor).
+
+        Parameters
+        ----------
+        color_string : str
+            Color to be converted, either as hex string ("#ff0000"), common colors are also supported ("Red").
+
+        Returns
+        -------
+        int
+            converted color value
+        """
+        COLOR_NAME_TO_HTML = {
+            "Red": "#ff0000",
+            "Green": "#00ff00",
+            "Blue": "#0000ff",
+            "Yellow": "#ffff00",
+            "Cyan": "#00ffff",
+            "Magenta": "#ff00ff",
+            "Black": "#000000",
+            "White": "#ffffff",
+            "Gray": "#808080",
+            "Orange": "#ffa500",
+            "Pink": "#ffc0cb",
+            "Purple": "#800080",
+            "Brown": "#a52a2a",
+        }
+
+        hex_color = COLOR_NAME_TO_HTML.get(color_string.capitalize(), color_string)
+
+        if hex_color.startswith('#'):
+            hex_color = hex_color[1:]
+
+        if len(hex_color) != 6 or not all(char in "0123456789abcdefABCDEF" for char in hex_color):
+            raise ValueError(f"Invalid HTML color string: '{color_string}'")
+
+        r = int(hex_color[0:2], 16)
+        g = int(hex_color[2:4], 16)
+        b = int(hex_color[4:6], 16)
+
+        return (b << 16) | (g << 8) | r
+
 class PictureMetadataTimeSourceType(enum.IntEnum):
     etsSW = 0
     etsNIDAQ = 1
@@ -136,6 +180,45 @@ class PicturePlaneModalityFlags(enum.IntFlag):
         }.get(mod, PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modCamera)
 
     @staticmethod
+    def from_modality_string(modality: str) -> PicturePlaneModalityFlags:
+        """
+        Converts modality string to PicturePlaneModalityFlags.
+
+        Parameters
+        ----------
+        modality : string
+            modality string (for example "Wide-field", "Brightfield", "Phase", ...)
+
+        Returns
+        -------
+        PicturePlaneModalityFlags
+            Modalify flag for given modality, 0 if modality was not found.
+        """
+        modality_map = {
+            "Undefined": 0,
+            "Wide-field": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modFluorescence,
+            "Brightfield": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modBrightfield,
+            "Phase": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modPhaseContrast,
+            "DIC": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modDIContrast,
+            "DarkField": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modDarkfield,
+            "MC": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modNAMC,
+            "TIRF": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modTIRF,
+            "Confocal, Fluo": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modGaAsP,
+            "Confocal, Trans": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modTransmitDetector,
+            "Multi-photon": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modMultiPhotonFluo,
+            "SFC pinhole": PicturePlaneModalityFlags.modSweptFieldConfocalPinholes,
+            "SFC slit": PicturePlaneModalityFlags.modSweptFieldConfocalSlit,
+            "Spinning Disc": PicturePlaneModalityFlags.modSpinDiskConfocal,
+            "DSD": PicturePlaneModalityFlags.modDSDConfocal,
+            "NSIM": PicturePlaneModalityFlags.modSIM,
+            "iSim": PicturePlaneModalityFlags.modISIM,
+            "RCM": PicturePlaneModalityFlags.modRCM,
+            "CSU W1-SoRa": PicturePlaneModalityFlags.modSora,
+            "NSPARC": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modNSPARCDetector,
+        }
+        return modality_map.get(modality, 0)
+
+    @staticmethod
     def to_str_list(flags : PicturePlaneModalityFlags) -> list[str]:
         ret: list[str] = []
         # light
@@ -235,7 +318,7 @@ class OpticalSpectrumPointType(enum.IntEnum):
 class OpticalSpectrumPoint(LVSerializable):
     eType: OpticalSpectrumPointType             = LV_field(OpticalSpectrumPointType.eSptInvalid,  LVType.UINT32)
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
-    dTValue: float                              = LV_field(0.0,                                   LVType.DOUBLE)
+    dTValue: float                              = LV_field(1.0,                                   LVType.DOUBLE)
 
     """
     Atributes found in XML variant, but not in LV
@@ -256,6 +339,8 @@ class OpticalSpectrum(LVSerializable):
     def __post_init__(self):
         if isinstance(self.pPoint, dict):
             object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**self.pPoint[k]) for k in sorted(self.pPoint)])
+        if isinstance(self.pPoint, list):
+            object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**p) for p in self.pPoint])
 
     @property
     def isValid(self) -> bool:
@@ -776,6 +861,7 @@ class PicturePlaneDesc(LVSerializable):
         return f'#{r:02x}{g:02x}{b:02x}'
 
 
+
 @dataclass(frozen=True, kw_only=True)
 class SampleSettingsOC(LVSerializable):
     uiOCTypeKey: int                        = LV_field(0,                   LVType.UINT32)
@@ -902,6 +988,9 @@ class PictureMetadataPicturePlanes(LVSerializable):
             object.__setattr__(self, "sPlaneNew", planes)
             self._unknown_fields.pop("sPlane")
 
+        if self.sPlaneNew and isinstance(self.sPlaneNew, list):
+            object.__setattr__(self, "sPlaneNew", [PicturePlaneDesc(**p) for p in self.sPlaneNew])
+
 
         if isinstance(self.sSampleSetting, dict):
             ssettings = []
@@ -909,25 +998,90 @@ class PictureMetadataPicturePlanes(LVSerializable):
                 ssettings.append(SampleSettings(**setting))
             object.__setattr__(self, "sSampleSetting", ssettings)
 
+        elif isinstance(self.sSampleSetting, list):
+            object.__setattr__(self, "sSampleSetting", [SampleSettings(**s) for s in self.sSampleSetting])
+
         object.__setattr__(self, "eRepresentation", PictureMetadataPicturePlanesRepresentation(self.eRepresentation))
 
 
     @property
     def valid(self) -> bool:
+        """
+        Checks if PictureMetadataPicturePlanes insance has valid number of channels.
+
+        Returns
+        -------
+        bool
+            True if number of channels is valid, False otherwise.
+        """
         return 0 < self.uiCount and self.uiCount <= self.uiCompCount and self.uiCount == len(self.sPlaneNew)
 
     def makeValid(self, comps: int, **kwargs) -> None:
-        if comps not in (1, 3):
-            raise ValueError("Invalid number of components:", comps, "expected 1 or 3.")
-        args = dict(uiCompCount=comps,
-                    uiModalityMask=PicturePlaneModalityFlags.modBrightfield if comps == 3 else PicturePlaneModalityFlags.modFluorescence,
-                    sDescription="RGB" if comps == 3 else "Mono")
-        args.update(kwargs)
-        object.__setattr__(self, 'uiCount', 1)
-        object.__setattr__(self, 'uiCompCount', comps)
-        object.__setattr__(self, 'sPlane', [ PicturePlaneDesc(**args) ])
+        """
+        Attempts to fix info about channels using specified number of channels.
+
+        This function creates channel info basec on component count like this:
+
+        comps = 1: function creates one Mono channel
+
+        comps = 2: function creates channels Channel_1, Channel_2
+
+        comps = 3: function creates one RGB channel
+
+        comps >= 4: function creates channels Channel_1 ... Channel_N
+
+
+        Parameters
+        ----------
+        comps : int
+            The number of components in the image.
+        **kwargs : dict
+            Additional parameters to pass to each plane.
+        """
+        if comps in (1, 3):
+            args = dict(uiCompCount=comps,
+                        uiModalityMask=PicturePlaneModalityFlags.modBrightfield if comps == 3 else PicturePlaneModalityFlags.modFluorescence,
+                        sDescription="RGB" if comps == 3 else "Mono")
+            args.update(kwargs)
+            object.__setattr__(self, 'uiCount', 1)
+            object.__setattr__(self, 'uiCompCount', comps)
+            object.__setattr__(self, 'sPlane', [ PicturePlaneDesc(**args) ])
+        else:
+            planes = []
+            for i in range(comps):
+                args = dict(uiCompCount = 1,
+                            uiModalityMask = PicturePlaneModalityFlags.modFluorescence,
+                            sDescription = f"Channel_{i + 1}")
+                args.update(kwargs)
+                planes.append(PicturePlaneDesc(**args))
+            object.__setattr__(self, 'uiCount', comps)
+            object.__setattr__(self, 'uiCompCount', comps)
+            object.__setattr__(self, 'sPlane', planes)
+
+    def to_serializable_dict(self, parent_path=""):
+        """
+        Converts dataclass to Python dictionary encodeable with LV encoder.
+        """
+
+        res = super().to_serializable_dict(parent_path)
+
+        # generally items in lists in LVSerializable data structures can be encoded with empty keys
+        # channels and sample settings however can not, we will manually change keys
+        # from integer key (int keys are replaces with "") to "a{key}"
+
+        for key in sorted(res["sPlaneNew"]):
+            res["sPlaneNew"][f"a{key}"] = res["sPlaneNew"].pop(key)
+
+        for key in sorted(res["sSampleSetting"]):
+            res["sSampleSetting"][f"a{key}"] = res["sSampleSetting"].pop(key)
+        return res
+
 
     def to_table(self) -> dict[str, any]:
+        """
+        Converts picture planes metadata to a treeview table.
+        """
+
         rows=[]
         col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
         settings = self.sSampleSetting
@@ -1165,3 +1319,143 @@ class PictureMetadata(LVSerializable):
     def from_var(data: bytes|memoryview) -> PictureMetadata:
         decoded = decode_var(data)
         return PictureMetadata(**decoded[0])
+
+
+
+
+# FOLLOWING SECTION IS FOR CREATING PICTURE METADATA WITH SIMPLIFIED SETTINGS
+
+@dataclass
+class MicroscopeSettings:
+    """
+    Represents simplifies settings for a microscope.
+
+    Attributes
+    ----------
+    pixel_calibration : float
+        Pixel size im micrometers (default is 1.0).
+    objective_magnification : float
+        The magnification power of the microscope's objective lens (default is 10.0).
+    objective_numerical_aperture : float
+        The numerical aperture of the objective lens (default is 0.45).
+    zoom_magnification : float
+        The zoom magnification factor (default is 1.2).
+    immersion_refractive_index : float
+        The refractive index of the immersion medium (default is 1.0).
+    pinhole_diameter : float
+        The diameter of the pinhole in micrometers (default is 50.0).
+    """
+
+    pixel_calibration: float = 1.0
+    objective_magnification: float = 10.0
+    objective_numerical_aperture: float = 0.45
+    zoom_magnification: float = 1.2
+    immersion_refractive_index: float = 1.0
+    pinhole_diameter: float = 50.0
+
+@dataclass
+class ChannelSettings:
+    """
+    Represents simplified settings for an image channel.
+
+    Attributes
+    ----------
+    name : str
+        The name of the channel.
+    modality : str
+        The modality of the channel (e.g., fluorescence, brightfield).
+    excitation_wavelength : int
+        The excitation wavelength in nanometers.
+    emission_wavelength : int
+        The emission wavelength in nanometers.
+    color : str
+        The color representation of the channel (e.g., "red", "blue", or hex code).
+    """
+    name: str
+    modality: str
+    excitation_wavelength: int
+    emission_wavelength: int
+    color: str
+
+def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettings) -> PictureMetadata:
+    """
+    Creates PictureMetadata instance from simplified information about channels and microscope.
+
+    Parameters
+    ----------
+    channels : list[ChannelSettings]
+        List of ChannelSetting instances, which contain channel names, modality, wavelength info and color.
+    microscope : MicroscopeSettings
+        MicroscopeSettings instance.
+
+    Returns
+    -------
+    PictureMetadata
+        PictureMetadata instance with channel and microsope information.
+    """
+
+    planes = []
+    for channel in channels:
+        excitation_point = OpticalSpectrumPoint(
+            eType = OpticalSpectrumPointType.eSptPeak,
+            dWavelength = channel.excitation_wavelength
+        )
+
+        excitation_spectrum = OpticalSpectrum(
+            uiCount = 1,
+            bPoints = False,
+            pPoint = [excitation_point]
+        )
+
+        emission_point = OpticalSpectrumPoint(
+            eType = OpticalSpectrumPointType.eSptPeak,
+            dWavelength = channel.emission_wavelength
+        )
+
+        emission_spectrum = OpticalSpectrum(
+            uiCount = 1,
+            bPoints = False,
+            pPoint = [emission_point]
+        )
+
+        color = calculateColor(channel.color)
+
+        filter = OpticalFilter(m_ePlacement = OpticalFilterPlacement.eOfpFilterTurret,
+                               m_eNature = OpticalFilterNature.eOfnGeneric,
+                               m_eSpctType = OpticalFilterSpectType.eOftNarrowBandpass,
+                               m_uiColor = color,
+                               m_ExcitationSpectrum = excitation_spectrum,
+                               m_EmissionSpectrum = emission_spectrum,
+                               m_MirrorSpectrum = OpticalSpectrum()
+                               )
+
+        filter_path = OpticalFilterPath(m_uiCount = 1, m_pFilter = [filter])
+
+        plane = PicturePlaneDesc(uiCompCount = 1,
+                                 uiSampleIndex = 0,
+                                 uiModalityMask = PicturePlaneModalityFlags.from_modality_string(channel.modality),
+                                 sDescription = channel.name,
+                                 dPinholeDiameter = microscope.pinhole_diameter,
+                                 pFilterPath = filter_path,
+                                 uiColor = color)
+        planes.append(plane)
+
+    setting = SampleSettings(dObjectiveToPinholeZoom = microscope.zoom_magnification)
+
+    picture_planes = PictureMetadataPicturePlanes(uiCount = len(channels),
+                                                  uiCompCount = len(channels),
+                                                  sPlaneNew = planes,
+                                                  uiSampleCount = 1,
+                                                  sSampleSetting = [setting]
+                                                  )
+
+    result = PictureMetadata(sPicturePlanes = picture_planes,
+                             dCalibration = microscope.pixel_calibration,
+                             dAspect = 1.0,
+                             bCalibrated = True,
+                             dObjectiveMag = microscope.objective_magnification,
+                             dObjectiveNA = microscope.objective_numerical_aperture,
+                             dRefractIndex1 = microscope.immersion_refractive_index,
+                             dZoom = microscope.zoom_magnification
+    )
+    return result

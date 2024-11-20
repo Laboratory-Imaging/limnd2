@@ -106,7 +106,7 @@ class ELxLiteVariantType:
     DEPRECATED: Final = 10
     LEVEL: Final = 11
     COMPRESS: Final = 76  # 'L'
-    
+
     @staticmethod
     def get_name(number: int):
         for key, val in ELxLiteVariantType.__dict__.items():
@@ -229,8 +229,6 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
 
     def attribute_encode(attribute: str, value: Any, LVType: ELxLiteVariantType, writer: io.BytesIO) -> None:
         header_encode(attribute, LVType, writer)
-        if (LVType == ELxLiteVariantType.STRING and type(value) == bytearray):
-            print(f"'{attribute}' '{value}'")
         _ENCODERS[LVType](value, writer)
 
     writer = io.BytesIO()
@@ -269,24 +267,6 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
                 print(value)
                 raise ValueError(f"Can not convert type {ELxLiteVariantType.get_name(LVType)}." )
 
-            '''
-        elif hasattr(candidate, "to_lv") and callable(candidate.to_lv):
-            value = candidate
-            header_encode(attribute, ELxLiteVariantType.LEVEL, writer)
-
-            item_count = len(value)
-            encoded_key = attribute.encode("utf-16-le") + b"\x00\x00"
-            writer.write(strctI.pack(item_count))
-
-            rec_writer, rec_offsets = _encode_lv(value.to_lv(), encoded_key)
-
-            data_len = len(rec_writer) + len(encoded_key) + struct.Struct("<BBIQ").size
-            writer.write(strctQ.pack(data_len) + rec_writer)
-
-            for key in sorted(rec_offsets.keys()):
-                writer.write(struct.pack("<Q", rec_offsets[key]))
-            '''
-
         else:
             raise RuntimeError(f"Could not encode type {type(candidate)} ")
 
@@ -312,16 +292,19 @@ def encode_lv(data: dict[str, Union[dict, tuple[Any, ELxLiteVariantType]]]) -> b
 class LVSerializable(abc.ABC, Mapping):
     """
     Parent class for dataclasses that can be encoded with LV encoder.
+
     Each attribute has to have LV_field defined, either with encodeable type,
     or with not encoded type, those are stored in NOT_ENCODED_TYPES attribute in this class.
 
     Each child dataclass will have one of those 2 dataclass decorators:
 
     @dataclass(frozen=True, kw_only=True, init=True)
-    If attributes in nd2 files match attributes in the dataclass 1:1, 
+
+    If attributes in nd2 files match attributes in the dataclass 1:1,
     let dataclass initiate its own __init__
-    
+
     @dataclass(frozen=True, kw_only=True, init=False)
+
     If there are more attributes in the nd2 file (either by mistake - like "dZlow#1",
     from XML file or some that can not have corresponsing field - like "sizeObjFullChip.cx"),
     use this decarator, any extra field is stored in _unknown_fields and they can be
@@ -336,7 +319,7 @@ class LVSerializable(abc.ABC, Mapping):
         ELxLiteVariantType.DO_NOT_ENCODE
     )
 
-    
+
     def __init__(self, **kwargs):
         object.__setattr__(self, "_unknown_fields", {})
         known = set()
@@ -344,7 +327,7 @@ class LVSerializable(abc.ABC, Mapping):
             known.add(field.name)
             default = field.default if field.default is not MISSING else field.default_factory()
             object.__setattr__(self, field.name, default)
-            
+
         for name, value in kwargs.items():
             if name in known:
                 object.__setattr__(self, name, value)
@@ -359,8 +342,8 @@ class LVSerializable(abc.ABC, Mapping):
                 print(key, type(val), repr(val)[:100])
             print()
         """
-        
-    
+
+
     def __post_init__(self):
         pass
 
@@ -382,10 +365,10 @@ class LVSerializable(abc.ABC, Mapping):
             if isinstance(value, list):
                 value = {i : val for i, val in enumerate(value)}
                 result[key] = LVSerializable._to_serializable_dict(value, parent_path=f"{parent_path}[{key}]")
-            elif isinstance(value, dict):
-                result[key] = LVSerializable._to_serializable_dict(value, parent_path=f"{parent_path}[{key}]")
             elif isinstance(value, LVSerializable):
                 result[key] = value.to_serializable_dict(parent_path=f"{parent_path}.{value.__class__.__name__}")
+            elif isinstance(value, dict):
+                result[key] = LVSerializable._to_serializable_dict(value, parent_path=f"{parent_path}[{key}]")
             elif key in types:
                 result[key] = (value, types[key])
             else:
