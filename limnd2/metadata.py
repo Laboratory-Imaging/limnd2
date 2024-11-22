@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime, enum, numpy as np, operator
+import typing
 from functools import cached_property
 from typing import Any
 from dataclasses import MISSING, dataclass, field, fields
@@ -60,124 +61,172 @@ def calculateColor(color_string: str) -> int:
         return (b << 16) | (g << 8) | r
 
 class PictureMetadataTimeSourceType(enum.IntEnum):
-    etsSW = 0
-    etsNIDAQ = 1
+    etsSW: typing.Final    = 0
+    etsNIDAQ: typing.Final = 1
 
 class PictureMetadataAxisDescription(enum.IntEnum):
-    eaxdX = 0
-    eaxdY = 1
-    eaxdT = 2
-    eaxdZ = 3
-    eaxdPoint = 4 # confocal point scan has both ePictureXAxis and ePictureYAxis set to this value
+    eaxdX: typing.Final         = 0
+    eaxdY: typing.Final         = 1
+    eaxdT: typing.Final         = 2
+    eaxdZ: typing.Final         = 3
+    eaxdPoint : typing.Final    = 4 # confocal point scan has both ePictureXAxis and ePictureYAxis set to this value
 
 class PictureMetadataPicturePlanesRepresentation(enum.IntEnum):
-    eRepDefault = 0
-    eRepHDR     = 2
+    eRepDefault: typing.Final   = 0
+    eRepHDR: typing.Final       = 2
 
 class OpticalFilterPlacement(enum.IntEnum):
-    eOfpNoFilter = 0
-    eOfpExcitation = 1      # excitation filter (position by a lamp)
-    eOfpEmission = 2        # emission filter (position by a camera)
-    eOfpFilterTurret = 3    # filter block (mainly fluorescence)
-    eOfpLamp = 4            # spectrum of a lamp
-    eOfnCameraChip = 5      # camera chip sensitivity
-    eOfpUserOverride = 6    # user defined emission wavelength
+    eOfpNoFilter: typing.Final          = 0
+    eOfpExcitation: typing.Final        = 1         # excitation filter (position by a lamp)
+    eOfpEmission: typing.Final          = 2         # emission filter (position by a camera)
+    eOfpFilterTurret: typing.Final      = 3         # filter block (mainly fluorescence)
+    eOfpLamp: typing.Final              = 4         # spectrum of a lamp
+    eOfnCameraChip: typing.Final        = 5         # camera chip sensitivity
+    eOfpUserOverride: typing.Final      = 6         # user defined emission wavelength
 
 class OpticalFilterNature(enum.IntFlag):
-    eOfnGeneric = 0x0000    # wide-band or unspecified spectra
-    eOfnRGB     = 0x0001    # triple-band filter suitable for RGB cameras (or naked eye)
-    eOfnRed		= 0x0002
-    eOfnGreen   = 0x0004
-    eOfnBlue    = 0x0008
+    eOfnGeneric: typing.Final           = 0x0000    # wide-band or unspecified spectra
+    eOfnRGB: typing.Final               = 0x0001    # triple-band filter suitable for RGB cameras (or naked eye)
+    eOfnRed: typing.Final 	            = 0x0002
+    eOfnGreen: typing.Final             = 0x0004
+    eOfnBlue: typing.Final              = 0x0008
 
 class OpticalFilterSpectType(enum.IntEnum):
-    eOftBandpass            = 1 # specified by lower (raising edge) and higher (falling) wavelength
-    eOftNarrowBandpass      = 2 # specified by one wavelength (peak)
-    eOftLowpass             = 3 # specified by one wavelength (falling edge)
-    eOftHighpass            = 4 # specified by one wavelength (raising edge)
-    eOftBarrier             = 5 # specified by lower (falling edge) and higher (raising) wavelength
-    eOftMultiplepass        = 6 # specified by a few edges
-    eOftFull                = 7 # full position of a filterwheel
-    eOftEmpty               = 8 # empty position of a filterwheel
+    eOftBandpass: typing.Final          = 1         # specified by lower (raising edge) and higher (falling) wavelength
+    eOftNarrowBandpass: typing.Final    = 2         # specified by one wavelength (peak)
+    eOftLowpass: typing.Final           = 3         # specified by one wavelength (falling edge)
+    eOftHighpass: typing.Final          = 4         # specified by one wavelength (raising edge)
+    eOftBarrier: typing.Final           = 5         # specified by lower (falling edge) and higher (raising) wavelength
+    eOftMultiplepass: typing.Final      = 6         # specified by a few edges
+    eOftFull: typing.Final              = 7         # full position of a filterwheel
+    eOftEmpty: typing.Final             = 8         # empty position of a filterwheel
 
 class PicturePlaneModality(enum.IntEnum):
-    eModWidefieldFluo       = 0
-    eModBrightfield         = 1
-    eModLaserScanConfocal   = 2
-    eModSpinDiskConfocal    = 3
-    eModSweptFieldConfocal  = 4
-    eModMultiPhotonFluo     = 5
-    eModPhaseContrast       = 6
-    eModDIContrast          = 7
-    eModSpectralConfocal    = 8
-    eModVAASConfocal        = 9
-    eModVAASConfocalIF      = 10
-    eModVAASConfocalNF      = 11
-    eModDSDConfocal         = 12
+    eModWidefieldFluo: typing.Final       = 0
+    eModBrightfield: typing.Final         = 1
+    eModLaserScanConfocal: typing.Final   = 2
+    eModSpinDiskConfocal: typing.Final    = 3
+    eModSweptFieldConfocal: typing.Final  = 4
+    eModMultiPhotonFluo: typing.Final     = 5
+    eModPhaseContrast: typing.Final       = 6
+    eModDIContrast: typing.Final          = 7
+    eModSpectralConfocal: typing.Final    = 8
+    eModVAASConfocal: typing.Final        = 9
+    eModVAASConfocalIF: typing.Final      = 10
+    eModVAASConfocalNF: typing.Final      = 11
+    eModDSDConfocal: typing.Final         = 12
 
 class PicturePlaneModalityFlags(enum.IntFlag):
-    modFluorescence                     = 0x0000000000000001
-    modBrightfield                      = 0x0000000000000002
-    modDarkfield                        = 0x0000000000000004
-    modMaskLight                        = (modFluorescence|modBrightfield|modDarkfield)
-    modPhaseContrast                    = 0x0000000000000010
-    modDIContrast                       = 0x0000000000000020
-    modNAMC                             = 0x0000000000000008
-    modMaskContrast                     = (modPhaseContrast|modDIContrast|modNAMC)
-    modCamera                           = 0x0000000000000100
-    modLaserScanConfocal                = 0x0000000000000200
-    modSpinDiskConfocal                 = 0x0000000000000400
-    modSweptFieldConfocalSlit           = 0x0000000000000800
-    modSweptFieldConfocalPinholes       = 0x0000000000001000
-    modDSDConfocal                      = 0x0000000000002000
-    modSIM                              = 0x0000000000004000
-    modISIM                             = 0x0000000000008000
-    modRCM                              = 0x0000000000000040
-    modSora                             = 0x0000000040000000
-    modLiveSR                           = 0x0000000000040000
-    modLightSheet                       = 0x0000000000080000
-    modDeepSIM                          = 0x0000002000000000
-    modMaskAcqHWType                    = (modCamera|modLaserScanConfocal|modSpinDiskConfocal|modSweptFieldConfocalSlit|modSweptFieldConfocalPinholes|modDSDConfocal|modRCM|modDeepSIM|modISIM|modSora|modLiveSR|modLightSheet)
-    modMultiPhotonFluo                  = 0x0000000000010000
-    modTIRF                             = 0x0000000000020000
-    modPMT                              = 0x0000000000100000
-    modSpectral                         = 0x0000000000200000
-    modVAAS_IF                          = 0x0000000000400000
-    modVAAS_NF                          = 0x0000000000800000
-    modTransmitDetector                 = 0x0000000001000000
-    modNonDescannedDetector             = 0x0000000002000000
-    modVirtualFilter                    = 0x0000000004000000
-    modGaAsP                            = 0x0000000008000000
-    modRemainder                        = 0x0000000010000000
-    modAUX                              = 0x0000000020000000
-    modCustomDescChannel                = 0x0000000080000000
-    modSTED                             = 0x0000000100000000
-    modGalvano                          = 0x0000000200000000
-    modResonant                         = 0x0000000400000000
-    modAX                               = 0x0000000800000000
-    modStorm                            = 0x0000001000000000
-    modNSPARCDetector                   = 0x0000004000000000
-    modPMT_IRGaAsP                      = 0x0000008000000000
-    modPMT_GaAs                         = 0x0000010000000000
-    modMaskDetector                     = (modSpectral|modVAAS_IF|modVAAS_NF|modTransmitDetector|modNonDescannedDetector|modVirtualFilter|modAUX|modNSPARCDetector)
+    modFluorescence: typing.Final                     = 0x0000000000000001
+    modBrightfield: typing.Final                      = 0x0000000000000002
+    modDarkfield: typing.Final                        = 0x0000000000000004
+    modMaskLight: typing.Final                        = (modFluorescence | modBrightfield | modDarkfield)
+    modPhaseContrast: typing.Final                    = 0x0000000000000010
+    modDIContrast: typing.Final                       = 0x0000000000000020
+    modNAMC: typing.Final                             = 0x0000000000000008
+    modMaskContrast: typing.Final                     = (modPhaseContrast | modDIContrast | modNAMC)
+    modCamera: typing.Final                           = 0x0000000000000100
+    modLaserScanConfocal: typing.Final                = 0x0000000000000200
+    modSpinDiskConfocal: typing.Final                 = 0x0000000000000400
+    modSweptFieldConfocalSlit: typing.Final           = 0x0000000000000800
+    modSweptFieldConfocalPinholes: typing.Final       = 0x0000000000001000
+    modDSDConfocal: typing.Final                      = 0x0000000000002000
+    modSIM: typing.Final                              = 0x0000000000004000
+    modISIM: typing.Final                             = 0x0000000000008000
+    modRCM: typing.Final                              = 0x0000000000000040
+    modSora: typing.Final                             = 0x0000000040000000
+    modLiveSR: typing.Final                           = 0x0000000000040000
+    modLightSheet: typing.Final                       = 0x0000000000080000
+    modDeepSIM: typing.Final                          = 0x0000002000000000
+    modMaskAcqHWType: typing.Final                    = (modCamera | modLaserScanConfocal | modSpinDiskConfocal | modSweptFieldConfocalSlit | modSweptFieldConfocalPinholes | modDSDConfocal | modRCM | modDeepSIM | modISIM | modSora | modLiveSR | modLightSheet)
+    modMultiPhotonFluo: typing.Final                  = 0x0000000000010000
+    modTIRF: typing.Final                             = 0x0000000000020000
+    modPMT: typing.Final                              = 0x0000000000100000
+    modSpectral: typing.Final                         = 0x0000000000200000
+    modVAAS_IF: typing.Final                          = 0x0000000000400000
+    modVAAS_NF: typing.Final                          = 0x0000000000800000
+    modTransmitDetector: typing.Final                 = 0x0000000001000000
+    modNonDescannedDetector: typing.Final             = 0x0000000002000000
+    modVirtualFilter: typing.Final                    = 0x0000000004000000
+    modGaAsP: typing.Final                            = 0x0000000008000000
+    modRemainder: typing.Final                        = 0x0000000010000000
+    modAUX: typing.Final                              = 0x0000000020000000
+    modCustomDescChannel: typing.Final                = 0x0000000080000000
+    modSTED: typing.Final                             = 0x0000000100000000
+    modGalvano: typing.Final                          = 0x0000000200000000
+    modResonant: typing.Final                         = 0x0000000400000000
+    modAX: typing.Final                               = 0x0000000800000000
+    modStorm: typing.Final                            = 0x0000001000000000
+    modNSPARCDetector: typing.Final                   = 0x0000004000000000
+    modPMT_IRGaAsP: typing.Final                      = 0x0000008000000000
+    modPMT_GaAs: typing.Final                         = 0x0000010000000000
+    modMaskDetector: typing.Final                     = (modSpectral | modVAAS_IF | modVAAS_NF | modTransmitDetector | modNonDescannedDetector | modVirtualFilter | modAUX | modNSPARCDetector)
 
     @staticmethod
     def from_modality(mod: PicturePlaneModality) -> PicturePlaneModalityFlags:
+        """
+        Converts modality enum to PicturePlaneModalityFlags.
+
+        Parameters
+        ----------
+        mod : PicturePlaneModality
+            modality enum instance
+
+        Returns
+        -------
+        PicturePlaneModalityFlags
+            Modalify flag for given modality
+        """
         return {
-            PicturePlaneModality.eModWidefieldFluo:     PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modCamera,
-            PicturePlaneModality.eModBrightfield:       PicturePlaneModalityFlags.modBrightfield|PicturePlaneModalityFlags.modCamera,
-            PicturePlaneModality.eModLaserScanConfocal: PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal,
-            PicturePlaneModality.eModSpinDiskConfocal:  PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modSpinDiskConfocal,
-            PicturePlaneModality.eModSweptFieldConfocal:PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modSweptFieldConfocalSlit,
-            PicturePlaneModality.eModMultiPhotonFluo:   PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modMultiPhotonFluo|PicturePlaneModalityFlags.modLaserScanConfocal,
-            PicturePlaneModality.eModPhaseContrast:     PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modPhaseContrast,
-            PicturePlaneModality.eModDIContrast:        PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modDIContrast,
-            PicturePlaneModality.eModSpectralConfocal:  PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modSpectral,
-            PicturePlaneModality.eModVAASConfocal:      PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal,
-            PicturePlaneModality.eModVAASConfocalIF:    PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modVAAS_IF,
-            PicturePlaneModality.eModVAASConfocalNF:    PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modVAAS_NF,
-            PicturePlaneModality.eModDSDConfocal:       PicturePlaneModalityFlags.modDSDConfocal
-        }.get(mod, PicturePlaneModalityFlags.modFluorescence|PicturePlaneModalityFlags.modCamera)
+            PicturePlaneModality.eModWidefieldFluo:      PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modCamera,
+            PicturePlaneModality.eModBrightfield:        PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modCamera,
+            PicturePlaneModality.eModLaserScanConfocal:  PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal,
+            PicturePlaneModality.eModSpinDiskConfocal:   PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSpinDiskConfocal,
+            PicturePlaneModality.eModSweptFieldConfocal: PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSweptFieldConfocalSlit,
+            PicturePlaneModality.eModMultiPhotonFluo:    PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modMultiPhotonFluo|PicturePlaneModalityFlags.modLaserScanConfocal,
+            PicturePlaneModality.eModPhaseContrast:      PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modPhaseContrast,
+            PicturePlaneModality.eModDIContrast:         PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modDIContrast,
+            PicturePlaneModality.eModSpectralConfocal:   PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modSpectral,
+            PicturePlaneModality.eModVAASConfocal:       PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal,
+            PicturePlaneModality.eModVAASConfocalIF:     PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modVAAS_IF,
+            PicturePlaneModality.eModVAASConfocalNF:     PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal|PicturePlaneModalityFlags.modVAAS_NF,
+            PicturePlaneModality.eModDSDConfocal:        PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modDSDConfocal
+        }.get(mod, PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modCamera)
+
+    @staticmethod
+    def modality_string_map() -> dict[str, PicturePlaneModalityFlags]:
+        """
+        Returns mapping of known modality strings ("Wide-field", "Brightfield", ...) to PicturePlaneModalityFlags.
+        """
+        return {
+            "Undefined": 0,
+            "Wide-field":           PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modCamera,
+            "Brightfield":          PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modCamera,
+            "Phase":                PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modPhaseContrast,
+            "DIC":                  PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modDIContrast,
+            "DarkField":            PicturePlaneModalityFlags.modDarkfield    | PicturePlaneModalityFlags.modCamera,
+            "TIRF":                 PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modTIRF,
+            "Confocal, Fluo":       PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal,
+            "Confocal, Trans":      PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modTransmitDetector,
+            "Multi-photon":         PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modMultiPhotonFluo,
+            "SFC pinhole":          PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSweptFieldConfocalPinholes,
+            "SFC slit":             PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSweptFieldConfocalSlit,
+            "Spinning Disc":        PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSpinDiskConfocal,
+            "DSD":                  PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modDSDConfocal,
+            "NSIM":                 PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSIM,
+            "iSim":                 PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modISIM,
+            "RCM":                  PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modRCM,
+            "CSU W1-SoRa":          PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modSora,
+            "NSPARC":               PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modNSPARCDetector,
+        }
+
+    @staticmethod
+    def modality_list() -> list[str]:
+        """
+        Returns list of known modality strings ("Wide-field", "Brightfield", ...).
+        """
+        return list(PicturePlaneModalityFlags.modality_string_map().keys())
+
 
     @staticmethod
     def from_modality_string(modality: str) -> PicturePlaneModalityFlags:
@@ -192,34 +241,33 @@ class PicturePlaneModalityFlags(enum.IntFlag):
         Returns
         -------
         PicturePlaneModalityFlags
-            Modalify flag for given modality, 0 if modality was not found.
+            Modalify flag for given modality, 0 for "undefined"
         """
-        modality_map = {
-            "Undefined": 0,
-            "Wide-field": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modFluorescence,
-            "Brightfield": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modBrightfield,
-            "Phase": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modPhaseContrast,
-            "DIC": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modDIContrast,
-            "DarkField": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modDarkfield,
-            "MC": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modNAMC,
-            "TIRF": PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modTIRF,
-            "Confocal, Fluo": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modGaAsP,
-            "Confocal, Trans": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modTransmitDetector,
-            "Multi-photon": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modMultiPhotonFluo,
-            "SFC pinhole": PicturePlaneModalityFlags.modSweptFieldConfocalPinholes,
-            "SFC slit": PicturePlaneModalityFlags.modSweptFieldConfocalSlit,
-            "Spinning Disc": PicturePlaneModalityFlags.modSpinDiskConfocal,
-            "DSD": PicturePlaneModalityFlags.modDSDConfocal,
-            "NSIM": PicturePlaneModalityFlags.modSIM,
-            "iSim": PicturePlaneModalityFlags.modISIM,
-            "RCM": PicturePlaneModalityFlags.modRCM,
-            "CSU W1-SoRa": PicturePlaneModalityFlags.modSora,
-            "NSPARC": PicturePlaneModalityFlags.modLaserScanConfocal | PicturePlaneModalityFlags.modNSPARCDetector,
-        }
-        return modality_map.get(modality, 0)
+
+        modality_map_parsed = {key.lower().replace("-", "").replace(" ", "") : val for key, val in PicturePlaneModalityFlags.modality_string_map().items()}
+        modality_parsed = modality.lower().replace("-", "").replace(" ", "")
+
+        if modality_parsed in ("undefined", "unknown"):
+            return 0
+        if modality_parsed in modality_map_parsed:
+            return modality_map_parsed[modality_parsed]
+        raise ValueError(f"Non-recognized modality string: {modality}")
 
     @staticmethod
     def to_str_list(flags : PicturePlaneModalityFlags) -> list[str]:
+        """
+        Converts modality flags to list of human readable strings.
+
+        Parameters
+        ----------
+        flags : PicturePlaneModalityFlags
+            odality flags
+
+        Returns
+        -------
+        list[str]
+            human readable string list, for example ["Brightfield", "Phase"]
+        """
         ret: list[str] = []
         # light
         if flags & PicturePlaneModalityFlags.modFluorescence:
@@ -306,12 +354,12 @@ class PicturePlaneModalityFlags(enum.IntFlag):
 
 
 class OpticalSpectrumPointType(enum.IntEnum):
-    eSptInvalid = 0
-    eSptPoint = 1
-    eSptRaisingEdge = 2
-    eSptFallingEdge = 3
-    eSptPeak = 4
-    eSptRange = 5
+    eSptInvalid: typing.Final         = 0
+    eSptPoint: typing.Final           = 1
+    eSptRaisingEdge: typing.Final     = 2
+    eSptFallingEdge: typing.Final     = 3
+    eSptPeak: typing.Final            = 4
+    eSptRange: typing.Final           = 5
 
 
 @dataclass(frozen=True, kw_only=True, init=False)
@@ -1328,7 +1376,7 @@ class PictureMetadata(LVSerializable):
 @dataclass
 class MicroscopeSettings:
     """
-    Represents simplifies settings for a microscope.
+    Represents simplifies settings for a microscope, not used for reading ND2 file.
 
     Attributes
     ----------
@@ -1346,24 +1394,24 @@ class MicroscopeSettings:
         The diameter of the pinhole in micrometers (default is 50.0).
     """
 
-    pixel_calibration: float = 1.0
-    objective_magnification: float = 10.0
-    objective_numerical_aperture: float = 0.45
-    zoom_magnification: float = 1.2
-    immersion_refractive_index: float = 1.0
-    pinhole_diameter: float = 50.0
+    pixel_calibration: float = 0.0
+    objective_magnification: float = -1.0           #default values from PictureMetadata class
+    objective_numerical_aperture: float = -1.0
+    zoom_magnification: float = -1.0
+    immersion_refractive_index: float = -1.0
+    pinhole_diameter: float = -1.0
 
 @dataclass
 class ChannelSettings:
     """
-    Represents simplified settings for an image channel.
+    Represents simplified settings for an image channel, not used for reading ND2 file.
 
     Attributes
     ----------
     name : str
         The name of the channel.
-    modality : str
-        The modality of the channel (e.g., fluorescence, brightfield).
+    modality : tr | PicturePlaneModality | PicturePlaneModalityFlags
+        The modality of the channel either as a string (e.g., fluorescence, brightfield) or as instance of PicturePlaneModality or PicturePlaneModalityFlags
     excitation_wavelength : int
         The excitation wavelength in nanometers.
     emission_wavelength : int
@@ -1372,14 +1420,32 @@ class ChannelSettings:
         The color representation of the channel (e.g., "red", "blue", or hex code).
     """
     name: str
-    modality: str
+    modality: str | PicturePlaneModality | PicturePlaneModalityFlags
     excitation_wavelength: int
     emission_wavelength: int
     color: str
 
+    def modality_flags(self) -> PicturePlaneModalityFlags:
+        """
+        Converts provided modality to instance of PicturePlaneModalityFlags, which is stored in nd2 file.
+
+        Returns
+        -------
+        PicturePlaneModalityFlags
+            PicturePlaneModalityFlags instance with modality.
+        """
+        if isinstance(self.modality, PicturePlaneModalityFlags):
+            return self.modality
+        elif isinstance(self.modality, PicturePlaneModality):
+            return PicturePlaneModalityFlags.from_modality(self.modality)
+        elif isinstance(self.modality, str):
+            return PicturePlaneModalityFlags.from_modality_string(self.modality)
+
+
+
 def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettings) -> PictureMetadata:
     """
-    Creates PictureMetadata instance from simplified information about channels and microscope.
+    Creates PictureMetadata instance from simplified information about channels and microscope, not used for reading ND2 file.
 
     Parameters
     ----------
@@ -1433,14 +1499,20 @@ def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettin
 
         plane = PicturePlaneDesc(uiCompCount = 1,
                                  uiSampleIndex = 0,
-                                 uiModalityMask = PicturePlaneModalityFlags.from_modality_string(channel.modality),
+                                 uiModalityMask = channel.modality_flags(),
                                  sDescription = channel.name,
                                  dPinholeDiameter = microscope.pinhole_diameter,
                                  pFilterPath = filter_path,
                                  uiColor = color)
         planes.append(plane)
 
-    setting = SampleSettings(dObjectiveToPinholeZoom = microscope.zoom_magnification)
+    obj_setting = ObjectiveSetting(dObjectiveMag = microscope.objective_magnification,
+                                   dObjectiveNA = microscope.objective_numerical_aperture,
+                                   dRefractIndex = microscope.immersion_refractive_index,
+                                   wsObjectiveName = f"{round(microscope.zoom_magnification)} x")
+
+    setting = SampleSettings(dObjectiveToPinholeZoom = microscope.zoom_magnification,
+                             pObjectiveSetting = obj_setting)
 
     picture_planes = PictureMetadataPicturePlanes(uiCount = len(channels),
                                                   uiCompCount = len(channels),
@@ -1449,13 +1521,16 @@ def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettin
                                                   sSampleSetting = [setting]
                                                   )
 
+
     result = PictureMetadata(sPicturePlanes = picture_planes,
                              dCalibration = microscope.pixel_calibration,
                              dAspect = 1.0,
-                             bCalibrated = True,
+                             bCalibrated = microscope.pixel_calibration != 0.0,
                              dObjectiveMag = microscope.objective_magnification,
                              dObjectiveNA = microscope.objective_numerical_aperture,
                              dRefractIndex1 = microscope.immersion_refractive_index,
-                             dZoom = microscope.zoom_magnification
+                             dZoom = microscope.zoom_magnification,
+                             wsObjectiveName = f"{round(microscope.zoom_magnification)} x"
+
     )
     return result
