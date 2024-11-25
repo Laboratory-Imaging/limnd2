@@ -1,6 +1,6 @@
 import os
 import limnd2
-from limnd2.metadata import ChannelSettings, MicroscopeSettings, createMetadata
+from limnd2.metadata import ChannelSettings, MicroscopeSettings, create_metadata
 import limnd2.metadata
 
 def tst1():
@@ -17,7 +17,7 @@ def tst1():
                         objective_numerical_aperture=1.4,
                         zoom_magnification=100
                         )
-        metadata = createMetadata(channels=[c1,c2], microscope=m)
+        metadata = create_metadata(channels=[c1,c2], microscope=m)
 
         f.pictureMetadata = metadata
 
@@ -42,7 +42,7 @@ def tst2():
                     objective_numerical_aperture=1.4,
                     zoom_magnification=100
                     )
-    metadata = createMetadata(channels=[c1,c2, c3], microscope=m)
+    metadata = create_metadata(channels=[c1,c2, c3], microscope=m)
 
     with limnd2.Nd2Reader(file) as reader, limnd2.Nd2Writer(copy_file) as writer:
         writer.imageAttributes = reader.imageAttributes

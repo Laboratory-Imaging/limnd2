@@ -1544,7 +1544,7 @@ class ChannelSettings:
 
 
 
-def createMetadata(channels: list[ChannelSettings], pixel_calibration: float = 0.0, microscope: MicroscopeSettings = None) -> PictureMetadata:
+def create_metadata(channels: list[ChannelSettings], pixel_calibration: float = 0.0, microscope: MicroscopeSettings = None) -> PictureMetadata:
     """
     Creates PictureMetadata instance from simplified information about channels and microscope, not used for reading ND2 file.
 
