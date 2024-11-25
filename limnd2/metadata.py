@@ -908,7 +908,26 @@ class PicturePlaneDesc(LVSerializable):
         r = self.uiColor & 0xFF
         return f'#{r:02x}{g:02x}{b:02x}'
 
+@dataclass(frozen=True, kw_only=True)
+class CameraSetting(LVSerializable):
+    CameraUniqueName: str                   = LV_field("",                  LVType.STRING)
+    CameraUserName: str                     = LV_field("",                  LVType.STRING)
+    CameraFamilyName: str                   = LV_field("",                  LVType.STRING)
+    OverloadedUniqueName: str               = LV_field("",                  LVType.STRING)
 
+    # this class also has a LOT of other fields stored in self._unknown_fields
+
+@dataclass(frozen=True, kw_only=True)
+class DeviceSetting(LVSerializable):
+    m_sMicroscopeFullName: str              = LV_field("",                  LVType.STRING)
+    m_sMicroscopeShortName: str             = LV_field("",                  LVType.STRING)
+    m_sMicroscopePhysFullName: str          = LV_field("",                  LVType.STRING)
+    m_sMicroscopePhysShortName: str         = LV_field("",                  LVType.STRING)
+    m_vectMicroscope_size: int              = LV_field(0,                   LVType.INT32)
+    m_iMicroscopeUse: int                   = LV_field(0,                   LVType.INT32)
+    m_ibMicroscopeExist: int                = LV_field(0,                   LVType.INT32)
+
+    # this class also has a LOT of other fields stored in self._unknown_fields
 
 @dataclass(frozen=True, kw_only=True)
 class SampleSettingsOC(LVSerializable):
@@ -930,8 +949,8 @@ class ObjectiveSetting(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class SampleSettings(LVSerializable):
-    pCameraSetting: dict                    = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
-    pDeviceSetting: dict                    = LV_field(dict,                LVType.ENCODING_NOT_IMPLEMENTED)
+    pCameraSetting: CameraSetting           = LV_field(CameraSetting,       LVType.LEVEL)
+    pDeviceSetting: DeviceSetting           = LV_field(DeviceSetting,       LVType.LEVEL)        # this
     pObjectiveSetting: ObjectiveSetting     = LV_field(ObjectiveSetting,    LVType.LEVEL)
     sOpticalConfigs: list[SampleSettingsOC] = LV_field(list,                LVType.LEVEL)
     sSpecSettings: str                      = LV_field("",                  LVType.STRING)
@@ -954,9 +973,9 @@ class SampleSettings(LVSerializable):
     """
 
     def __post_init__(self):
-        self.pObjectiveSetting: dict
-
         object.__setattr__(self, "pObjectiveSetting", ObjectiveSetting(**self.pObjectiveSetting))
+        object.__setattr__(self, "pCameraSetting", CameraSetting(**self.pCameraSetting))
+        object.__setattr__(self, "pDeviceSetting", DeviceSetting(**self.pDeviceSetting))
 
         if isinstance(self.sOpticalConfigs, dict):
             if all(isinstance(d, dict) for d in self.sOpticalConfigs.values()):
@@ -964,6 +983,9 @@ class SampleSettings(LVSerializable):
                 object.__setattr__(self, "sOpticalConfigs", configs)
             else:
                 object.__setattr__(self, "sOpticalConfigs", None)
+
+        if isinstance(self.sOpticalConfigs, list):
+            object.__setattr__(self, "sOpticalConfigs", [SampleSettingsOC(**conf) for conf in self.sOpticalConfigs])
 
         if "eRepresentation" in self._unknown_fields:
             self._unknown_fields.pop("eRepresentation")
@@ -974,11 +996,11 @@ class SampleSettings(LVSerializable):
 
     @property
     def cameraName(self) -> str:
-        return self.pCameraSetting.get("CameraUserName", "")
+        return self.pCameraSetting.CameraUserName
 
     @property
     def microscopeName(self) -> str:
-        return self.pDeviceSetting.get("m_sMicroscopeFullName", "")
+        return self.pDeviceSetting.m_sMicroscopeFullName
 
     @property
     def objectiveName(self) -> str:
@@ -1380,26 +1402,29 @@ class MicroscopeSettings:
 
     Attributes
     ----------
-    pixel_calibration : float
-        Pixel size im micrometers (default is 1.0).
     objective_magnification : float
-        The magnification power of the microscope's objective lens (default is 10.0).
+        The magnification power of the microscope's objective lens.
     objective_numerical_aperture : float
-        The numerical aperture of the objective lens (default is 0.45).
+        The numerical aperture of the objective lens.
     zoom_magnification : float
-        The zoom magnification factor (default is 1.2).
+        The zoom magnification factor.
     immersion_refractive_index : float
-        The refractive index of the immersion medium (default is 1.0).
+        The refractive index of the immersion medium.
     pinhole_diameter : float
-        The diameter of the pinhole in micrometers (default is 50.0).
+        The diameter of the pinhole in micrometers.
+    camera_name : str
+        Name of the camera used.
+    microscope_name : str
+        Name of the microscope used.
     """
 
-    pixel_calibration: float = 0.0
-    objective_magnification: float = -1.0           #default values from PictureMetadata class
+    objective_magnification: float = -1.0
     objective_numerical_aperture: float = -1.0
     zoom_magnification: float = -1.0
     immersion_refractive_index: float = -1.0
     pinhole_diameter: float = -1.0
+    camera_name: str = "N/A"
+    microscope_name: str = "N/A"
 
 @dataclass
 class ChannelSettings:
@@ -1418,12 +1443,16 @@ class ChannelSettings:
         The emission wavelength in nanometers.
     color : str
         The color representation of the channel (e.g., "red", "blue", or hex code).
+    microscope:
+        MicroscopeSettings for given channel.
     """
+
     name: str
     modality: str | PicturePlaneModality | PicturePlaneModalityFlags
     excitation_wavelength: int
     emission_wavelength: int
     color: str
+    microscope: MicroscopeSettings | None = None
 
     def modality_flags(self) -> PicturePlaneModalityFlags:
         """
@@ -1441,32 +1470,20 @@ class ChannelSettings:
         elif isinstance(self.modality, str):
             return PicturePlaneModalityFlags.from_modality_string(self.modality)
 
+    def convert(self, index) -> tuple[PicturePlaneDesc, SampleSettings]:
+        """
+        Converts channel settings to instance of PicturePlaneDesc and SampleSettings returned as a tuple.
 
+        Returns
+        -------
+        tuple[PicturePlaneDesc, SampleSettings]
+            Created plane description and corresponsing sample settings.
+        """
 
-def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettings) -> PictureMetadata:
-    """
-    Creates PictureMetadata instance from simplified information about channels and microscope, not used for reading ND2 file.
-
-    Parameters
-    ----------
-    channels : list[ChannelSettings]
-        List of ChannelSetting instances, which contain channel names, modality, wavelength info and color.
-    microscope : MicroscopeSettings
-        MicroscopeSettings instance.
-
-    Returns
-    -------
-    PictureMetadata
-        PictureMetadata instance with channel and microsope information.
-    """
-
-    planes = []
-    for channel in channels:
         excitation_point = OpticalSpectrumPoint(
             eType = OpticalSpectrumPointType.eSptPeak,
-            dWavelength = channel.excitation_wavelength
+            dWavelength = self.excitation_wavelength
         )
-
         excitation_spectrum = OpticalSpectrum(
             uiCount = 1,
             bPoints = False,
@@ -1475,17 +1492,15 @@ def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettin
 
         emission_point = OpticalSpectrumPoint(
             eType = OpticalSpectrumPointType.eSptPeak,
-            dWavelength = channel.emission_wavelength
+            dWavelength = self.emission_wavelength
         )
-
         emission_spectrum = OpticalSpectrum(
             uiCount = 1,
             bPoints = False,
             pPoint = [emission_point]
         )
 
-        color = calculateColor(channel.color)
-
+        color = calculateColor(self.color)
         filter = OpticalFilter(m_ePlacement = OpticalFilterPlacement.eOfpFilterTurret,
                                m_eNature = OpticalFilterNature.eOfnGeneric,
                                m_eSpctType = OpticalFilterSpectType.eOftNarrowBandpass,
@@ -1498,39 +1513,111 @@ def createMetadata(channels: list[ChannelSettings], microscope: MicroscopeSettin
         filter_path = OpticalFilterPath(m_uiCount = 1, m_pFilter = [filter])
 
         plane = PicturePlaneDesc(uiCompCount = 1,
-                                 uiSampleIndex = 0,
-                                 uiModalityMask = channel.modality_flags(),
-                                 sDescription = channel.name,
-                                 dPinholeDiameter = microscope.pinhole_diameter,
+                                 uiSampleIndex = index,
+                                 uiModalityMask = self.modality_flags(),
+                                 sDescription = self.name,
+                                 dPinholeDiameter = self.microscope.pinhole_diameter,
                                  pFilterPath = filter_path,
                                  uiColor = color)
+
+        obj_setting = ObjectiveSetting(dObjectiveMag = self.microscope.objective_magnification,
+                                       dObjectiveNA = self.microscope.objective_numerical_aperture,
+                                       dRefractIndex = self.microscope.immersion_refractive_index,
+                                       wsObjectiveName = f"{round(self.microscope.zoom_magnification)}x")
+
+        camera = CameraSetting(CameraUserName = self.microscope.camera_name)
+        device = DeviceSetting(m_sMicroscopeFullName = self.microscope.microscope_name,
+                               m_sMicroscopeShortName = self.microscope.microscope_name,
+                               m_sMicroscopePhysFullName = self.microscope.microscope_name,
+                               m_sMicroscopePhysShortName = self.microscope.microscope_name,
+                               m_vectMicroscope_size = 1,
+                               m_ibMicroscopeExist = 1,
+                               m_iMicroscopeUse = 1
+                               )
+
+        setting = SampleSettings(dObjectiveToPinholeZoom = self.microscope.zoom_magnification,
+                                 pObjectiveSetting = obj_setting,
+                                 pCameraSetting = camera,
+                                 pDeviceSetting = device)
+
+        return plane, setting
+
+
+
+def createMetadata(channels: list[ChannelSettings], pixel_calibration: float = 0.0, microscope: MicroscopeSettings = None) -> PictureMetadata:
+    """
+    Creates PictureMetadata instance from simplified information about channels and microscope, not used for reading ND2 file.
+
+    Parameters
+    ----------
+    channels : list[ChannelSettings]
+        List of ChannelSetting instances, which contain channel names, modality, wavelength info and color.
+    pixel_calibration : float = 0.0
+        Size of one pixel in micrometers
+    microscope : MicroscopeSettings = None
+        MicroscopeSettings for ALL channels (overwrites MicroscopeSettings stored in each channel).
+
+    Returns
+    -------
+    PictureMetadata
+        PictureMetadata instance with channel and microsope information.
+    """
+
+    # if global settings were procided, use those settings for each channel
+    if microscope:
+        for channel in channels:
+            channel.microscope = microscope
+
+    # confirm each channel has settings
+    for channel in channels:
+        if not channel.microscope:
+            raise ValueError(f"No microscope settings for channel '{channel.name}'")
+
+    planes: list[PicturePlaneDesc] = []
+    settings: list[SampleSettings] = []
+
+    # get list of planes, settings
+    for index, channel in enumerate(channels):
+        plane, setting = channel.convert(index)
         planes.append(plane)
+        settings.append(setting)
 
-    obj_setting = ObjectiveSetting(dObjectiveMag = microscope.objective_magnification,
-                                   dObjectiveNA = microscope.objective_numerical_aperture,
-                                   dRefractIndex = microscope.immersion_refractive_index,
-                                   wsObjectiveName = f"{round(microscope.zoom_magnification)} x")
+    # filter duplicate settings
+    settings_filtered = []
+    for index, plane in enumerate(planes):
+        if settings[index] not in settings_filtered:
+            settings_filtered.append(settings[index])
+        setting_index = settings_filtered.index(settings[index])
+        object.__setattr__(plane, "uiSampleIndex", setting_index)
+    settings = settings_filtered
 
-    setting = SampleSettings(dObjectiveToPinholeZoom = microscope.zoom_magnification,
-                             pObjectiveSetting = obj_setting)
-
-    picture_planes = PictureMetadataPicturePlanes(uiCount = len(channels),
-                                                  uiCompCount = len(channels),
+    # create picture planes
+    picture_planes = PictureMetadataPicturePlanes(uiCount = len(planes),
+                                                  uiCompCount = len(planes),
                                                   sPlaneNew = planes,
-                                                  uiSampleCount = 1,
-                                                  sSampleSetting = [setting]
+                                                  uiSampleCount = len(settings),
+                                                  sSampleSetting = settings
                                                   )
 
+    if microscope:
+        # if global settings were used, set the parameters in global metadata
+        result = PictureMetadata(sPicturePlanes = picture_planes,
+                                dCalibration = pixel_calibration,
+                                dAspect = 1.0,
+                                bCalibrated = pixel_calibration != 0.0,
+                                dObjectiveMag = microscope.objective_magnification,
+                                dObjectiveNA = microscope.objective_numerical_aperture,
+                                dRefractIndex1 = microscope.immersion_refractive_index,
+                                dZoom = microscope.zoom_magnification,
+                                wsObjectiveName = f"{round(microscope.zoom_magnification)}x"
+        )
+    else:
+        # otherwise dont
+        result = PictureMetadata(sPicturePlanes = picture_planes,
+                            dCalibration = pixel_calibration,
+                            dAspect = 1.0,
+                            bCalibrated = pixel_calibration != 0.0
+        )
 
-    result = PictureMetadata(sPicturePlanes = picture_planes,
-                             dCalibration = microscope.pixel_calibration,
-                             dAspect = 1.0,
-                             bCalibrated = microscope.pixel_calibration != 0.0,
-                             dObjectiveMag = microscope.objective_magnification,
-                             dObjectiveNA = microscope.objective_numerical_aperture,
-                             dRefractIndex1 = microscope.immersion_refractive_index,
-                             dZoom = microscope.zoom_magnification,
-                             wsObjectiveName = f"{round(microscope.zoom_magnification)} x"
-
-    )
     return result
+
