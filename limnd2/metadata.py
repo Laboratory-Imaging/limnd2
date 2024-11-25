@@ -1115,7 +1115,7 @@ class PictureMetadataPicturePlanes(LVSerializable):
             args.update(kwargs)
             object.__setattr__(self, 'uiCount', 1)
             object.__setattr__(self, 'uiCompCount', comps)
-            object.__setattr__(self, 'sPlane', [ PicturePlaneDesc(**args) ])
+            object.__setattr__(self, 'sPlaneNew', [ PicturePlaneDesc(**args) ])
         else:
             planes = []
             for i in range(comps):
@@ -1126,7 +1126,7 @@ class PictureMetadataPicturePlanes(LVSerializable):
                 planes.append(PicturePlaneDesc(**args))
             object.__setattr__(self, 'uiCount', comps)
             object.__setattr__(self, 'uiCompCount', comps)
-            object.__setattr__(self, 'sPlane', planes)
+            object.__setattr__(self, 'sPlaneNew', planes)
 
     def to_serializable_dict(self, parent_path=""):
         """
