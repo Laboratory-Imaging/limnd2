@@ -16,11 +16,33 @@ if Nd2LoggerEnabled:
     logger = logging.getLogger("limnd2")
 
 class Nd2Reader:
+    """
+    Class for reading ND2 files and its attributes, metadata, properties, image data and so on.
+
+    ### Usage
+
+    Create Nd2 reader instance like this (use `with` statement to automatically close a file).
+
+    ```
+    import limnd2
+    with limnd2.Nd2Reader('file.nd2') as nd2:
+        attributes = nd2.imageAttributes       # to get image attributes, see ImageAttributes class
+        experiment = nd2.experiment            # to get experiments in an image, see ExperimentLevel class
+        metadata = nd2.pictureMetadata         # to get image metadata, see PictureMetadata class
+
+
+        print(f"Image resolution: {attributes.width} x {attributes.height}, # of components: {attributes.componentCount}")
+
+        for i in range(attributes.componentCount):
+            image = nd2.image(i)                            # get image with given sequence index
+    ```
+
+    """
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = True
         return _create_chunker(*args, **kwargs)
 
-    def __init__(self, file : FileLikeObject, *, chunker_kwargs:dict = {}) -> None:
+    def __init__(self, file : FileLikeObject, *, chunker_kwargs: dict = {}) -> None:
         self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
 
     def __enter__(self):
@@ -213,28 +235,16 @@ class Nd2Reader:
     def finalize(self) -> None:
         return self._chunker.finalize()
 
-    def load_chunks(self) -> dict[str, bytes]:
-        data = {}
-        for chunk_name in self.chunker.chunk_names:
-            pos = self.chunker._chunk_pos(chunk_name)
-            data[chunk_name] = self.chunker._read_chunk(pos)
-        return data
-
-    def write(self, filename: str) -> None:
-        data = self.load_chunks()
-        for x, y in data.items():
-            print(x, ":", y[:20])
-
-
-        for chunk_name, (offset, size) in self.chunker._chunkmap.items():
-            print(chunk_name, offset)
 
 class Nd2Writer:
     """
-    Very experimental nd2 file writer, will NOT ENCODE a lot of data (see usage of
-    LVType.UNKNOWN, LVType.ENCODING_NOT_IMPLEMENTED), those will need further work, but should not be needed for working nd2 file.
-    Also does not encode wellplates, binaries and ROIs at all, only supported chunks for writing are:
-    Images, Attributes, Metadata and Experiments chunks,
+    Experimental ND2 file writer.
+
+    Supports encoding od all image attributes, most commonly used experiments and most of image metadata.
+    Currently does not support encoding of Wellplates, binary layers, ROIs and any custom data and text into chunk.
+
+    Python dataclasses encodeable by this writer inherit from LVSerializable class, in those classes attributes stored with
+    UNKNOWN, ENCODING_NOT_IMPLEMENTED and DO_NOT_ENCODE enum will not be encoded.
     """
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = False

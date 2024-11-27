@@ -244,7 +244,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
             Modalify flag for given modality, 0 for "undefined"
         """
 
-        modality_map_parsed = {key.lower().replace("-", "").replace(" ", "") : val for key, val in PicturePlaneModalityFlags.modality_string_map().items()}
+        modality_map_parsed = {key.lower().replace("-", "").replace(" ", "").replace(",", "") : val for key, val in PicturePlaneModalityFlags.modality_string_map().items()}
         modality_parsed = modality.lower().replace("-", "").replace(" ", "")
 
         if modality_parsed in ("undefined", "unknown"):
@@ -783,6 +783,9 @@ class PicturePlaneDesc(LVSerializable):
 
 
     def to_serializable_dict(self, parent_path=""):
+        """
+        Custom serialization for this object - "sizeObjFullChip_cy" has to be renamed to "sizeObjFullChip.cy"
+        """
         result = super().to_serializable_dict(parent_path)
         if "sizeObjFullChip_cy" in result:
             result["sizeObjFullChip.cy"] = result.pop("sizeObjFullChip_cy")
