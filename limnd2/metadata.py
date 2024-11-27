@@ -911,7 +911,7 @@ class PicturePlaneDesc(LVSerializable):
         r = self.uiColor & 0xFF
         return f'#{r:02x}{g:02x}{b:02x}'
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class CameraSetting(LVSerializable):
     CameraUniqueName: str                   = LV_field("",                  LVType.STRING)
     CameraUserName: str                     = LV_field("",                  LVType.STRING)
@@ -920,7 +920,7 @@ class CameraSetting(LVSerializable):
 
     # this class also has a LOT of other fields stored in self._unknown_fields
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, init=False)
 class DeviceSetting(LVSerializable):
     m_sMicroscopeFullName: str              = LV_field("",                  LVType.STRING)
     m_sMicroscopeShortName: str             = LV_field("",                  LVType.STRING)
