@@ -20,24 +20,25 @@ jobs:
       with:
         python-version: 3.x
 
-    # Step 3: Install dependencies
+    # Step 3: Install dependencies (commented out for now)
     #- name: Install dependencies
     #  run: |
     #    pip install sphinx
-    #    pip install -r requirements.txt  # Add any Sphinx-related requirements here
+    #    pip install -r requirements.txt
 
-    # Step 4: Build Sphinx documentation
-    #- name: Build Sphinx documentation
-    #  run: |
-    #    cd docs
-    #    sphinx-build -b html . _build/html
-
-    # Step 5: Clone Laboratory-Imaging.github.io repository
-    - name: Clone Laboratory-Imaging.github.io
+    # Step 4: Clone Laboratory-Imaging.github.io repository
+    - name: Set up SSH for Deploy Key
       run: |
-        git clone https://github.com/Laboratory-Imaging/Laboratory-Imaging.github.io.git ../pages
+        mkdir -p ~/.ssh
+        echo "${{ secrets.DOCS_PAGES_DEPLOY_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-    # Step temp: Clone Laboratory-Imaging.github.io repository
+    - name: Clone Laboratory-Imaging.github.io repository
+      run: |
+        git clone git@github.com:Laboratory-Imaging/Laboratory-Imaging.github.io.git ../pages
+
+    # Step temp: Create file (for testing purposes)
     - name: Create file
       run: |
         echo "hello" > file.txt
@@ -48,7 +49,6 @@ jobs:
         rm -rf ../pages/limnd2/docs  # Clean the target folder
         mkdir -p ../pages/limnd2/docs
         cp ./file.txt ../pages/limnd2/docs/
-    #    cp -r docs/_build/html/* ../pages/limnd2/docs/
 
     # Step 7: Commit and push to Laboratory-Imaging.github.io
     - name: Deploy to Laboratory-Imaging.github.io
@@ -59,5 +59,3 @@ jobs:
         git add .
         git commit -m "Update documentation for limnd2 [skip ci]"
         git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.DOCS_PAGES_DEPLOY_KEY }}
