@@ -8,9 +8,7 @@
 - numpy
 
 ## Documentation
-
-Documentation for this module is available here:
-https://laboratory-imaging.github.io/limnd2/docs/
+Documentation is available [here](https://laboratory-imaging.github.io/limnd2/docs/).
 
 ## Installation
 
