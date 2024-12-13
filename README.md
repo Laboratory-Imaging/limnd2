@@ -7,6 +7,11 @@
 - python>=3.12.0
 - numpy
 
+## Documentation
+
+Documentation for this module is available here:
+https://laboratory-imaging.github.io/limnd2/docs/
+
 ## Installation
 
 ### Windows
