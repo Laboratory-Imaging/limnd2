@@ -1,4 +1,8 @@
-site_name: LimND2
+site_name: limnd2
+site_author: Laboratory Imaging s.r.o.
+repo_name: limnd2
+repo_url: https://github.com/Laboratory-Imaging/limnd2
+site_description: A pure Python ND2 file reader and writer.
 
 theme:
   name: material
@@ -11,11 +15,12 @@ plugins:
         python:
           options:
             show_inheritance_diagram: true
+            separate_members: true
+            #show_if_no_docstring: true
 
 nav:
   - Home: index.md
-  - API:
-      - API Overview: api.md
+  - API Reference:
       - nd2.py: nd2.md
       - attributes.py: attributes.md
 
