@@ -9,3 +9,5 @@ nd2files/*
 nd2files
 decoder_types.txt
 .pypirc
+/docs_build
+/docs_sphinx

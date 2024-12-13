@@ -23,7 +23,7 @@ class Nd2Reader:
 
     Create Nd2 reader instance like this (use `with` statement to automatically close a file).
 
-    ```
+    ```python
     import limnd2
     with limnd2.Nd2Reader('file.nd2') as nd2:
         attributes = nd2.imageAttributes       # to get image attributes, see ImageAttributes class
@@ -36,7 +36,6 @@ class Nd2Reader:
         for i in range(attributes.componentCount):
             image = nd2.image(i)                            # get image with given sequence index
     ```
-
     """
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = True

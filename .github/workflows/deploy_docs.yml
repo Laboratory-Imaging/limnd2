@@ -1,20 +1,18 @@
-name: Deploy Docs to Laboratory-Imaging.github.io
+name: Generate docs and deploy them to GitHub Pages
 
 on:
   push:
     branches:
-      - main  # Adjust to your primary branch if needed
+      - main
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout the limnd2 repository
     - name: Checkout limnd2 code
       uses: actions/checkout@v3
 
-    # Step 2: Set up Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -26,7 +24,6 @@ jobs:
     #    pip install sphinx
     #    pip install -r requirements.txt
 
-    # Step 4: Clone Laboratory-Imaging.github.io repository
     - name: Set up SSH for Deploy Key
       run: |
         mkdir -p ~/.ssh
@@ -38,17 +35,20 @@ jobs:
       run: |
         git clone git@github.com:Laboratory-Imaging/Laboratory-Imaging.github.io.git ../pages
 
-    # Step temp: Create file (for testing purposes)
-    - name: Create file
+    - name: Install mkdocs and its dependencies
       run: |
-        echo "hello" > file.txt
+        python -m pip install --upgrade pip
+        pip install mkdocs mkdocs-material mkdocstrings[python]
+
+    - name: Build MkDocs site
+      run: mkdocs build --strict -d docs_build
 
     # Step 6: Copy built docs to the /limnd2/docs folder in Laboratory-Imaging.github.io
     - name: Copy built docs
       run: |
         rm -rf ../pages/limnd2/docs  # Clean the target folder
         mkdir -p ../pages/limnd2/docs
-        cp ./file.txt ../pages/limnd2/docs/
+        cp docs_build/* ../pages/limnd2/docs/
 
     # Step 7: Commit and push to Laboratory-Imaging.github.io
     - name: Deploy to Laboratory-Imaging.github.io

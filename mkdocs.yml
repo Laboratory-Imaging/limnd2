@@ -1,0 +1,21 @@
+site_name: LimND2
+
+theme:
+  name: material
+  features:
+    - navigation.expand
+
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_inheritance_diagram: true
+
+nav:
+  - Home: index.md
+  - API:
+      - API Overview: api.md
+      - nd2.py: nd2.md
+      - attributes.py: attributes.md
+
