@@ -48,7 +48,7 @@ jobs:
       run: |
         rm -rf ../pages/limnd2/docs  # Clean the target folder
         mkdir -p ../pages/limnd2/docs
-        cp docs_build/* ../pages/limnd2/docs/
+        cp -r docs_build/* ../pages/limnd2/docs/
 
     # Step 7: Commit and push to Laboratory-Imaging.github.io
     - name: Deploy to Laboratory-Imaging.github.io
