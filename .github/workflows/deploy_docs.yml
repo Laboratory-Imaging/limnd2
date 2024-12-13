@@ -36,8 +36,6 @@ jobs:
     - name: Clone Laboratory-Imaging.github.io
       run: |
         git clone https://github.com/Laboratory-Imaging/Laboratory-Imaging.github.io.git ../pages
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     # Step temp: Clone Laboratory-Imaging.github.io repository
     - name: Create file
@@ -62,4 +60,4 @@ jobs:
         git commit -m "Update documentation for limnd2 [skip ci]"
         git push
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.DOCS_PAGES_DEPLOY_KEY }}
