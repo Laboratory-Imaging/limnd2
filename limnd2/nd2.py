@@ -64,7 +64,7 @@ class Nd2Reader:
         if exp is None:
             return False
         dims = exp.dimnames()
-        return dims and 'z' in dims
+        return bool(dims and 'z' in dims)
 
     @functools.cached_property
     def is8bitRgb(self) -> bool:

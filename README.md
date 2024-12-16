@@ -29,3 +29,26 @@ powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/L
 ```sh
 curl -O https://raw.githubusercontent.com/Laboratory-Imaging/Laboratory-Imaging.github.io/refs/heads/main/limnd2/setup_limnd2.sh && chmod +x setup_limnd2.sh && ./setup_limnd2.sh && rm ./setup.sh
 ```
+
+
+### Manual Installation
+
+#### Windows
+
+```powershell
+git clone https://github.com/Laboratory-Imaging/limnd2.git
+cd limnd2
+python -m venv env
+env\Scripts\activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+code .
+```
+
+for building and uploading to private Pypi
+
+```powershell
+pip install build setuptools twine
+python -m build
+twine upload -r local dist\*
+```
