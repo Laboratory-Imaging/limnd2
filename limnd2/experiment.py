@@ -181,17 +181,6 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     wsCommandBeforeCapture: str             = LV_field("",    LVType.STRING)
     wsCommandAfterCapture: str              = LV_field("",    LVType.STRING)
 
-    # probably error in NIS elements, should be duplicate of dZLow
-    #dZLow_1: float                          = LV_field("",    LVType.DO_NOT_ENCODE)                # DONE
-
-    """
-    Atributes found in XML variant, but not in LV
-
-    #sZDevice: object                        = LV_field(None,  LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
-    #sCommandAfterCapture: str               = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
-    #sCommandBeforeCapture: str              = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
-    """
-
     def __post_init__(self):
 
         if 'dZLow#1' in self._unknown_fields:
@@ -264,6 +253,8 @@ class ExperimentSpectralLoopPoint(LVSerializable):
     wsCommandBeforeCapture: str                 = LV_field("",                              LVType.STRING)
     wsCommandAfterCapture: str                  = LV_field("",                              LVType.STRING)
 
+    pass
+
     """
     Atributes found in XML variant, but not in LV
     pPlaneDesc: PicturePlaneDesc                = LV_field(PicturePlaneDesc,                LVType.LEVEL)             # TODO
@@ -282,15 +273,6 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     bWaitForPFS: bool                           = LV_field(False,                           LVType.BOOL)
     bAskForFilter: bool                         = LV_field(False,                           LVType.BOOL)
     Points: list[ExperimentSpectralLoopPoint]   = LV_field(list,                            LVType.LEVEL)
-
-    """
-    Atributes found in XML variant, but not in LV
-    pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)                     # DONE
-    szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    """
 
     def __post_init__(self):
         if isinstance(self.Points, dict):
@@ -386,15 +368,8 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     sAFBefore: dict                         = LV_field(dict,              LVType.ENCODING_NOT_IMPLEMENTED)
     Points: list[ExperimentXYPosLoopPoint]  = LV_field(None,              LVType.LEVEL)
 
+    pass
     """
-    Atributes found in XML variant, but not in LV
-    dPosX: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    dPosY: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    dPosZ: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    dPFSOffset: object                      = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    pPosName: object                        = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    sAutoFocusBeforeCapture: object         = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-
     uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)       #TODO
     """
 
@@ -580,11 +555,6 @@ class ExperimentLevel(LVSerializable):
     # External data (liquid handling)
 
     iRecipeDSCPort: int                     = LV_field(None,                              LVType.INT32)
-
-    """
-    Atributes found in XML variant, but not in LV
-    pLargeImageEx: object                   = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)        # DONE
-    """
 
     def __post_init__(self):
         if isinstance(self.pItemValid, dict):

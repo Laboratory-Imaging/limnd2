@@ -88,13 +88,23 @@ class ImageAttributes(LVSerializable):
     @staticmethod
     def create(width: int, height: int, component_count: int, bits: int, sequence_count: int) -> ImageAttributes:
         """
+        !!! warning
+            This function is used for creating new ImageAttributes instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
+
         Create ImageAttributes instance from simplified parameters:
 
-        width: int              - width in pixels
-        height: int             - height in pixels
-        component_count: int    - number of components
-        bits: int               - number of bits per pixel component
-        sequence_count: int     - total number of frames in ND2 file (product of size of each dimension)
+        Parameters
+        ----------
+        width : int
+            width in pixels
+        height : int
+            height in pixels
+        component_count : int
+            number of components
+        bits : int
+            number of bits per pixel component
+        sequence_count : int
+            total number of frames in ND2 file (product of size of each dimension)
         """
         shape = (width, height, component_count)
 

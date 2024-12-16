@@ -10,7 +10,6 @@ from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo, AppInfo
 from .variant import decode_var
 
-
 if Nd2LoggerEnabled:
     import logging
     logger = logging.getLogger("limnd2")
@@ -23,7 +22,7 @@ class Nd2Reader:
 
     Create Nd2 reader instance like this (use `with` statement to automatically close a file).
 
-    ```python
+    ```python linenums="1"
     import limnd2
     with limnd2.Nd2Reader('file.nd2') as nd2:
         attributes = nd2.imageAttributes       # to get image attributes, see ImageAttributes class
@@ -42,6 +41,16 @@ class Nd2Reader:
         return _create_chunker(*args, **kwargs)
 
     def __init__(self, file : FileLikeObject, *, chunker_kwargs: dict = {}) -> None:
+        """
+        Initializes ND2 reader.
+
+        Parameters
+        -----------
+        file : str | Path | int | typing.BinaryIO
+            Filename of the ND2 file.
+        chunker_kwargs
+            Additional parameters for chunker.
+        """
         self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
 
     def __enter__(self):
@@ -64,7 +73,7 @@ class Nd2Reader:
         if exp is None:
             return False
         dims = exp.dimnames()
-        return bool(dims and 'z' in dims)
+        return dims and 'z' in dims
 
     @functools.cached_property
     def is8bitRgb(self) -> bool:
@@ -250,6 +259,16 @@ class Nd2Writer:
         return _create_chunker(*args, **kwargs)
 
     def __init__(self, file : FileLikeObject, *, append : bool|None = None, chunker_kwargs:dict = {}) -> None:
+        """
+        Either opens existing .nd2 file for writing (adding or overwriting) chunks or creates an empty .nd2 file.
+
+        Parameters
+        -----------
+        file : str | Path | int | typing.BinaryIO
+            Filename of the ND2 file.
+        chunker_kwargs
+            Additional parameters for chunker.
+        """
         self._chunker = self.create_chunker(file, append=append, chunker_kwargs=chunker_kwargs)
 
     def __enter__(self):

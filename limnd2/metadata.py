@@ -102,6 +102,11 @@ class OpticalFilterSpectType(enum.IntEnum):
     eOftEmpty: typing.Final             = 8         # empty position of a filterwheel
 
 class PicturePlaneModality(enum.IntEnum):
+    """
+    Enum for modality of given plane.
+    !!! warning
+        In modern .nd2 files this modality enum should be converted to [PicturePlaneModalityFlags](metadata.md#limnd2.metadata.PicturePlaneModalityFlags) instance using [from_modality()](metadata.md#limnd2.metadata.PicturePlaneModalityFlags.from_modality) function.
+    """
     eModWidefieldFluo: typing.Final       = 0
     eModBrightfield: typing.Final         = 1
     eModLaserScanConfocal: typing.Final   = 2
@@ -368,11 +373,6 @@ class OpticalSpectrumPoint(LVSerializable):
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
     dTValue: float                              = LV_field(1.0,                                   LVType.DOUBLE)
 
-    """
-    Atributes found in XML variant, but not in LV
-    uiWavelength: Any                           = LV_field(None,                                  LVType.ENCODING_NOT_IMPLEMENTED)    #DONE
-    """
-
     def __post_init__(self):
         object.__setattr__(self, "eType", OpticalSpectrumPointType(self.eType))
         if "uiWavelength" in self._unknown_fields:
@@ -567,11 +567,6 @@ class OpticalFilter(LVSerializable):
     m_EmissionSpectrum: OpticalSpectrum     = LV_field(OpticalSpectrum,                         LVType.LEVEL)
     m_MirrorSpectrum: OpticalSpectrum       = LV_field(OpticalSpectrum,                         LVType.LEVEL)
 
-    """
-    Atributes found in XML variant, but not in LV
-    m_wcTiName: object                      = LV_field(None,                                    LVType.DO_NOT_ENCODE)     # always "" ?
-    """
-
     def __post_init__(self):
         object.__setattr__(self, "m_ePlacement", OpticalFilterPlacement(self.m_ePlacement))
         object.__setattr__(self, "m_eNature", OpticalFilterNature(self.m_eNature))
@@ -754,11 +749,9 @@ class PicturePlaneDesc(LVSerializable):
     sizeObjFullChip_cx: int                         = LV_field(0,                                           LVType.INT32)
     sizeObjFullChip_cy: int                         = LV_field(0,                                           LVType.INT32)
 
-
+    pass
     """
     Atributes found in XML variant, but not in LV
-    eModality: int                                  = LV_field(0,                                           LVType.UINT32)                      #DONE
-
     sOpticalConfigName: str                         = LV_field("",                                          LVType.STRING)                      #TODO
     sOpticalConfigFull: dict[str, str]              = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)    #TODO
     sCameraSetting: dict[str, Any]                  = LV_field(dict,                                        LVType.ENCODING_NOT_IMPLEMENTED)    #TODO
@@ -953,7 +946,7 @@ class ObjectiveSetting(LVSerializable):
 @dataclass(frozen=True, kw_only=True, init=False)
 class SampleSettings(LVSerializable):
     pCameraSetting: CameraSetting           = LV_field(CameraSetting,       LVType.LEVEL)
-    pDeviceSetting: DeviceSetting           = LV_field(DeviceSetting,       LVType.LEVEL)        # this
+    pDeviceSetting: DeviceSetting           = LV_field(DeviceSetting,       LVType.LEVEL)
     pObjectiveSetting: ObjectiveSetting     = LV_field(ObjectiveSetting,    LVType.LEVEL)
     sOpticalConfigs: list[SampleSettingsOC] = LV_field(list,                LVType.LEVEL)
     sSpecSettings: str                      = LV_field("",                  LVType.STRING)
@@ -969,6 +962,7 @@ class SampleSettings(LVSerializable):
     dCalibration1To1: type                  = LV_field(0.0,                 LVType.DOUBLE)
     dCameraCalibrationZoom: type            = LV_field(1.0,                 LVType.DOUBLE)
 
+    pass
     """
     Atributes found in XML variant, but not in LV
     eRepresentation: object                 = LV_field(None,                LVType.ENCODING_NOT_IMPLEMENTED)    # always 0
@@ -1245,11 +1239,9 @@ class PictureMetadata(LVSerializable):
 
     baOpticalPathsCorrections: bytes                    = LV_field(b'',                                 LVType.BYTEARRAY)
 
-
+    pass
     """
     Atributes found in XML variant, but not in LV
-    # dPinholeRadius: float                               = LV_field(0.0,                                 LVType.DOUBLE)        #DONE
-
     # sCameraSetting: dict[str, Any]                      = LV_field(dict,                                LVType.UNKNOWN)       # only seems to hold default values
     # dProjectiveMag: float                               = LV_field(-1.0,                                LVType.DOUBLE)        # looks unused even in NIS
 
@@ -1401,6 +1393,10 @@ class PictureMetadata(LVSerializable):
 @dataclass
 class MicroscopeSettings:
     """
+    !!! warning
+        This function is used for creating new PictureMetadata instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
+        Do not use this class if you simply read existing .nd2 file.
+
     Represents simplifies settings for a microscope, not used for reading ND2 file.
 
     Attributes
@@ -1432,13 +1428,17 @@ class MicroscopeSettings:
 @dataclass
 class ChannelSettings:
     """
-    Represents simplified settings for an image channel, not used for reading ND2 file.
+    !!! warning
+        This function is used for creating new PictureMetadata instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
+        Do not use this class if you simply read existing .nd2 file.
+
+    Represents simplified settings for an image channel.
 
     Attributes
     ----------
     name : str
         The name of the channel.
-    modality : tr | PicturePlaneModality | PicturePlaneModalityFlags
+    modality : str | PicturePlaneModality | PicturePlaneModalityFlags
         The modality of the channel either as a string (e.g., fluorescence, brightfield) or as instance of PicturePlaneModality or PicturePlaneModalityFlags
     excitation_wavelength : int
         The excitation wavelength in nanometers.
@@ -1460,6 +1460,7 @@ class ChannelSettings:
     def modality_flags(self) -> PicturePlaneModalityFlags:
         """
         Converts provided modality to instance of PicturePlaneModalityFlags, which is stored in nd2 file.
+        Do not use this class if you simply read existing .nd2 file.
 
         Returns
         -------
@@ -1549,6 +1550,9 @@ class ChannelSettings:
 
 def create_metadata(channels: list[ChannelSettings], pixel_calibration: float = 0.0, microscope: MicroscopeSettings = None) -> PictureMetadata:
     """
+    !!! warning
+        This function is used for creating new PictureMetadata instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
+
     Creates PictureMetadata instance from simplified information about channels and microscope, not used for reading ND2 file.
 
     Parameters
@@ -1557,7 +1561,7 @@ def create_metadata(channels: list[ChannelSettings], pixel_calibration: float = 
         List of ChannelSetting instances, which contain channel names, modality, wavelength info and color.
     pixel_calibration : float = 0.0
         Size of one pixel in micrometers
-    microscope : MicroscopeSettings = None
+    microscope : MicroscopeSettings
         MicroscopeSettings for ALL channels (overwrites MicroscopeSettings stored in each channel).
 
     Returns
