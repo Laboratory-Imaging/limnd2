@@ -1293,7 +1293,7 @@ class PictureMetadata(LVSerializable):
 
     @property
     def channelNames(self) -> list[str]:
-        return [ "RGB" if 3 == plane.uiCompCount else plane.sDescription for plane in self.sPicturePlanes.sPlane ]
+        return [ "RGB" if 3 == plane.uiCompCount else plane.sDescription for plane in self.sPicturePlanes.sPlaneNew ]
 
     @property
     def componentNames(self) -> list[str]:
@@ -1324,49 +1324,52 @@ class PictureMetadata(LVSerializable):
                 ret.append(color_as_tuple(plane.uiColor))
         return ret
 
-    def sampleSettings(self, plane: int = 0) -> SampleSettings|None:
+    def sampleSettings(self, plane: int | PicturePlaneDesc = 0) -> SampleSettings|None:
         try:
-            return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlaneNew[plane].uiSampleIndex]
+            if isinstance(plane, int):
+                return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlaneNew[plane].uiSampleIndex]
+            if isinstance(plane, PicturePlaneDesc):
+                return self.sPicturePlanes.sSampleSetting[plane.uiSampleIndex]
         except (AttributeError, IndexError) as _:
             return None
 
-    def cameraName(self, plane: int = 0) -> str:
+    def cameraName(self, plane: int | PicturePlaneDesc = 0) -> str:
         try:
             return self.sampleSettings(plane).cameraName
         except (AttributeError, IndexError) as _:
             return ""
 
-    def microscopeName(self, plane: int = 0) -> str:
+    def microscopeName(self, plane: int | PicturePlaneDesc = 0) -> str:
         try:
             return self.sampleSettings(plane).microscopeName
         except (AttributeError, IndexError):
             return ""
 
-    def refractiveIndex(self, plane: int = 0) -> float:
+    def refractiveIndex(self, plane: int | PicturePlaneDesc = 0) -> float:
         try:
             return self.sampleSettings(plane).refractiveIndex
         except (AttributeError, IndexError):
             return -1.0
 
-    def objectiveName(self, plane: int = 0) -> str:
+    def objectiveName(self, plane: int | PicturePlaneDesc = 0) -> str:
         try:
             return self.sampleSettings(plane).objectiveName
         except (AttributeError, IndexError):
             return ""
 
-    def objectiveMagnification(self, plane: int = 0) -> float:
+    def objectiveMagnification(self, plane: int | PicturePlaneDesc = 0) -> float:
         try:
             return self.sampleSettings(plane).objectiveMagnification
         except (AttributeError, IndexError):
             return -1.0
 
-    def objectiveNumericAperture(self, plane: int = 0) -> float:
+    def objectiveNumericAperture(self, plane: int | PicturePlaneDesc = 0) -> float:
         try:
             return self.sampleSettings(plane).objectiveNumericAperture
         except (AttributeError, IndexError):
             return -1.0
 
-    def opticalConfigurations(self, plane: int = 0) -> list[str]:
+    def opticalConfigurations(self, plane: int | PicturePlaneDesc = 0) -> list[str]:
         try:
             return self.sampleSettings(plane).opticalConfigurations
         except (AttributeError, IndexError):

@@ -26,6 +26,7 @@ theme:
     - icons
     - dark-mode-toggle
     - content.code.copy
+    - content.tabs.link
     # - toc.integrate               # integrates table of content into left side - more space for docs, subjectively worse navigation
   custom_dir: docs/static
 
@@ -67,17 +68,20 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
   - toc:
       permalink: true
 
 nav:
-  - Home: index.md
+  - QuickStart: index.md
   - API Reference:
-      - nd2.py: nd2.md
-      - attributes.py: attributes.md
-      - experiment.py: experiment.md
-      - experiment_factory.py: experiment_factory.md
-      - metadata.py: metadata.md
+    - nd2.py: nd2.md
+    - attributes.py: attributes.md
+    - experiment.py: experiment.md
+    - experiment_factory.py: experiment_factory.md
+    - metadata.py: metadata.md
 
 
 

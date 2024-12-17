@@ -229,6 +229,14 @@ class Nd2Reader:
         return self._chunker.chunk(name)
 
     def image(self, seqindex: int) -> NumpyArrayLike:
+        """
+        Get image data from specified frame as NumPy array.
+
+        Parameters:
+        -----------
+        seqindex: int
+            Image sequence index you want to get.
+        """
         return self._chunker.image(seqindex)
 
     def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:

@@ -1,3 +1,7 @@
+"""
+This file is for experiments
+"""
+
 from __future__ import annotations
 
 import collections, enum, itertools, json, math, zlib
@@ -9,6 +13,17 @@ from .variant import decode_var
 from .treeview_helper import get_format_fn
 
 class ExperimentLoopType(enum.IntEnum):
+    """
+    Enum specifiying which experiment type was used in [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel)
+    Attributes
+    ----------
+    eEtTimeLoop : int
+        Timeloop experiment
+    eEtXYPosLoop : int
+        Multipoint experiment
+    eEtZStackLoop : int
+        Z-stack experiment
+    """
     eEtUnknown              = 0
     eEtTimeLoop             = 1
     eEtXYPosLoop            = 2
@@ -124,6 +139,9 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
     @property
     def info(self) -> list[dict[str, any]]:
         return [ dict(Phase='#1', Interval=self.formattedInterval, Duration=self.formattedDuration, Loops=self.uiCount) ]
+
+    def __str__(self):
+        return f"Timeloop experiment, ({self.uiCount} frames, interval: {self.formattedInterval}, duration: {self.formattedDuration})"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -245,6 +263,9 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     def info(self) -> list[dict[str, any]]:
         return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice)]
 
+    def __str__(self):
+        return f"Z-Stack experiment, ({self.uiCount} frames, step: {self.dZStep})"
+
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoopPoint(LVSerializable):
     pAutoFocus: dict                            = LV_field(dict,                            LVType.ENCODING_NOT_IMPLEMENTED)
@@ -351,7 +372,6 @@ class ExperimentXYPosLoopPoint(LVSerializable):
 
 
 
-
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     bUseZ: bool                             = LV_field(False,             LVType.BOOL)
@@ -407,6 +427,9 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
                 d['Z'] = self.Points[i].dPosZ
             ret.append(d)
         return ret
+
+    def __str__(self):
+        return f"Multipoint experiment, ({self.uiCount} frames, number of points: {len(self.Points)})"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -486,6 +509,9 @@ class ExperimentIterator:
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentLevel(LVSerializable):
+    """
+    Experiment Level
+    """
     eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)
     # Type of the current loop, determines the union member to be used
 
@@ -727,3 +753,6 @@ class ExperimentLevel(LVSerializable):
     def from_var(data: bytes|memoryview) -> ExperimentLevel:
         decoded = decode_var(data)
         return ExperimentLevel(**decoded[0])
+
+    def __str__(self):
+        return str(self.uLoopPars)
