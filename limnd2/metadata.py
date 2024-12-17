@@ -250,7 +250,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
         """
 
         modality_map_parsed = {key.lower().replace("-", "").replace(" ", "").replace(",", "") : val for key, val in PicturePlaneModalityFlags.modality_string_map().items()}
-        modality_parsed = modality.lower().replace("-", "").replace(" ", "")
+        modality_parsed = modality.lower().replace("-", "").replace(" ", "").replace(",", "")
 
         if modality_parsed in ("undefined", "unknown"):
             return 0
@@ -1454,10 +1454,10 @@ class ChannelSettings:
     """
 
     name: str
-    modality: str | PicturePlaneModality | PicturePlaneModalityFlags
-    excitation_wavelength: int
-    emission_wavelength: int
-    color: str
+    modality: str | PicturePlaneModality | PicturePlaneModalityFlags = "Unknown"
+    excitation_wavelength: int = 0
+    emission_wavelength: int = 0
+    color: str = ""
     microscope: MicroscopeSettings | None = None
 
     def modality_flags(self) -> PicturePlaneModalityFlags:

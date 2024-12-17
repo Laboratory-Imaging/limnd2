@@ -74,7 +74,7 @@ pip install -r requirements.txt
 
 ### Reading `.nd2` files
 
-An example Python file showcasing how to read an `.nd2` file with this library is found at GitHub repo for this page: [example_reader.py](https://github.com/Laboratory-Imaging/limnd2/examples/example_reader.py).
+An example Python file showcasing how to read an `.nd2` file with this library is found at GitHub repo for this page: [example_reader.py](https://github.com/Laboratory-Imaging/limnd2/blob/main/examples/example_reader.py).
 
 #### Opening `.nd2` file
 
@@ -441,6 +441,130 @@ for channel in metadata.channels:
 Attributes, experiments, metadata, and image data are the most important parts of an .nd2 file, which is why they were the focus of this guide. The limnd2 module can also access information about binary layers, ROIs, and other data stored in the file. However, at this time, we do not provide a guide on how to read these additional components.
 
 If this causes any issues or you need further clarification, please feel free to head over to the [Discussion page on our GitHub repository](https://github.com/Laboratory-Imaging/limnd2/discussions) and let us know.
+
+### Writing to `.nd2` file
+
+This package also allows you to write into and create `.nd2` files, an example of how to do this, you can look into [example_writer.py](https://github.com/Laboratory-Imaging/limnd2/blob/main/examples/example_writer.py), which will also be described below.
+
+In the example below we will create new `.nd2` file with preset width, height, bits per component, component count and sequence count. Instead of using actual image data we will use NumPy to generate arrays filled with random noise, which we will store in the result file.
+
+Here are the settings that will be used to generate image attributes and NumPy arrays with image data.
+
+```py linenums="26" title="example_writer.py"
+WIDTH = 500
+HEIGHT = 200
+COMPONENT_COUNT = 2
+BITS = 8
+SEQUENCE_COUNT = 10
+```
+
+We will also add 2 experiments in the file to showcase how Experiment creation works. We have 10 frames as defined above, we will split them into 5 timeloop indices and 2 Z-stack indices, we will also define step between frames on each axis:
+
+```py linenums="33" title="example_writer.py"
+# timeloop experiment settings
+TIMELOOP_COUNT = 5
+TIMELOOP_STEP = 150
+
+# zstack experiment settings
+ZSTACK_COUNT = 2
+ZSTACK_STEP = 100
+```
+
+#### Opening / creating `.nd2` file for writing
+
+With constants defined, we can open `.nd2` file for reading using Nd2Writer class and `with` clause for automatic file closure.
+
+```python linenums="41" title="example_writer.py"
+with limnd2.Nd2Writer("outfile.nd2") as nd2:
+```
+
+!!! warning
+    If you are creating brand new `.nd2` files, make sure the filename does not already exist or delete such file if it does, `Nd2Writer` class can also write to existing files which may lead to unexpected results.
+
+#### Creating and writing image attributes
+
+Image attributes can be created using `ImageAttributes.create()` method, we can simply assign those to `imageAttributes` property of `Nd2Writer`.
+
+```py linenums="44" title="example_writer.py"
+attributes = limnd2.attributes.ImageAttributes.create(
+    width = WIDTH,
+    height = HEIGHT,
+    component_count = COMPONENT_COUNT,
+    bits = BITS,
+    sequence_count = SEQUENCE_COUNT
+)
+
+nd2.imageAttributes = attributes
+```
+
+#### Creating and writing image data
+
+!!! danger
+    Image data can only be written **after image attributes are set** as the copy operation requires known NumPy array size.
+
+After writing image attributes, we can create random noise data and store them in the `.nd2` file, for this we will use `create_random_noise()` function (see `example_writer.py` for function definition) and send the result array to `setImage()` method.
+
+!!! important
+    You must manually keep track of index or the image you are storing, also as we with with random noise, the order in which images are inserted does not matter, however the images must be inserted in correct order with respect to used experiments.
+
+    This is especially important if you are converting multidimensional image sequence to `.nd2` file.
+
+``` py linenums="56" title="example_writer.py"
+for i in range(SEQUENCE_COUNT):
+    nd2.setImage(i, create_random_noise(WIDTH, HEIGHT, COMPONENT_COUNT, BITS))
+```
+
+#### Creating and writing experiments
+
+Experiments can be created using simplified experiment settings from `experiment_factory` module, each experiment is supplied with frame count and information relevant to given experiment, created instances are then converted into experiment using `experiment_factory.create_experiment()` function and the result is once again stored in writer instance.
+
+```py linenums="61" title="example_writer.py"
+texp = limnd2.experiment_factory.TExp(frame_count = TIMELOOP_COUNT,
+                                        time_delta = TIMELOOP_STEP)
+
+zexp = limnd2.experiment_factory.ZExp(frame_count = ZSTACK_COUNT,
+                                        stack_delta = ZSTACK_STEP)
+
+experiment = limnd2.experiment_factory.create_experiment(texp, zexp)
+
+nd2.experiment = experiment
+```
+
+#### Creating and writing metadata
+
+Metadata are created in similar way to experiments, also using simplified classes with the most important data. As there are 2 components, we will create one channel for each using `metadata.ChannelSettings`, we will add microscope using `metadata.MicroscopeSettings` and we will turn those simplified settings into metadata using `metadata.create_metadata()` function, the result of which we will assign into writer instance.
+
+``` py linenums="73" title="example_writer.py"
+channel1 = limnd2.metadata.ChannelSettings(
+    name = "Blue channel",
+    modality = "Confocal, Fluo",
+    color = "blue"
+)
+
+channel2 = limnd2.metadata.ChannelSettings(
+    name = "Red channel",
+    modality = "Confocal, Fluo",
+    color = "red"
+)
+
+microscope = limnd2.metadata.MicroscopeSettings(zoom_magnification = 200.0,
+                                                objective_magnification = 1.0,
+                                                pinhole_diameter = 50
+                                                )
+
+metadata = limnd2.metadata.create_metadata(channels = [channel1, channel2],
+                                        pixel_calibration = 10.0,
+                                        microscope = microscope
+                                        )
+
+nd2.pictureMetadata = metadata
+```
+
+#### Saving file
+
+As we used `with` context manager, file is automatically saved and closed, if you did not use context manager, you need to manually call `.finalize()` method from `Nd2Writer` instance.
+
+With this done, you can now run the Python script and open the file in NIS Elements.
 
 ## Full API reference
 
