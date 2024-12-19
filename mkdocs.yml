@@ -82,6 +82,7 @@ nav:
     - experiment.py: experiment.md
     - experiment_factory.py: experiment_factory.md
     - metadata.py: metadata.md
+    - metadata_factory.py: metadata_factory.md
 
 
 

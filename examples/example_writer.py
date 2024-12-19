@@ -58,13 +58,13 @@ with limnd2.Nd2Writer("outfile.nd2") as nd2:
 
     # create and set experiment
 
-    texp = limnd2.experiment_factory.TExp(frame_count = TIMELOOP_COUNT,
-                                          time_delta = TIMELOOP_STEP)
+    texp = limnd2.experiment_factory._TExp(frame_count = TIMELOOP_COUNT,
+                                          step = TIMELOOP_STEP)
 
-    zexp = limnd2.experiment_factory.ZExp(frame_count = ZSTACK_COUNT,
-                                          stack_delta = ZSTACK_STEP)
+    zexp = limnd2.experiment_factory._ZExp(frame_count = ZSTACK_COUNT,
+                                          step = ZSTACK_STEP)
 
-    experiment = limnd2.experiment_factory.create_experiment(texp, zexp)
+    experiment = limnd2.experiment_factory._create_experiment(texp, zexp)
 
     nd2.experiment = experiment
 

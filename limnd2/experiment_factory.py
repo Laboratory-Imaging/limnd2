@@ -1,65 +1,58 @@
 """
-This module contains helper classes and functions for creating ExperimentLevel instances using simplified parameters for each experiment type.
-Those instances should be used with Nd2Writer instance for altering / creating .nd2 files.
+This module contains helper classes and functions for creating
+`ExperimentLevel` instances using simplified parameters for each experiment type.
+Those instances should be used with `Nd2Writer` instance for altering / creating `.nd2` files.
 
-!!! warning
-    Since this module is used to creating experiment data structures, you should not use any part of this module if you only read an .nd2 file.
+!!! info
+    Since this module is used to creating experiment data structures,
+    you should not use any part of this module if you only read an `.nd2` file.
+
+For creating experiments, you should use [`ExperimentFactory`](experiment_factory.md#limnd2.experiment_factory.ExperimentFactory) class.
 """
 
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from .experiment import ExperimentLevel, ExperimentTimeLoop, ExperimentNETimeLoop, ExperimentXYPosLoop, ExperimentXYPosLoopPoint, ExperimentZStackLoop, ExperimentLoopType
+from typing import Any
 
-class Exp(ABC):
-    frame_count: int
-
+@dataclass
+class _Exp(ABC):
     @abstractmethod
     def __init__(self):
         raise NotImplementedError()
 
     @abstractmethod
-    def create_experiment_level(self) -> ExperimentLevel:
+    def _create_experiment_level(self) -> ExperimentLevel:
         pass
 
     @abstractmethod
     def __str__(self) -> str:
         pass
 
-
-class TExp(Exp):
+@dataclass
+class _TExp(_Exp):
     """
     Data structure for creating Timeloop experiment instance using number of frames and time between frames.
     """
-    frame_count: int
-    time_delta: float
+    count: int = 0
+    step: float = 0.0
 
-    def __init__(self, frame_count: int, time_delta: float):
-        """
-        Parameters
-        ----------
-        frame_count : int
-            number of frames in the experiment loop
-        time_delta : float
-            time between frames in miliseconds
-        """
-        self.frame_count = frame_count
-        self.time_delta = time_delta
-
-    def create_experiment_level(self) -> ExperimentLevel:
+    def _create_experiment_level(self) -> ExperimentLevel:
         """
         Creates ExperimentLevel instance from simplified settings.
         """
         return ExperimentLevel(eType = ExperimentLoopType.eEtTimeLoop,
-                               uLoopPars = ExperimentTimeLoop(uiCount=self.frame_count, dPeriod=float(self.time_delta)))
+                               uLoopPars = ExperimentTimeLoop(uiCount=self.count, dPeriod=float(self.step)))
 
     def __str__(self) -> str:
-        return f"_T{self.frame_count}"
-
-class NETExp(Exp):
+        return f"_T{self.count}"
+'''
+class _NETExp(_Exp):
     """
     Data structure for creating non-equidistant timeloop experiment from list of periods.
     """
-    frame_count: int
+    count: int
     periods: list[tuple[int, float]]
 
     def __init__(self, periods: list[tuple[int, float]]):
@@ -70,7 +63,7 @@ class NETExp(Exp):
             list of periods, each period is a pair made of number of frames in given period and time delta in given period
         """
         self.periods = periods
-        self.frame_count = sum(t[0] for t in periods)
+        self.count = sum(t[0] for t in periods)
 
     def create_experiment_level(self) -> ExperimentLevel:
         """
@@ -80,7 +73,7 @@ class NETExp(Exp):
         for count, time_delta in self.periods:
             stages.append(ExperimentTimeLoop(uiCount=count, dPeriod=float(time_delta)))
 
-        loop = ExperimentNETimeLoop(uiCount = self.frame_count,
+        loop = ExperimentNETimeLoop(uiCount = self.count,
                                     uiPeriodCount = len(stages),
                                     pPeriodValid = b"\x01" * len(stages),
                                     pPeriod = stages
@@ -90,92 +83,66 @@ class NETExp(Exp):
                                eType = ExperimentLoopType.eEtNETimeLoop)
 
     def __str__(self) -> str:
-        return f"_NET{self.frame_count}"
+        return f"_NET{self.count}"
+'''
 
-
-class ZExp(Exp):
+@dataclass
+class _ZExp(_Exp):
     """
     Data structure for creating z-stack experiment using number of frames and distance between frames.
     """
-    frame_count: int
-    stack_delta: float
+    count: int = 0
+    step: float = 0.0
 
-    def __init__(self, frame_count: int, stack_delta: float):
-        """
-        Parameters
-        ----------
-        frame_count : int
-            number of frames in the experiment loop
-        stack_delta : float
-            distance between frames in micrometers
-        """
-        self.frame_count = frame_count
-        self.stack_delta = stack_delta
-
-    def create_experiment_level(self) -> ExperimentLevel:
-        loop = ExperimentZStackLoop(uiCount = self.frame_count,
-                                    dZStep = float(self.stack_delta),
-                                    dZHigh = float(self.stack_delta * self.frame_count))
+    def _create_experiment_level(self) -> ExperimentLevel:
+        loop = ExperimentZStackLoop(uiCount = self.count,
+                                    dZStep = float(self.step),
+                                    dZHigh = float(self.step * self.count))
 
         return ExperimentLevel(eType = ExperimentLoopType.eEtZStackLoop,
                                uLoopPars=loop)
 
     def __str__(self) -> str:
-        return f"_Z{self.frame_count}"
+        return f"_Z{self.count}"
 
-class MExp(Exp):
+@dataclass
+class _MExp(_Exp):
     """
     Data structure for creating multipoint experiment using list of x and y coordinates.
     """
-    frame_count: int
-    xcoords: list[float]
-    ycoords: list[float]
+    count: int = 0
+    xcoords: list[float] = field(default_factory = list)
+    ycoords: list[float] = field(default_factory = list)
 
-    def __init__(self, frame_count: int, xcoords: list[float] = None, ycoords: list[float] = None):
-        """
-        Parameters
-        ----------
-        frame_count : int
-            number of frames in the experiment loop
-        xcoords : list[float] = None
-            list of x coordinates
-        ycoords : list[float] = None
-            list of y coordinates
+    def addPoint(self, x: float, y: float):
+        self.xcoords.append(x)
+        self.ycoords.append(y)
+        self.count += 1
 
-        Raises
-        ------
-        ValueError
-            if lengths of coordinate lists are not equal to `frame_count`.
-        """
-        if xcoords == None:
-            xcoords = [0.0 for _ in range(frame_count)]
-
-        if ycoords == None:
-            ycoords = [0.0 for _ in range(frame_count)]
-
-        if not (frame_count == len(xcoords) and frame_count == len(ycoords)):
-            raise ValueError("Number of multipoints must match length of both lists with coordinates.")
-
-        self.frame_count = frame_count
-        self.xcoords = xcoords
-        self.ycoords = ycoords
-
-    def create_experiment_level(self) -> ExperimentLevel:
+    def _create_experiment_level(self) -> ExperimentLevel:
         """
         Creates ExperimentLevel instance from simplified settings.
         """
+
+        if len(self.xcoords) == 0 and len(self.ycoords) == 0:
+            self.xcoords = [0.0] * self.count
+            self.ycoords = [0.0] * self.count
+
+        if not (self.count == len(self.xcoords) and self.count == len(self.ycoords)):
+            raise ValueError("Number of multipoints must match length of both lists with coordinates.")
+
         points = []
         for xcoord, ycoord in zip(self.xcoords, self.ycoords):
             points.append(ExperimentXYPosLoopPoint(dPosX=float(xcoord),
                                                    dPosY=float(ycoord)))
 
-        return ExperimentLevel(uLoopPars=ExperimentXYPosLoop(uiCount=self.frame_count, Points=points),
+        return ExperimentLevel(uLoopPars=ExperimentXYPosLoop(uiCount=self.count, Points=points),
                                eType = ExperimentLoopType.eEtXYPosLoop)
 
     def __str__(self) -> str:
-        return f"_M{self.frame_count}"
+        return f"_M{self.count}"
 
-def create_experiment(*args: Exp) -> ExperimentLevel:
+def _create_experiment(*args: _Exp) -> ExperimentLevel:
     """
     This function chains and nests several simplified experiments into single ExperimentLevel instance.
 
@@ -188,17 +155,15 @@ def create_experiment(*args: Exp) -> ExperimentLevel:
     ----------
     *args : Exp
         list of simplified experiments to chain
-
-
-
     """
     if len(args) < 1:
-        raise ValueError("You must provide at least one experiment.")
+        print("WARNING: Creating experiment without any loops, returning None!")
+        return None
 
-    first = args[0].create_experiment_level()
+    first = args[0]._create_experiment_level()
     last = first
     for exp in args[1:]:
-        new = exp.create_experiment_level()
+        new = exp._create_experiment_level()
 
         #chain new to last
         object.__setattr__(last, "ppNextLevelEx", [new])
@@ -208,10 +173,147 @@ def create_experiment(*args: Exp) -> ExperimentLevel:
     return first
 
 
+class ExperimentFactory:
+    """
+    Helper class for creating experiments, see examples below on how to create timeloop, multipoint and z-stack experiments either
+    directly on factory constructor or by modifying values later.
 
-if __name__ == "__main__":
-    Z = ZExp(10, 150)
-    T = TExp(5, 100)
-    M = MExp(2, [100,200], [200,100])
-    NET = NETExp([(5,100), (10, 200), (2, 150)])
+    To actually create experiment instance, make sure to call either
+    [`.createExperiment()`](experiment_factory.md#limnd2.experiment_factory.ExperimentFactory.createExperiment)
+    method or use call operator.
+
+    ## Sample usage
+
+    ``` py
+    from limnd2.experiment_factory import ExperimentFactory
+
+    # only frame counts
+    print(ExperimentFactory(t=10, m=5).createExperiment())
+    ```
+
+    ??? example "See example output"
+        `
+        Timeloop experiment(10 frames, interval: No Delay, duration: Continuous), Multipoint experiment(5 frames,
+        point coordinates: [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0])
+        `
+
+    ``` py
+    # values from dict
+    print(ExperimentFactory(t={"count" : 3, "step": 350}, z={"count" : 5, "step": 150}).createExperiment())
+    ```
+
+    ??? example "See example output"
+        `
+        Timeloop experiment(3 frames, interval: 0:00:00.350, duration: Continuous), Z-Stack experiment(5 frames, step: 150.0)
+        `
+
+    ``` py
+    # combination
+    print(ExperimentFactory(t=3, z={"count" : 5, "step": 150}).createExperiment())
+    ```
+
+    ??? example "See example output"
+        `
+        Timeloop experiment(3 frames, interval: No Delay, duration: Continuous), Z-Stack experiment(5 frames, step: 150.0)
+        `
+
+    ``` py
+    # create factory and modify it
+    fac = ExperimentFactory()
+    fac.z.count = 10
+    fac.z.step = 100
+    print(fac())            # createExperiment is called implicitly
+    ```
+
+    ??? example "See example output"
+        `
+        Z-Stack experiment(10 frames, step: 100.0)
+        `
+
+    ``` py
+    fac = ExperimentFactory()
+    fac.m.addPoint(10, 50)
+    fac.m.addPoint(20, 70)
+    print(fac())
+    ```
+
+    ??? example "See example output"
+        `
+        Multipoint experiment(2 frames, point coordinates: [10.0, 50.0], [20.0, 70.0])
+        `
+
+    ``` py
+    # inlined multipoint
+    print(ExperimentFactory(t=3, z={"count" : 5, "step": 150}, m={"count" : 3, "xcoords" : [10,20,30], "ycoords" : [40,50,60]})())
+    ```
+
+    ??? example "See example output"
+        `
+        Timeloop experiment(3 frames, interval: No Delay, duration: Continuous), Multipoint experiment(3 frames, point coordinates:
+        [10.0, 40.0], [20.0, 50.0], [30.0, 60.0]), Z-Stack experiment(5 frames, step: 150.0)
+        `
+
+    ``` py
+    fac = ExperimentFactory()
+    fac.t.count = 10
+    fac.z.step = 100
+    print(fac())
+    ```
+    !!! warning
+        In this example Z-Stack experiment will be omitted from output since Z-stack frame count is not set,
+        even though Z-stack step property was defined.
+
+    ??? example "See example output"
+        `
+        Timeloop experiment(10 frames, interval: No Delay, duration: Continuous)
+        `
+    """
+    t: _TExp
+    m: _MExp
+    z: _ZExp
+
+    def __init__(self, *,
+                 t : int | dict[str, Any] | None = None,
+                 m : int | dict[str, Any] | None = None,
+                 z : int | dict[str, Any] | None = None):
+
+        if t is None:
+            self.t = _TExp(0, 0)
+        elif isinstance(t, int):
+            self.t = _TExp(t, 0)
+        elif isinstance(t, dict):
+            self.t = _TExp(**t)
+
+        if m is None:
+            self.m = _MExp(0)
+        elif isinstance(m, int):
+            self.m = _MExp(m)
+        else:
+            self.m = _MExp(**m)
+
+        if z is None:
+            self.z = _ZExp(0, 0)
+        elif isinstance(z, int):
+            self.z = _ZExp(z, 0)
+        elif isinstance(z, dict):
+            self.z = _ZExp(**z)
+
+    def createExperiment(self) -> ExperimentLevel:
+        """
+        Create `ExperimentLevel` instance using specified settings.
+        """
+        exps = []
+        if self.t.count:
+            exps.append(self.t)
+        if self.m.count:
+            exps.append(self.m)
+        if self.z.count:
+            exps.append(self.z)
+        return _create_experiment(*exps)
+
+    def __call__(self) -> ExperimentLevel:
+        """
+        Create `ExperimentLevel` instance using specified settings.
+        """
+        return self.createExperiment()
 
