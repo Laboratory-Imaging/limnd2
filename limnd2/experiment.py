@@ -1,3 +1,7 @@
+"""
+This file is for experiments
+"""
+
 from __future__ import annotations
 
 import collections, enum, itertools, json, math, zlib
@@ -9,6 +13,17 @@ from .variant import decode_var
 from .treeview_helper import get_format_fn
 
 class ExperimentLoopType(enum.IntEnum):
+    """
+    Enum specifiying which experiment type was used in [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel)
+    Attributes
+    ----------
+    eEtTimeLoop : int
+        Timeloop experiment
+    eEtXYPosLoop : int
+        Multipoint experiment
+    eEtZStackLoop : int
+        Z-stack experiment
+    """
     eEtUnknown              = 0
     eEtTimeLoop             = 1
     eEtXYPosLoop            = 2
@@ -125,6 +140,9 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
     def info(self) -> list[dict[str, any]]:
         return [ dict(Phase='#1', Interval=self.formattedInterval, Duration=self.formattedDuration, Loops=self.uiCount) ]
 
+    def __str__(self):
+        return f"Timeloop experiment, ({self.uiCount} frames, interval: {self.formattedInterval}, duration: {self.formattedDuration})"
+
 
 @dataclass(frozen=True, kw_only=True)
 class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
@@ -180,17 +198,6 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     wsZDevice: str                          = LV_field("",    LVType.STRING)
     wsCommandBeforeCapture: str             = LV_field("",    LVType.STRING)
     wsCommandAfterCapture: str              = LV_field("",    LVType.STRING)
-
-    # probably error in NIS elements, should be duplicate of dZLow
-    #dZLow_1: float                          = LV_field("",    LVType.DO_NOT_ENCODE)                # DONE
-
-    """
-    Atributes found in XML variant, but not in LV
-
-    #sZDevice: object                        = LV_field(None,  LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
-    #sCommandAfterCapture: str               = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
-    #sCommandBeforeCapture: str              = LV_field("",    LVType.ENCODING_NOT_IMPLEMENTED)     # DONE
-    """
 
     def __post_init__(self):
 
@@ -256,6 +263,9 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
     def info(self) -> list[dict[str, any]]:
         return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice)]
 
+    def __str__(self):
+        return f"Z-Stack experiment, ({self.uiCount} frames, step: {self.dZStep})"
+
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoopPoint(LVSerializable):
     pAutoFocus: dict                            = LV_field(dict,                            LVType.ENCODING_NOT_IMPLEMENTED)
@@ -263,6 +273,8 @@ class ExperimentSpectralLoopPoint(LVSerializable):
     pdOffset: float                             = LV_field(0.0,                             LVType.DOUBLE)
     wsCommandBeforeCapture: str                 = LV_field("",                              LVType.STRING)
     wsCommandAfterCapture: str                  = LV_field("",                              LVType.STRING)
+
+    pass
 
     """
     Atributes found in XML variant, but not in LV
@@ -282,15 +294,6 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     bWaitForPFS: bool                           = LV_field(False,                           LVType.BOOL)
     bAskForFilter: bool                         = LV_field(False,                           LVType.BOOL)
     Points: list[ExperimentSpectralLoopPoint]   = LV_field(list,                            LVType.LEVEL)
-
-    """
-    Atributes found in XML variant, but not in LV
-    pPlaneDesc: PicturePlaneDesc                = LV_field(None,                            LVType.DO_NOT_ENCODE)                     # DONE
-    szCommandBeforeCapture: object              = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    szCommandAfterCapture: object               = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    pZStackPos: object                          = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    pAutoFocus: dict                            = LV_field(None,                            LVType.ENCODING_NOT_IMPLEMENTED)          # DONE
-    """
 
     def __post_init__(self):
         if isinstance(self.Points, dict):
@@ -369,7 +372,6 @@ class ExperimentXYPosLoopPoint(LVSerializable):
 
 
 
-
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     bUseZ: bool                             = LV_field(False,             LVType.BOOL)
@@ -386,15 +388,8 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
     sAFBefore: dict                         = LV_field(dict,              LVType.ENCODING_NOT_IMPLEMENTED)
     Points: list[ExperimentXYPosLoopPoint]  = LV_field(None,              LVType.LEVEL)
 
+    pass
     """
-    Atributes found in XML variant, but not in LV
-    dPosX: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    dPosY: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    dPosZ: object                           = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    dPFSOffset: object                      = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    pPosName: object                        = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-    sAutoFocusBeforeCapture: object         = LV_field(None,              LVType.DO_NOT_ENCODE)       #DONE
-
     uiRelativeIdx: object                   = LV_field(None,              LVType.DO_NOT_ENCODE)       #TODO
     """
 
@@ -432,6 +427,9 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
                 d['Z'] = self.Points[i].dPosZ
             ret.append(d)
         return ret
+
+    def __str__(self):
+        return f"Multipoint experiment, ({self.uiCount} frames, number of points: {len(self.Points)})"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -511,6 +509,9 @@ class ExperimentIterator:
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentLevel(LVSerializable):
+    """
+    Experiment Level
+    """
     eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)
     # Type of the current loop, determines the union member to be used
 
@@ -580,11 +581,6 @@ class ExperimentLevel(LVSerializable):
     # External data (liquid handling)
 
     iRecipeDSCPort: int                     = LV_field(None,                              LVType.INT32)
-
-    """
-    Atributes found in XML variant, but not in LV
-    pLargeImageEx: object                   = LV_field(None,                              LVType.ENCODING_NOT_IMPLEMENTED)        # DONE
-    """
 
     def __post_init__(self):
         if isinstance(self.pItemValid, dict):
@@ -757,3 +753,6 @@ class ExperimentLevel(LVSerializable):
     def from_var(data: bytes|memoryview) -> ExperimentLevel:
         decoded = decode_var(data)
         return ExperimentLevel(**decoded[0])
+
+    def __str__(self):
+        return str(self.uLoopPars)

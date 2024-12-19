@@ -1,26 +1,87 @@
-site_name: limnd2
+# to preview changes live on localhost run this command:
+# mkdocs serve
+
+site_name: LimND2
 site_author: Laboratory Imaging s.r.o.
 repo_name: limnd2
 repo_url: https://github.com/Laboratory-Imaging/limnd2
 site_description: A pure Python ND2 file reader and writer.
+copyright: '&copy; 2024 Laboratory Imaging s.r.o.'
+
+watch:
+ - limnd2
 
 theme:
   name: material
+  icon:
+    logo: lim_logo
+    repo: fontawesome/brands/github
+  favicon: static/lim_logo.png
   features:
     - navigation.expand
+    #- navigation.instant           # caused some problems in debugging, disabled for testing, maybe enable for real documentation
+    - navigation.tracking
+    - navigation.top
+    - search.highlight
+    - icons
+    - dark-mode-toggle
+    - content.code.copy
+    - content.tabs.link
+    # - toc.integrate               # integrates table of content into left side - more space for docs, subjectively worse navigation
+  custom_dir: docs/static
+
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+
+    - scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
 
 plugins:
+  - search
   - mkdocstrings:
       handlers:
         python:
           options:
-            show_inheritance_diagram: true
             separate_members: true
-            #show_if_no_docstring: true
+            #show_if_no_docstring: true                     # its probably better to hide those without docstrings, write docstrings for methods we want in docs
+            show_source: false                              # maybe set to true when library is public
+            docstring_style: numpy
+            show_signature_annotations: true
+            signature_crossrefs: true
+            separate_signature: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
 
 nav:
-  - Home: index.md
+  - QuickStart: index.md
   - API Reference:
-      - nd2.py: nd2.md
-      - attributes.py: attributes.md
+    - nd2.py: nd2.md
+    - attributes.py: attributes.md
+    - experiment.py: experiment.md
+    - experiment_factory.py: experiment_factory.md
+    - metadata.py: metadata.md
+
+
 

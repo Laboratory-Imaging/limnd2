@@ -88,13 +88,23 @@ class ImageAttributes(LVSerializable):
     @staticmethod
     def create(width: int, height: int, component_count: int, bits: int, sequence_count: int) -> ImageAttributes:
         """
+        !!! warning
+            This function is used for creating new ImageAttributes instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
+
         Create ImageAttributes instance from simplified parameters:
 
-        width: int              - width in pixels
-        height: int             - height in pixels
-        component_count: int    - number of components
-        bits: int               - number of bits per pixel component
-        sequence_count: int     - total number of frames in ND2 file (product of size of each dimension)
+        Parameters
+        ----------
+        width : int
+            width in pixels
+        height : int
+            height in pixels
+        component_count : int
+            number of components
+        bits : int
+            number of bits per pixel component
+        sequence_count : int
+            total number of frames in ND2 file (product of size of each dimension)
         """
         shape = (width, height, component_count)
 
@@ -106,15 +116,15 @@ class ImageAttributes(LVSerializable):
         components = (1 if len(shape) <= 2 else shape[2])
 
         return ImageAttributes(
-            uiWidth = shape[1],
+            uiWidth = shape[0],
             uiWidthBytes = ImageAttributes.calcWidthBytes(shape[0], bits, components),
-            uiHeight = shape[0],
+            uiHeight = shape[1],
             uiComp = components,
             uiBpcInMemory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8,
             uiBpcSignificant = bits,
             uiSequenceCount = sequence_count,
-            uiTileWidth = shape[1],
-            uiTileHeight = shape[0],
+            uiTileWidth = shape[0],
+            uiTileHeight = shape[1],
             uiVirtualComponents = components,
             ePixelType = pixel_type
         )
