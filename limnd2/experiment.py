@@ -610,7 +610,7 @@ class ExperimentLevel(LVSerializable):
         return (
             self.eType != ExperimentLoopType.eEtUnknown
             and 0 < self.uLoopPars.uiCount
-            and all(exp.valid for exp in self.ppNextLevelEx)
+            and ((self.ppNextLevelEx is None) or all(exp.valid for exp in self.ppNextLevelEx))
         )
 
     @property

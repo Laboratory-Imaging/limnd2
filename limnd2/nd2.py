@@ -4,7 +4,7 @@ from pathlib import Path
 from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
-from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
+from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo, AppInfo
@@ -63,8 +63,10 @@ class Nd2Reader:
         exp = self.experiment
         if exp is None:
             return False
-        dims = exp.dimnames()
-        return bool(dims and 'z' in dims)
+        z_loop = exp.findLevel(ExperimentLoopType.eEtZStackLoop)
+        if z_loop is None:
+            return False
+        return z_loop.valid and (1 < z_loop.count)
 
     @functools.cached_property
     def is8bitRgb(self) -> bool:
