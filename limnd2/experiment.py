@@ -141,7 +141,7 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
         return [ dict(Phase='#1', Interval=self.formattedInterval, Duration=self.formattedDuration, Loops=self.uiCount) ]
 
     def __str__(self):
-        return f"Timeloop experiment, ({self.uiCount} frames, interval: {self.formattedInterval}, duration: {self.formattedDuration})"
+        return f"Timeloop experiment({self.uiCount} frames, interval: {self.formattedInterval}, duration: {self.formattedDuration})"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -264,7 +264,7 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
         return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice)]
 
     def __str__(self):
-        return f"Z-Stack experiment, ({self.uiCount} frames, step: {self.dZStep})"
+        return f"Z-Stack experiment({self.uiCount} frames, step: {self.dZStep})"
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoopPoint(LVSerializable):
@@ -370,6 +370,9 @@ class ExperimentXYPosLoopPoint(LVSerializable):
                                                    dPosName=namedict[key]))
         return points
 
+    def __str__(self):
+        return f"[{self.dPosX:.1f}, {self.dPosY:.1f}]"
+
 
 
 @dataclass(frozen=True, kw_only=True, init=False)
@@ -414,9 +417,6 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
             self._unknown_fields.pop("uiRelativeIdx")
 
 
-
-
-
     @property
     def info(self) -> list[dict[str, any]]:
         ret = []
@@ -429,7 +429,8 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
         return ret
 
     def __str__(self):
-        return f"Multipoint experiment, ({self.uiCount} frames, number of points: {len(self.Points)})"
+        coords = ", ".join([str(point) for point in self.Points])
+        return f"Multipoint experiment({self.uiCount} frames, point coordinates: {coords})"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -755,4 +756,5 @@ class ExperimentLevel(LVSerializable):
         return ExperimentLevel(**decoded[0])
 
     def __str__(self):
-        return str(self.uLoopPars)
+        all = self._allLevels()
+        return ", ".join([str(x.uLoopPars) for x in all])

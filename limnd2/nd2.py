@@ -340,7 +340,6 @@ class Nd2Writer:
         return self._chunker.rollback()
 
 def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs: dict = {}):
-    import os
     if isinstance(file, (str, Path)):
         if readonly:
             mode = "rb"
@@ -348,6 +347,9 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
             if append is None:
                 append = os.path.isfile(file)
             mode = "rb+" if append else "wb"
+
+        if mode == "rb+":
+            raise FileExistsError("This file already exists, can not open for writing.")
 
         fh = open(file, mode)
         chunker_kwargs.update(dict(filename=file))
