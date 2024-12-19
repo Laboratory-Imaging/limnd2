@@ -78,8 +78,16 @@ class Nd2Reader:
         return z_loop.valid and (1 < z_loop.count)
 
     @functools.cached_property
+    def isMono(self) -> bool:
+        return 1 == self.imageAttributes.componentCount
+
+    @functools.cached_property
+    def isRgb(self) -> bool:
+        return self.pictureMetadata.isRgb
+
+    @functools.cached_property
     def is8bitRgb(self) -> bool:
-        return 8 == self.imageAttributes.uiBpcSignificant and self.pictureMetadata.isRgb
+        return 8 == self.imageAttributes.uiBpcSignificant and self.isRgb
 
     @property
     def imageAttributes(self) -> ImageAttributes:
