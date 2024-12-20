@@ -16,25 +16,12 @@ if Nd2LoggerEnabled:
 
 class Nd2Reader:
     """
-    Class for reading ND2 files and its attributes, metadata, properties, image data and so on.
+    Creates Nd2Read instance for reading `.nd2` files and its attributes, metadata, properties, image data and so on.
 
-    ### Usage
-
-    Create Nd2 reader instance like this (use `with` statement to automatically close a file).
-
-    ```python linenums="1"
-    import limnd2
-    with limnd2.Nd2Reader('file.nd2') as nd2:
-        attributes = nd2.imageAttributes       # to get image attributes, see ImageAttributes class
-        experiment = nd2.experiment            # to get experiments in an image, see ExperimentLevel class
-        metadata = nd2.pictureMetadata         # to get image metadata, see PictureMetadata class
+    Also see [Quickstart](index.md#reading-nd2-files) for an
+    example of how to use this class and how to read individual chunks, attributes, metadata and so on.
 
 
-        print(f"Image resolution: {attributes.width} x {attributes.height}, # of components: {attributes.componentCount}")
-
-        for i in range(attributes.componentCount):
-            image = nd2.image(i)                            # get image with given sequence index
-    ```
     """
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = True
@@ -42,8 +29,6 @@ class Nd2Reader:
 
     def __init__(self, file : FileLikeObject, *, chunker_kwargs: dict = {}) -> None:
         """
-        Initializes ND2 reader.
-
         Parameters
         -----------
         file : str | Path | int | typing.BinaryIO
@@ -65,10 +50,16 @@ class Nd2Reader:
 
     @property
     def version(self) -> tuple[int, int]:
+        """
+        Returns the version of the `.nd2` file as a tuple of two integers.
+        """
         return self._chunker.fileVersion
 
     @functools.cached_property
     def is3d(self) -> bool:
+        """
+        Returns `True` if the file contains valid z-stack, otherwise `False`.
+        """
         exp = self.experiment
         if exp is None:
             return False
@@ -79,26 +70,56 @@ class Nd2Reader:
 
     @functools.cached_property
     def isMono(self) -> bool:
+        """
+        Returns `True` if the file contains only one component, otherwise `False`.
+        """
         return 1 == self.imageAttributes.componentCount
 
     @functools.cached_property
     def isRgb(self) -> bool:
+        """
+        Returns `True` if the file contains RGB data, otherwise `False`.
+        """
         return self.pictureMetadata.isRgb
 
     @functools.cached_property
     def is8bitRgb(self) -> bool:
+        """
+        Returns `True` if the file contains 8-bit RGB data, otherwise `False`.
+        """
         return 8 == self.imageAttributes.uiBpcSignificant and self.isRgb
 
     @property
     def imageAttributes(self) -> ImageAttributes:
+        """
+        Attribute to get attributes of an `.nd2` file.
+
+        See [`ImageAttributes`](attributes.md#limnd2.attributes.ImageAttributes) class for more information.
+
+        In order to create an instance of `ImageAttributes` class from simple parameters, use [`ImageAttributes.create`](attributes.md#limnd2.attributes.ImageAttributes.create) method.
+        """
         return self._chunker.imageAttributes
 
     @property
     def pictureMetadata(self) -> PictureMetadata:
+        """
+        Attribute to get metadata of an `.nd2` file.
+
+        See [`PictureMetadata`](metadata.md#limnd2.metadata.PictureMetadata) class for more information.
+
+        In order to create an instance of `PictureMetadata` class, use [`MetadataFactory`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory) class.
+        """
         return self._chunker.pictureMetadata
 
     @property
     def experiment(self) -> ExperimentLevel|None:
+        """
+        Attribute to get experiments in an `.nd2` file.
+
+        See [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel) class for more information.
+
+        In order to create an instance of `ExperimentLevel` class, use [`ExperimentFactory`](experiment_factory.md#limnd2.experiment_factory.ExperimentFactory) class.
+        """
         return self._chunker.experiment
 
     @property
@@ -172,6 +193,9 @@ class Nd2Reader:
 
     @functools.cached_property
     def generalImageInfo(self) -> dict[str, any]:
+        """
+        Returns general information about the image as a dictionary.
+        """
         ia = self.imageAttributes
         loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in self.experiment if 0 < exp_level.count ]) if self.experiment else ""
         filename = os.path.basename(self.filename)
@@ -198,6 +222,9 @@ class Nd2Reader:
 
 
     def generateLoopIndexes(self, named: bool = False) -> list:
+        """
+        Generates indexes for all loops in the experiment.
+        """
         exp = self.experiment
         if exp is None:
             return []
@@ -242,8 +269,8 @@ class Nd2Reader:
         """
         Get image data from specified frame as NumPy array.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         seqindex: int
             Image sequence index you want to get.
         """
@@ -269,8 +296,34 @@ class Nd2Writer:
     Supports encoding od all image attributes, most commonly used experiments and most of image metadata.
     Currently does not support encoding of Wellplates, binary layers, ROIs and any custom data and text into chunk.
 
-    Python dataclasses encodeable by this writer inherit from LVSerializable class, in those classes attributes stored with
-    UNKNOWN, ENCODING_NOT_IMPLEMENTED and DO_NOT_ENCODE enum will not be encoded.
+    !!! info
+        Data is written in chunks, so you can write data in any order you want, imade data however can
+        only be written after image attributes are set, if you write same chunk multiple times, all chunks will be saved,
+        however only the last one will be used.
+
+    !!! tip
+        As explained in [Quickstart](index.md#writing-to-nd2-file), image data can only be written **after**
+        image attributes are set, but if you want to write image data into `.nd2` file without knowing how many frames there is
+        (for example with continuous writing),
+        you can pass `ImageAttributes` instance when creating `.nd2` using custom chunker argument as shown below.
+
+        Setting `ImageAttributes` this way **will not store them in `.nd2` file** and you still **have to store them at some point**,
+        however you can do so after you know how many frames there is.
+
+        ```py title="Example os using chunker arguments to set image attributes"
+        attributes = limnd2.attributes.ImageAttributes.create(
+            width = WIDTH,
+            height = HEIGHT,
+            component_count = COMPONENT_COUNT,
+            bits = BITS,
+            sequence_count = ...  # will be set later
+        )
+
+        with limnd2.Nd2Writer("outfile.nd2", chunker_kwargs={"with_image_attributes": attributes}) as nd2:
+            # you can now set image data without setting attributes
+        ```
+
+    See [Quickstart](index.md#writing-to-nd2-file) for an example of how to use this class and how to write individual chunks.
     """
     def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
         kwargs["readonly"] = False
@@ -278,8 +331,6 @@ class Nd2Writer:
 
     def __init__(self, file : FileLikeObject, *, append : bool|None = None, chunker_kwargs:dict = {}) -> None:
         """
-        Either opens existing .nd2 file for writing (adding or overwriting) chunks or creates an empty .nd2 file.
-
         Parameters
         -----------
         file : str | Path | int | typing.BinaryIO
@@ -303,6 +354,13 @@ class Nd2Writer:
 
     @property
     def imageAttributes(self) -> ImageAttributes:
+        """
+        Attribute to get or set attributes of an `.nd2` file.
+
+        See [`ImageAttributes`](attributes.md#limnd2.attributes.ImageAttributes) class for more information.
+
+        In order to create an instance of `ImageAttributes` class from simple parameters, use [`ImageAttributes.create`](attributes.md#limnd2.attributes.ImageAttributes.create) method.
+        """
         return self._chunker.imageAttributes
 
     @imageAttributes.setter
@@ -313,6 +371,13 @@ class Nd2Writer:
 
     @property
     def experiment(self) -> ExperimentLevel:
+        """
+        Attribute to get or set experiments in an `.nd2` file.
+
+        See [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel) class for more information.
+
+        In order to create an instance of `ExperimentLevel` class, use [`ExperimentFactory`](experiment_factory.md#limnd2.experiment_factory.ExperimentFactory) class.
+        """
         return self._chunker.experiment
 
     @experiment.setter
@@ -323,6 +388,13 @@ class Nd2Writer:
 
     @property
     def pictureMetadata(self) -> PictureMetadata:
+        """
+        Attribute to get or set metadata of an `.nd2` file.
+
+        See [`PictureMetadata`](metadata.md#limnd2.metadata.PictureMetadata) class for more information.
+
+        In order to create an instance of `PictureMetadata` class, use [`MetadataFactory`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory) class.
+        """
         return self._chunker.pictureMetadata
 
     @pictureMetadata.setter
@@ -339,12 +411,22 @@ class Nd2Writer:
         return self._chunker.setChunk(name, data)
 
     def setImage(self, seq_index: int, data: NumpyArrayLike) -> None:
+        """
+        Seta image data using specified frame index.
+
+        !!! warning
+            You must manually keep track of the frame index and make sure that you are not
+            overwriting the same frame multiple times and that images are written sequentially.
+        """
         return self._chunker.setImage(seq_index, data)
 
     def finalize(self) -> None:
+        """
+        Expicitely finalize the file, this is not needed if you use `with` statement.
+        """
         return self._chunker.finalize()
 
-    def rollback(self) -> None:
+    def rollback(self) -> None:         # as Nd2 writer currently works only with mew images, rollback is not needed as there is nothing to roll back to
         return self._chunker.rollback()
 
 def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs: dict = {}):

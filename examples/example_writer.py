@@ -1,6 +1,7 @@
 import numpy as np
 import limnd2
 import limnd2.experiment_factory
+import limnd2.metadata_factory
 
 def create_random_noise(width: int, height: int, channels: int, bits_per_component: int):
     if bits_per_component == 8:
@@ -22,7 +23,6 @@ def create_random_noise(width: int, height: int, channels: int, bits_per_compone
 
     return noise_array
 
-
 # initial image attributes
 WIDTH = 500
 HEIGHT = 200
@@ -37,6 +37,7 @@ TIMELOOP_STEP = 150
 # zstack experiment settings
 ZSTACK_COUNT = 2
 ZSTACK_STEP = 100
+
 
 with limnd2.Nd2Writer("outfile.nd2") as nd2:
 
@@ -58,38 +59,50 @@ with limnd2.Nd2Writer("outfile.nd2") as nd2:
 
     # create and set experiment
 
-    texp = limnd2.experiment_factory._TExp(frame_count = TIMELOOP_COUNT,
-                                          step = TIMELOOP_STEP)
+    experiment_factory = limnd2.experiment_factory.ExperimentFactory()
+    experiment_factory.t.count = TIMELOOP_COUNT
+    experiment_factory.t.step = TIMELOOP_STEP
 
-    zexp = limnd2.experiment_factory._ZExp(frame_count = ZSTACK_COUNT,
-                                          step = ZSTACK_STEP)
+    experiment_factory.z.count = ZSTACK_COUNT
+    experiment_factory.z.step = ZSTACK_STEP
 
-    experiment = limnd2.experiment_factory._create_experiment(texp, zexp)
-
-    nd2.experiment = experiment
+    nd2.experiment = experiment_factory.createExperiment()
 
     # create and set metadata
 
-    channel1 = limnd2.metadata.ChannelSettings(
+    metadata_factory = limnd2.metadata_factory.MetadataFactory(
+        zoom_magnification = 200.0,
+        objective_magnification = 1.0,
+        pinhole_diameter = 50,
+        pixel_calibration = 10.0
+    )
+
+    metadata_factory.addPlane(
         name = "Blue channel",
         modality = "Confocal, Fluo",
         color = "blue"
     )
 
-    channel2 = limnd2.metadata.ChannelSettings(
+    metadata_factory.addPlane(
         name = "Red channel",
         modality = "Confocal, Fluo",
         color = "red"
     )
 
-    microscope = limnd2.metadata.MicroscopeSettings(zoom_magnification = 200.0,
-                                                    objective_magnification = 1.0,
-                                                    pinhole_diameter = 50
-                                                    )
+    nd2.pictureMetadata = metadata_factory.createMetadata()
 
-    metadata = limnd2.metadata.create_metadata(channels = [channel1, channel2],
-                                              pixel_calibration = 10.0,
-                                              microscope = microscope
-                                              )
 
-    nd2.pictureMetadata = metadata
+# you can also set image attributes on constructor
+"""
+attributes = limnd2.attributes.ImageAttributes.create(
+    width = WIDTH,
+    height = HEIGHT,
+    component_count = COMPONENT_COUNT,
+    bits = BITS,
+    sequence_count = ...  # will be set later
+)
+
+with limnd2.Nd2Writer("outfile.nd2", chunker_kwargs={"with_image_attributes": attributes}) as nd2:
+    # create and set image data
+
+"""

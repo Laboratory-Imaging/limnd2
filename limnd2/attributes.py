@@ -90,6 +90,7 @@ class ImageAttributes(LVSerializable):
         """
         !!! warning
             This function is used for creating new ImageAttributes instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
+            Do not use this function if you only read `.nd2` file.
 
         Create ImageAttributes instance from simplified parameters:
 

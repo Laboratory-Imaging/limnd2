@@ -1089,14 +1089,12 @@ class PictureMetadataPicturePlanes(LVSerializable):
 
         This function creates channel info basec on component count like this:
 
-        comps = 1: function creates one Mono channel
-
-        comps = 2: function creates channels Channel_1, Channel_2
-
-        comps = 3: function creates one RGB channel
-
-        comps >= 4: function creates channels Channel_1 ... Channel_N
-
+        ```
+        comps == 1: function creates one Mono channel
+        comps == 2: function creates channels Channel_1, Channel_2
+        comps == 3: function creates one RGB channel
+        comps >= 4: function creates channels Channel_1, ..., Channel_N
+        ```
 
         Parameters
         ----------
