@@ -571,7 +571,7 @@ class MetadataFactory:
 
         # get list of planes, settings
         for index, p in enumerate(self.planes):
-            plane, setting = p.convert(index)
+            plane, setting = p._convert(index)
             planes.append(plane)
             settings.append(setting)
 

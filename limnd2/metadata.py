@@ -1089,14 +1089,12 @@ class PictureMetadataPicturePlanes(LVSerializable):
 
         This function creates channel info basec on component count like this:
 
-        comps = 1: function creates one Mono channel
-
-        comps = 2: function creates channels Channel_1, Channel_2
-
-        comps = 3: function creates one RGB channel
-
-        comps >= 4: function creates channels Channel_1 ... Channel_N
-
+        ```
+        comps == 1: function creates one Mono channel
+        comps == 2: function creates channels Channel_1, Channel_2
+        comps == 3: function creates one RGB channel
+        comps >= 4: function creates channels Channel_1, ..., Channel_N
+        ```
 
         Parameters
         ----------
@@ -1112,6 +1110,8 @@ class PictureMetadataPicturePlanes(LVSerializable):
             args.update(kwargs)
             object.__setattr__(self, 'uiCount', 1)
             object.__setattr__(self, 'uiCompCount', comps)
+            object.__setattr__(self, 'uiSampleCount', 1)
+            object.__setattr__(self, 'sSampleSetting', [ SampleSettings() ])
             object.__setattr__(self, 'sPlaneNew', [ PicturePlaneDesc(**args) ])
         else:
             planes = []
@@ -1123,6 +1123,8 @@ class PictureMetadataPicturePlanes(LVSerializable):
                 planes.append(PicturePlaneDesc(**args))
             object.__setattr__(self, 'uiCount', comps)
             object.__setattr__(self, 'uiCompCount', comps)
+            object.__setattr__(self, 'uiSampleCount', 1)
+            object.__setattr__(self, 'sSampleSetting', [ SampleSettings() ])
             object.__setattr__(self, 'sPlaneNew', planes)
 
     def to_serializable_dict(self, parent_path=""):
