@@ -75,7 +75,7 @@ class Nd2Reader:
         z_loop = exp.findLevel(ExperimentLoopType.eEtZStackLoop)
         if z_loop is None:
             return False
-        return z_loop.valid and (1 < z_loop.count)
+        return 1 < z_loop.count
 
     @functools.cached_property
     def isMono(self) -> bool:
