@@ -89,6 +89,13 @@ class Nd2Reader:
         """
         return 8 == self.imageAttributes.uiBpcSignificant and self.isRgb
 
+    @functools.cached_property
+    def isFloat(self) -> bool:
+        """
+        Returns `True` if the file data is 32-bit float, otherwise `False`.
+        """
+        return 32 == self.imageAttributes.uiBpcSignificant
+
     @property
     def imageAttributes(self) -> ImageAttributes:
         """
@@ -165,6 +172,9 @@ class Nd2Reader:
     def compRange(self) -> NumpyArrayLike:
         return self._chunker.compRange
 
+    @functools.cached_property
+    def imageDataRange(self) -> tuple[int, int]:
+        return (np.min(self.compRange[:, 0]), np.max(self.compRange[:, 1])) if self.isFloat else (0, 2 ** self.imageAttributes.uiBpcSignificant - 1)
     @property
     def recordedData(self) -> RecordedData:
         recData = RecordedData()

@@ -448,9 +448,9 @@ class BaseChunker(abc.ABC):
             for comp in range(self.imageAttributes.uiComp):
                 if (data := self.chunk(ND2_CHUNK_FORMAT_FloatCompRangeCache_1p % (comp))) is not None:
                     pairs = np.ndarray(
-                        buffer=data, dtype=np.float64,
+                        buffer=data, dtype=np.float32,
                         shape=(self.imageAttributes.uiSequenceCount, 2),
-                        strides=(2*8, 8))
+                        strides=(2*4, 4))
                     self._comp_range[comp, :, :] = np.moveaxis(pairs, 1, 0)
                 else:
                     self._comp_range[comp, 0, :] = 0
