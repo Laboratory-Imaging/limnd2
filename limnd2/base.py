@@ -537,7 +537,10 @@ class BaseChunker(abc.ABC):
 
     def rleChunkToArray(self, data: bytes|memoryview, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         if len(data) < 4:
-            return np.zeros(shape=self.imageAttributes.shape[:2], dtype=np.uint32), {}
+            height, width = self.imageAttributes.shape[0:2]
+            y0, y1 = (rect[1], min(rect[1] + rect[3], height)) if rect is not None else (0, height)
+            x0, x1 = (rect[0], min(rect[0] + rect[2], width)) if rect is not None else (0, width)
+            return np.zeros(shape=(y1-y0, x1-x0), dtype=np.uint32), {}
         (_uncompressed_size, ) = struct.unpack_from("<I", data)
         stream = io.BytesIO(zlib.decompress(data[4:]))
 
