@@ -275,7 +275,7 @@ class Nd2Reader:
     def chunk(self, name : bytes|str, asbytes : bool|None = None) -> bytes|memoryview|None:
         return self._chunker.chunk(name)
 
-    def image(self, seqindex: int) -> NumpyArrayLike:
+    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         """
         Get image data from specified frame as NumPy array.
 
@@ -283,17 +283,19 @@ class Nd2Reader:
         ----------
         seqindex: int
             Image sequence index you want to get.
+        rect: tuple[int, int, int, int]|None
+            Rectangle (x, y, w, h) of the image to get image to get.
         """
-        return self._chunker.image(seqindex)
+        return self._chunker.image(seqindex, rect)
 
-    def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
-        return self._chunker.downsampledImage(seqindex, downsize)
+    def downsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        return self._chunker.downsampledImage(seqindex, downsize, rect)
 
-    def binaryRasterData(self, binid: int, seqindex: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:
-        return self._chunker.binaryRasterData(binid, seqindex)
+    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        return self._chunker.binaryRasterData(binid, seqindex, rect)
 
-    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, xtile:int|None = None, ytile:int|None = None) -> NumpyArrayLike:
-        return self._chunker.downsampledBinaryRasterData(binid, seqindex, downsize)
+    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        return self._chunker.downsampledBinaryRasterData(binid, seqindex, downsize, rect)
 
     def finalize(self) -> None:
         return self._chunker.finalize()

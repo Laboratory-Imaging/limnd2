@@ -281,34 +281,47 @@ class LimBinaryIOChunker(BaseChunker):
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
         self._set_metadata(name, data)
 
-    def image(self, seqindex: int) -> NumpyArrayLike:
+    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
+        attrs = self.imageAttributes
         pos = None
         try:
             pos = self._chunk_pos(name)
         except NameNotInChunkmapError:
-            return np.zeros(shape=self.imageAttributes.shape, dtype=self.imageAttributes.dtype)
+            if rect is None:
+                return np.zeros(shape=attrs.shape, dtype=attrs.dtype)
+            else:
+                x, y, w, h  = rect
+                y0, y1 = y, min(y+h, attrs.shape[0])
+                x0, x1 = x, min(x+w, attrs.shape[1])
+                return np.zeros(shape=(y1-y0, x1-x0, attrs.shape[2]), dtype=attrs.dtype)
 
-        if self.imageAttributes.eCompression == ImageAttributesCompression.ictLossLess:
+        buffer, offset  = None, 0
+        if attrs.eCompression == ImageAttributesCompression.ictLossLess:
             buffer = zlib.decompress(self._read_chunk(pos)[8:])
-            return np.ndarray(
-                buffer = buffer,
-                offset = 0,
-                dtype = self.imageAttributes.dtype,
-                shape = self.imageAttributes.shape,
-                strides = self.imageAttributes.strides,
-            )
-        elif self.imageAttributes.eCompression == ImageAttributesCompression.ictNone:
+        elif attrs.eCompression == ImageAttributesCompression.ictNone:
             buffer, offset = self._get_chunk_buffer_and_offset(pos)
-            return np.ndarray(
-                buffer = buffer,
-                offset = offset + 8,
-                dtype = self.imageAttributes.dtype,
-                shape = self.imageAttributes.shape,
-                strides = self.imageAttributes.strides,
-            )
+            offset += 8
         else:
             raise NotImplementedError("Compression ImageAttributesCompression.ictLossy (1) not supported")
+
+        shape = None
+        if rect is None:
+            shape = attrs.shape
+        else:
+            x, y, w, h  = rect
+            y0, y1 = y, min(y+h, attrs.shape[0])
+            x0, x1 = x, min(x+w, attrs.shape[1])
+            offset += y0*attrs.widthBytes+x0*attrs.pixelBytes
+            shape = (y1-y0, x1-x0, attrs.shape[2])
+
+        return np.ndarray(
+            buffer = buffer,
+            offset = offset,
+            shape = shape,
+            dtype = attrs.dtype,
+            strides = attrs.strides,
+        )
 
 
     def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
@@ -328,15 +341,27 @@ class LimBinaryIOChunker(BaseChunker):
             np.copyto(tmp, image)
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, struct.pack("d", acqtime), buffer))
 
-    def readDownsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
         attrs = self.imageAttributes.makeDownsampled(downsize)
         pos = self._chunk_pos(name)
         buffer, offset = self._get_chunk_buffer_and_offset(pos)
+
+        shape = None
+        if rect is None:
+            shape = attrs.shape
+        else:
+            x, y, w, h  = rect
+            y0, y1 = y, min(y+h, attrs.shape[0])
+            x0, x1 = x, min(x+w, attrs.shape[1])
+            offset += y0*attrs.widthBytes+x0*attrs.pixelBytes
+            shape = (y1-y0, x1-x0, attrs.shape[2])
+
         return np.ndarray(
-            buffer=buffer, offset=offset,
+            buffer=buffer,
+            offset=offset,
+            shape=shape,
             dtype=attrs.dtype,
-            shape=attrs.shape,
             strides=attrs.strides,
         )
 
@@ -353,51 +378,73 @@ class LimBinaryIOChunker(BaseChunker):
         np.copyto(tmp, image)
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, buffer))
 
-    def readBinaryRleData(self, binid: int, seqindex: int, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
+    def readBinaryRleData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         binmeta = self.binaryRleMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
         pos = self._chunk_pos(binmeta.dataChunkName(seqindex))
         data = self._read_chunk(pos)
-        return self.rleChunkToArray(data, no_obj_info)
+        return self.rleChunkToArray(data, rect, no_obj_info=no_obj_info)
 
-    def binaryRleData(self, binid: int, seqindex: int, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
+    def binaryRleData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         try:
-            return self.readBinaryRleData(binid, seqindex, no_obj_info)
+            return self.readBinaryRleData(binid, seqindex, rect, no_obj_info=no_obj_info)
         except BinaryIdNotFountError or NameNotInChunkmapError:
             pass
-        return (np.zeros(shape=self.imageAttributes.shape[0:2], dtype=np.uint32), dict())
+        h, w = self.imageAttributes.shape[0:2]
+        y0, y1 = (rect[1], min(rect[1] + rect[3], h)) if rect is not None else (0, h)
+        x0, x1 = (rect[0], min(rect[0] + rect[2], w)) if rect is not None else (0, w)
+        return (np.zeros(shape=(y1-y0, x1-x0), dtype=np.uint32), dict())
 
-    def readBinaryRasterData(self, binid: int, seqindex: int) -> NumpyArrayLike:
+    def readBinaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
-        ret = np.zeros(shape=binmeta.shape, dtype=binmeta.dtype)
-        for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
-            for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
-                name = ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p % (binid, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
+
+        h, w = binmeta.shape
+        ty, tx = binmeta.tileShape
+        y0, y1 = (rect[1], min(rect[1] + rect[3], h)) if rect is not None else (0, h)
+        x0, x1 = (rect[0], min(rect[0] + rect[2], w)) if rect is not None else (0, w)
+        ret = np.zeros(shape=(y1-y0, x1-x0), dtype=binmeta.dtype)
+        for y in range(y0 // ty * ty, y1, ty):
+            for x in range(x0 // tx * tx, x1, tx):
+                name = ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p % (binid, y // ty, x // tx, seqindex)
                 pos = self._chunk_pos(name)
-                y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
-                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
-                ret[y_slice, x_slice] = np.ndarray(
-                    buffer=zlib.decompress(self._read_chunk(pos)),
-                    dtype=binmeta.dtype,
-                    shape=binmeta.tileShape,
-                    strides=binmeta.tileStrides
-                )[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start]
+                src_y_start = y0-y if y < y0 else 0
+                src_y_slice = slice(src_y_start, min(src_y_start + y1 - max(y0, y), ty))
+                src_x_start = x0-x if x < x0 else 0
+                src_x_slice = slice(src_x_start, min(src_x_start + x1 - max(x0, x), tx))
+                dst_y_start = max(0, y-y0)
+                dst_x_start = max(0, x-x0)
+                dst_y_slice = slice(dst_y_start, dst_y_start+src_y_slice.stop-src_y_slice.start)
+                dst_x_slice = slice(dst_x_start, dst_x_start+src_x_slice.stop-src_x_slice.start)
+                try:
+                    tile = np.ndarray(
+                        buffer=zlib.decompress(self._read_chunk(pos)),
+                        dtype=binmeta.dtype,
+                        shape=binmeta.tileShape,
+                        strides=binmeta.tileStrides
+                    )
+                    ret[dst_y_slice, dst_x_slice] = tile[src_y_slice, src_x_slice]
+                except ValueError as e:
+                    raise
         return ret
 
-    def binaryRasterData(self, binid: int, seqindex: int) -> NumpyArrayLike:
+    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         try:
-            return self.readBinaryRasterData(binid, seqindex)
+            return self.readBinaryRasterData(binid, seqindex, rect)
         except BinaryIdNotFountError or NameNotInChunkmapError:
             pass
         try:
-            data, _ = self.readBinaryRleData(binid, seqindex, no_obj_info=True)
+            data, _ = self.readBinaryRleData(binid, seqindex, rect, no_obj_info=True)
             return data
         except BinaryIdNotFountError or NameNotInChunkmapError:
             pass
-        return np.zeros(shape=self.imageAttributes.shape[0:2], dtype=np.uint32)
+
+        h, w = self.imageAttributes.shape[0:2]
+        y0, y1 = (rect[1], min(rect[1] + rect[3], h)) if rect is not None else (0, h)
+        x0, x1 = (rect[0], min(rect[0] + rect[2], w)) if rect is not None else (0, w)
+        return np.zeros(shape=(y1-y0, x1-x0), dtype=np.uint32)
 
 
     def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
@@ -420,24 +467,39 @@ class LimBinaryIOChunker(BaseChunker):
                 data = zlib.compress(buffer, binmeta.binCompressionLevel)
                 self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
 
-    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
+
         binmeta = binmeta.makeDownsampled(downsize)
-        ret = np.zeros(shape=binmeta.shape, dtype=binmeta.dtype)
-        for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
-            for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
-                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, downsize, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
+        h, w = binmeta.shape
+        ty, tx = binmeta.tileShape
+        y0, y1 = (rect[1], min(rect[1] + rect[3], h)) if rect is not None else (0, h)
+        x0, x1 = (rect[0], min(rect[0] + rect[2], w)) if rect is not None else (0, w)
+        ret = np.zeros(shape=(y1-y0, x1-x0), dtype=binmeta.dtype)
+        for y in range(y0 // ty * ty, y1, ty):
+            for x in range(x0 // tx * tx, x1, tx):
+                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, downsize, y // ty, x // tx, seqindex)
                 pos = self._chunk_pos(name)
-                y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
-                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
-                ret[y_slice, x_slice] = np.ndarray(
-                    buffer=zlib.decompress(self._read_chunk(pos)),
-                    dtype=binmeta.dtype,
-                    shape=binmeta.tileShape,
-                    strides=binmeta.tileStrides
-                )[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start]
+                src_y_start = y0-y if y < y0 else 0
+                src_y_slice = slice(src_y_start, min(src_y_start + y1 - max(y0, y), ty))
+                src_x_start = x0-x if x < x0 else 0
+                src_x_slice = slice(src_x_start, min(src_x_start + x1 - max(x0, x), tx))
+                dst_y_start = max(0, y-y0)
+                dst_x_start = max(0, x-x0)
+                dst_y_slice = slice(dst_y_start, dst_y_start+src_y_slice.stop-src_y_slice.start)
+                dst_x_slice = slice(dst_x_start, dst_x_start+src_x_slice.stop-src_x_slice.start)
+                try:
+                    tile = np.ndarray(
+                        buffer=zlib.decompress(self._read_chunk(pos)),
+                        dtype=binmeta.dtype,
+                        shape=binmeta.tileShape,
+                        strides=binmeta.tileStrides
+                    )
+                    ret[dst_y_slice, dst_x_slice] = tile[src_y_slice, src_x_slice]
+                except ValueError as e:
+                    raise
         return ret
 
     def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:

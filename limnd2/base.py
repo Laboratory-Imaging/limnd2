@@ -161,7 +161,7 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def image(self, seqindex: int) -> NumpyArrayLike:
+    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
@@ -169,7 +169,7 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def readDownsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
@@ -177,7 +177,7 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def binaryRasterData(self, binid: int, seqindex: int) -> NumpyArrayLike:
+    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
@@ -185,7 +185,7 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
@@ -328,34 +328,38 @@ class BaseChunker(abc.ABC):
                                 return False
         return True
 
-    def downsampledImage(self, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def downsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         img = None
         denomPowBase = 0
         while downsize < self.imageAttributes.powSize:
             try:
-                img = self.readDownsampledImage(seqindex, downsize)
+                img = self.readDownsampledImage(seqindex, downsize, rect)
                 break
             except NameNotInChunkmapError:
                 if Nd2LoggerEnabled:
                     logger.debug(f"Downsampled (downsize={downsize}) image (index={seqindex}) not found!")
+                if rect is not None:
+                    rect = (2*rect[0], 2*rect[1], 2*rect[2], 2*rect[3])
                 denomPowBase += 1
                 downsize *= 2
-        img = self.image(seqindex) if img is None else img
+        img = self.image(seqindex, rect) if img is None else img
         return self.scale_2xN_down_linear(img, denomPowBase) if img is not None else img
 
-    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int) -> NumpyArrayLike:
+    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         img = None
         denomPowBase = 0
         while downsize < self.imageAttributes.powSize:
             try:
-                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsize)
+                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsize, rect)
                 break
             except BinaryIdNotFountError or NameNotInChunkmapError:
                 if Nd2LoggerEnabled:
                     logger.debug(f"Downsampled (downsize={downsize}) binary (binid={binid}) at (index={seqindex}) not found!")
+                if rect is not None:
+                    rect = (2*rect[0], 2*rect[1], 2*rect[2], 2*rect[3])
                 denomPowBase += 1
                 downsize *= 2
-        img = self.binaryRasterData(binid, seqindex) if img is None else img
+        img = self.binaryRasterData(binid, seqindex, rect) if img is None else img
         return self.scale_2xN_down_00(img, denomPowBase) if img is not None else img
 
     def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
@@ -377,22 +381,21 @@ class BaseChunker(abc.ABC):
             src_attrs, src_binimage = downsampled_attrs, downsampled_image
 
     def scale_2xN_down_linear(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
-        src_attrs = self.imageAttributes
+        src_safe_dtype = self.imageAttributes.safe_dtype
+        src_shape = img.shape
         while n:
-            downsampled_attrs = src_attrs.makeDownsampled()
-            downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
+            downsampled_image = np.zeros(shape=(src_shape[0]//2, src_shape[1]//2, src_shape[2]), dtype=src_safe_dtype)
             _downsample_2x_linear(downsampled_image, img)
-            src_attrs, img = downsampled_attrs, downsampled_image.astype(dtype=downsampled_attrs.dtype)
+            src_shape, img = downsampled_image.shape, downsampled_image
             n -= 1
-        return img
+        return img.astype(self.imageAttributes.dtype)
 
     def scale_2xN_down_00(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
-        src_attrs = self.imageAttributes
+        src_shape = img.shape
         while n:
-            downsampled_attrs = src_attrs.makeDownsampled()
-            downsampled_image = np.zeros(shape=downsampled_attrs.shape[:2], dtype=np.uint32)
+            downsampled_image = np.zeros(shape=(src_shape[0]//2, src_shape[1]//2), dtype=np.uint32)
             _downsample_2x_00(downsampled_image, img)
-            src_attrs, img = downsampled_attrs, downsampled_image
+            src_shape, img = downsampled_image.shape, downsampled_image
             n -= 1
         return img
 
@@ -532,7 +535,7 @@ class BaseChunker(abc.ABC):
                 return version
         return 0
 
-    def rleChunkToArray(self, data: bytes|memoryview, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
+    def rleChunkToArray(self, data: bytes|memoryview, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         if len(data) < 4:
             return np.zeros(shape=self.imageAttributes.shape[:2], dtype=np.uint32), {}
         (_uncompressed_size, ) = struct.unpack_from("<I", data)
@@ -544,17 +547,25 @@ class BaseChunker(abc.ABC):
         rle_header = struct.Struct("<IIIIIII")
         (version, width, height, obj_count, _nbytes, _last_object_offset, _custom_data_size) = _unpack(stream, rle_header)
 
+        ver_rle_obj_struct: dict[int, dict[str, any]] = { 2: struct.Struct("<IIIIIIIIIII"), 3: struct.Struct("<IIIIIIIII") }
+
         if version == 1:
             raise NotImplementedError()
 
-        elif version == 2:
-            rle_object = struct.Struct("<IIIIIIIIIII")
+        elif version in (2, 3):
+            rle_object = ver_rle_obj_struct[version]
             rle_seg = rle_row = struct.Struct("<II")
 
             ret_obj_info_dict = {}
-            ret_binimage = np.zeros(shape=(height, width), dtype=np.uint32)
+            y0, y1 = (rect[1], min(rect[1] + rect[3], height)) if rect is not None else (0, height)
+            x0, x1 = (rect[0], min(rect[0] + rect[2], width)) if rect is not None else (0, width)
+            ret_binimage = np.zeros(shape=(y1-y0, x1-x0), dtype=np.uint32)
             for _i in range(obj_count):
-                (obj_id, left, top, right, bottom, _nbytes, nrows, _last_row_offset, obj_status, _3d_object_id, _class_id) = _unpack(stream, rle_object)
+                obj_id, left, top, right, bottom, nbytes, nrows, _last_row_offset, obj_status, *_ = _unpack(stream, rle_object)
+                if rect is not None:
+                    if x1 <= left or y1 <= top or right <= x0 or bottom <= y0:
+                        stream.seek(nbytes-rle_object.size, 1)
+                        continue
                 if not no_obj_info:
                     obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
                     ret_obj_info_dict[obj_id] = obj_info
@@ -564,7 +575,9 @@ class BaseChunker(abc.ABC):
                             (x, n) = _unpack(stream, rle_seg)
                             if 0 == j and 0 == k:
                                 obj_info["seed"] = (x, y)
-                            ret_binimage[y, x : x + n] = obj_id
+                            x_slice = slice(max(x, x0) - x0, min(x + n, x1) - x0)
+                            if y0 <= y and y < y1:
+                                ret_binimage[y-y0, x_slice] = obj_id
                             pxls += n
                             xx += sum(range(x, x+n))
                             yy += n*y
@@ -574,41 +587,15 @@ class BaseChunker(abc.ABC):
                     ret_obj_info_dict[obj_id] = None
                     for _j in range(nrows):
                         (y, nsegments) = _unpack(stream, rle_row)
-                        for _k in range(nsegments):
-                            (x, n) = _unpack(stream, rle_seg)
-                            ret_binimage[y, x : x + n] = obj_id
-            return (ret_binimage, ret_obj_info_dict)
-
-        elif version == 3:
-            rle_object = struct.Struct("<IIIIIIIII")
-            rle_seg = rle_row = struct.Struct("<II")
-
-            ret_obj_info_dict = {}
-            ret_binimage = np.zeros(shape=(height, width), dtype=np.uint32)
-            for _i in range(obj_count):
-                (obj_id, left, top, right, bottom, _nbytes, nrows, _last_row_offset, obj_status) = _unpack(stream, rle_object)
-                if not no_obj_info:
-                    obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
-                    ret_obj_info_dict[obj_id] = obj_info
-                    for j in range(nrows):
-                        (y, nsegments) = _unpack(stream, rle_row)
-                        for k in range(nsegments):
-                            (x, n) = _unpack(stream, rle_seg)
-                            if 0 == j and 0 == k:
-                                obj_info["seed"] = (x, y)
-                            ret_binimage[y, x : x + n] = obj_id
-                            pxls += n
-                            xx += sum(range(x, x+n))
-                            yy += n*y
-                    obj_info["pixels"] = pxls
-                    obj_info["center"] = (xx // pxls, yy // pxls)
-                else:
-                    ret_obj_info_dict[obj_id] = None
-                    for _j in range(nrows):
-                        (y, nsegments) = _unpack(stream, rle_row)
-                        for _k in range(nsegments):
-                            (x, n) = _unpack(stream, rle_seg)
-                            ret_binimage[y, x : x + n] = obj_id
+                        if y0 <= y and y < y1:
+                            for _k in range(nsegments):
+                                (x, n) = _unpack(stream, rle_seg)
+                                if x + n <= x0 or x1 <= x:
+                                    continue
+                                x_slice = slice(max(x-x0, 0), min(x + n, x1) - x0)
+                                ret_binimage[y-y0, x_slice] = obj_id
+                        else:
+                            stream.seek(nsegments*rle_seg.size, 1)
             return (ret_binimage, ret_obj_info_dict)
         else:
             raise NotImplementedError()
