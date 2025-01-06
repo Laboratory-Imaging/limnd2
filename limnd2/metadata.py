@@ -8,7 +8,6 @@ from dataclasses import MISSING, dataclass, field, fields
 
 from .lite_variant import decode_lv, ELxLiteVariantType as LVType, LV_field, LVSerializable, encode_lv
 from .variant import decode_var
-from .treeview_helper import create_treeview_grouping
 
 def jdn_now():
    result = datetime.datetime.now(datetime.UTC).timestamp()
@@ -1144,36 +1143,6 @@ class PictureMetadataPicturePlanes(LVSerializable):
         for key in sorted(res["sSampleSetting"]):
             res["sSampleSetting"][f"a{key}"] = res["sSampleSetting"].pop(key)
         return res
-
-
-    def to_table(self) -> dict[str, any]:
-        """
-        Converts picture planes metadata to a treeview table.
-        """
-
-        rows=[]
-        col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
-        settings = self.sSampleSetting
-        for plane in self.sPlaneNew:
-            setting = settings[plane.uiSampleIndex] if 0 <= plane.uiSampleIndex < len(settings) else None
-            if setting:
-                camera = setting.cameraName or "Unknown camera"
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value=','.join(oc for oc in setting.opticalConfigurations)))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Microscope name:", value=setting.microscopeName))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective name:", value=setting.objectiveName))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value=setting.objectiveMagnification))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value=setting.objectiveNumericAperture))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value=setting.refractiveIndex))
-            else:
-                camera = "Unknown camera"
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value='N/A'))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Microscope name:", value='N/A'))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective name:", value='N/A'))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value='N/A'))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value='N/A'))
-                rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value='N/A'))
-        rows.sort(key=lambda row: row["camera"])
-        return dict(coldefs=col_defs, groups=create_treeview_grouping(rows, ['camera', 'channel']), rowdata=rows)
 
 
 @dataclass(frozen=True, kw_only=True)

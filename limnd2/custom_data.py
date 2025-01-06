@@ -3,7 +3,6 @@ from __future__ import annotations
 import collections, enum, numpy as np, datetime
 from dataclasses import dataclass, field
 from .lite_variant import decode_lv
-from .treeview_helper import get_format_fn
 
 class RecordedDataType(enum.IntEnum):
     eUnknown = 0
@@ -35,15 +34,15 @@ class RecordedDataItem:
             return RecordedDataItem(**desc, Data=np.ndarray(
                     buffer=data, dtype=np.int32,
                     shape=(size, ),
-                    strides=(4, ),                    
+                    strides=(4, ),
                     ))
         elif type == RecordedDataType.eDouble:
             return RecordedDataItem(**desc, Data=np.ndarray(
                     buffer=data, dtype=np.float64,
                     shape=(size, ),
-                    strides=(8, ),                    
+                    strides=(8, ),
                     ))
-        
+
     @property
     def data(self) -> np.ndarray:
         return self.Data.astype(object) if self.Type == RecordedDataType.eInt else self.Data
@@ -61,23 +60,12 @@ class RecordedData(collections.UserList):
     @property
     def rowCount(self) -> int:
         return max(col.Size for col in self.data)
-    
+
     def sort(self) -> None:
         order = ['INDEX', 'ACQTIME', 'X', 'Y', 'Z', 'Z1', 'Z2', 'PFS_OFFSET', 'PFS_STATUS']
         for id in reversed(order):
             if 0 < (index := self.findById(id)):
                 self.data.insert(0, self.data.pop(index))
-
-    def to_table(self) -> dict[str, any]:
-        coldefs = []
-        coldefs.append(dict(id='id', hidden=True))
-        rowdata = [ dict(id=i+1) for i in range(self.rowCount) ]
-        for col in self.data:
-            coldefs.append(dict(id=col.ID, title=f"{col.Desc} [{col.Unit}]" if col.Unit else col.Desc, fmtfncode=_get_recorded_data_fmt_function(col), style=_get_recorded_data_styles(col)))
-            for index, datavalue in enumerate(col.data):
-                rowdata[index][col.ID] = datavalue
-        coldefs.append(dict(id='tail'))
-        return dict(coldefs=coldefs, rowdata=rowdata)                
 
 
 class CustomDescriptionItemType(enum.IntEnum):
@@ -86,7 +74,7 @@ class CustomDescriptionItemType(enum.IntEnum):
     Number     = 2  # EditBox with number
     Text       = 3  # EditBox with string
     Selection  = 4  # DropDown ComboBox
-    LongText   = 5  # Multi-line EditBox       
+    LongText   = 5  # Multi-line EditBox
     Date       = 6
 
 
@@ -110,7 +98,7 @@ class CustomDescriptionItem:
     labels: list[str]|None = None
     date: datetime.datetime|None = None
 
-    def __init__(self, 
+    def __init__(self,
                  CLxItem: dict = {},
                  **kwargs):
         if "CLxText" in kwargs:
@@ -168,17 +156,3 @@ class CustomDescription(collections.UserList):
         decoded = decode_lv(data)
         return CustomDescription(decoded.get('CLxCustomDescription', {}))
 
-
-
-def _get_recorded_data_fmt_function(col: RecordedDataItem) -> str:
-    if col.Type == RecordedDataType.eDouble:
-        digits = 2 if col.ID in ('X', 'Y') else 3
-        return get_format_fn(digits)
-    else:
-        return "(coldef) => { coldef.fmtfn = String };"
-    
-def _get_recorded_data_styles(col: RecordedDataItem) -> dict[str, str]:
-    if col.Type in (RecordedDataType.eDouble, RecordedDataType.eInt) or col.ID == "ACQTIME":
-        return { "text-align": "right" }
-    else:
-        return { "text-align": "left" }    
