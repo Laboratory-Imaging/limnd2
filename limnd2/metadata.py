@@ -1,3 +1,21 @@
+"""
+This module module stores comprehensive metadata related to microscopy images. Key data includes:
+
+- **Picture Planes**: Descriptions of individual image components or channels, including their modalities and spectral properties.
+
+    See [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) class storing information abut individual image plane.
+
+    Or [`PictureMetadataPicturePlanes`](metadata.md#limnd2.metadata.PictureMetadataPicturePlanes) class storing information about all image planes.
+
+- **Sample settings**: The SampleSettings class stores various settings and configurations related to the sample being imaged.
+    One sample setting can be used by one or multiple image planes in [`PictureMetadataPicturePlanes`](metadata.md#limnd2.metadata.PictureMetadataPicturePlanes).
+
+    See [`SampleSettings`](metadata.md#limnd2.metadata.SampleSettings) dataclass for more information.
+
+All data about planes and their settings are stored in [`PictureMetadata`](metadata.md#limnd2.metadata.PictureMetadata) class.
+
+"""
+
 from __future__ import annotations
 
 import datetime, enum, numpy as np, operator
@@ -775,9 +793,6 @@ class PicturePlaneDesc(LVSerializable):
 
 
     def to_serializable_dict(self, parent_path=""):
-        """
-        Custom serialization for this object - "sizeObjFullChip_cy" has to be renamed to "sizeObjFullChip.cy"
-        """
         result = super().to_serializable_dict(parent_path)
         if "sizeObjFullChip_cy" in result:
             result["sizeObjFullChip.cy"] = result.pop("sizeObjFullChip_cy")
@@ -1127,10 +1142,6 @@ class PictureMetadataPicturePlanes(LVSerializable):
             object.__setattr__(self, 'sPlaneNew', planes)
 
     def to_serializable_dict(self, parent_path=""):
-        """
-        Converts dataclass to Python dictionary encodeable with LV encoder.
-        """
-
         res = super().to_serializable_dict(parent_path)
 
         # generally items in lists in LVSerializable data structures can be encoded with empty keys
@@ -1153,6 +1164,43 @@ class PictureMetadataPhysicalQuantity(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class PictureMetadata(LVSerializable):
+
+    """
+    Dataclass for storing metadata associated with a captured picture.
+
+    Attributes
+    ----------
+    dTimeAbsolute : float
+        The absolute time the picture was captured, specified as a Julian Day Number.
+
+    sPicturePlanes : PictureMetadataPicturePlanes
+        **Information about the picture's planes and their settings**.
+
+    dCalibration : float
+        Calibration factor specifying the conversion from microns to pixels.
+
+    dCalibPrecision : float
+        The precision of the calibration in microns.
+
+    bCalibrated : bool
+        Indicates whether the calibration is valid.
+
+    dAspect : float
+        The pixel aspect ratio.
+
+    dObjectiveMag : float
+        The magnification factor of the objective lens.
+
+    dObjectiveNA : float
+        The numerical aperture of the objective lens.
+
+    dRefractIndex1 : float
+        The refractive index of the medium at the objective side.
+
+    dZoom : float
+        The zoom factor used during image capture.
+    """
+
     dTimeAbsolute: float                                = LV_field(jdn_now,                             LVType.DOUBLE)
     # time specification when the picture was captured [Julian Day Number]
 

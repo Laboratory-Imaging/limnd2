@@ -1,5 +1,16 @@
 """
-This file is for experiments
+This module stores classes and functions for handling experiment data in `.nd2` file.
+
+Experiments in .nd2 files define how image sequences are organized and looped. The most common types of loops include:
+
+- **Time Loop** (timeloop): A sequence of images captured over time.
+- **Z-Stack** (zstack): Frames stacked along the z-axis, representing different focal planes.
+- **Multi-Point** (multipoint): Images captured at multiple specified locations (points) with known coordinates.
+
+An image can have no experiment, a single experiment, or a combination of multiple experiments.
+
+This experiment data is stored in the [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel) class,
+you can get instance of this class by getting [`experiment`](nd2.md#limnd2.nd2.Nd2Reader.experiment) peoperty of [`Nd2Reader`](nd2.md#limnd2.nd2.Nd2Reader.experiment) object.
 """
 
 from __future__ import annotations
@@ -17,11 +28,15 @@ class ExperimentLoopType(enum.IntEnum):
     Attributes
     ----------
     eEtTimeLoop : int
-        Timeloop experiment
+        Timeloop experiment (see [`ExperimentTimeLoop`](experiment.md#limnd2.experiment.ExperimentTimeLoop))
+    eEtNETimeLoop : int
+        Nonequidistant timeloop experiment (see [`ExperimentNETimeLoop`](experiment.md#limnd2.experiment.ExperimentNETimeLoop))
     eEtXYPosLoop : int
-        Multipoint experiment
+        Multipoint experiment (see [`ExperimentXYPosLoop`](experiment.md#limnd2.experiment.ExperimentXYPosLoop))
     eEtZStackLoop : int
-        Z-stack experiment
+        Z-stack experiment (see [`ExperimentZStackLoop`](experiment.md#limnd2.experiment.ExperimentZStackLoop))
+    eEtSpectLoop : int
+        Spectral experiment (see [`ExperimentSpectralLoop`](experiment.md#limnd2.experiment.ExperimentSpectralLoop))
     """
     eEtUnknown              = 0
     eEtTimeLoop             = 1
@@ -42,11 +57,17 @@ class ExperimentLoopType(enum.IntEnum):
 
     @staticmethod
     def toLongName(eType: ExperimentLoopType|int):
+        """
+        Returns long name for experiment type.
+        """
         names = [ 'Unknown', 'Time', 'Multipoint', 'Multipoint', 'Z-Stack', 'Polar', 'Spectral', 'Custom', 'Time', 'Time', 'Z-Stack' ]
         return names[eType]
 
     @staticmethod
     def toShortName(eType: ExperimentLoopType|int):
+        """
+        Returns short name for experiment type.
+        """
         names = [ '?', 'T', 'XY', 'XY', 'Z', 'P', 'λ', 'C', 'T', 'T', 'Z' ]
         return names[eType]
 
@@ -94,6 +115,30 @@ class ExperimentLoop(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
+    """
+    Dataclass storing parameters about timeloop experiment in the image.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    uiCount : int
+        Number of frames in the experiment
+    dStart : float
+        Start time of the experiment
+    dPeriod : float
+        Time interval between frames in miliseconds.
+    dDuration : float
+        Duration of the experiment in miliseconds. If value is non-zero, dPeriod must be zero and the experiment is captured as fast as possible for dDuration ms.
+    dMinPeriodDiff : float
+        Minimum difference between periods.
+    dMaxPeriodDiff : float
+        Maximum difference between periods.
+    dAvgPeriodDiff : float
+        Average difference between periods.
+    """
     dStart: float                   = LV_field(0,                         LVType.DOUBLE)
     dPeriod: float                  = LV_field(0,                         LVType.DOUBLE)
     dDuration: float                = LV_field(0,                         LVType.DOUBLE)
@@ -129,14 +174,23 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
 
     @property
     def formattedInterval(self) -> str:
+        """
+        Returns formatted time interval between frames.
+        """
         return _format_time(self.dPeriod) if 0.0 < self.dPeriod else 'No Delay'
 
     @property
     def formattedDuration(self) -> str:
+        """
+        Returns formatted duration of the experiment.
+        """
         return _format_time(self.dDuration) if 0.0 < self.dDuration else 'Continuous'
 
     @property
     def info(self) -> list[dict[str, any]]:
+        """
+        Returns information about timeloop experiment.
+        """
         return [ dict(Phase='#1', Interval=self.formattedInterval, Duration=self.formattedDuration, Loops=self.uiCount) ]
 
     def __str__(self):
@@ -145,6 +199,24 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
+    """
+    Dataclass for storing parameters about nonequidistant time loop experiment.
+    This is done by storing a list of [`ExperimentTimeLoop`](experiment.md#limnd2.experiment.ExperimentTimeLoop)
+    instances (each one is called a period).
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    uiCount : int
+        Number of frames in the experiment (total from frames in all periods)
+    uiPeriodCount : int
+        Number of periods in the experiment
+    pPeriod : list[ExperimentTimeLoop]
+        List of periods in the nonequidistant time loop experiment
+    """
     uiPeriodCount: int                                      = LV_field(0,               LVType.UINT32)
     pPeriod: list[ExperimentTimeLoop]                       = LV_field(list,            LVType.LEVEL)
     pSubLoops: dict | None                                  = LV_field(None,            LVType.ENCODING_NOT_IMPLEMENTED)
@@ -165,21 +237,70 @@ class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
 
     @property
     def info(self) -> list[dict[str, any]]:
+        """
+        Returns information about nonequidistant time loop experiment.
+        """
         return [ period.info[0] for period in self.pPeriod ]
 
 
 class ZStackType(enum.IntEnum):
-    zstBottomToTopFixedTop                  = 0 # Bottom -> Top stack with fixed Top position
-    zstBottomToTopFixedBottom               = 1 # Bottom -> Top stack with fixed Bottom position
-    zstSymmetricRangeFixedHomeBottomToTop   = 2 # Symmetric Range around fixed Home position (Bottom -> Top)
-    zstAsymmetricRangeFixedHomeBottomToTop  = 3 # Asymmetric Range around fixed Home position (Bottom -> Top)
-    zstTopToBottomFixedTop                  = 4 # Top -> Bottom stack with fixed Top position
-    zstTopToBottomFixedBottom               = 5 # Top -> Bottom stack with fixed Bottom position
-    zstSymmetricRangeFixedHomeTopToBottom   = 6 # Symmetric Range around fixed Home position (Top -> Bottom)
-    zstAsymmetricRangeFixedHomeTopToBottom  = 7 # Asymmetric Range around fixed Home position (Top -> Bottom)
+    """
+    Enumeration of Z stack movement types.
+
+    Attributes
+    ----------
+    zstBottomToTopFixedTop : int
+        Bottom -> Top stack with a fixed Top position.
+    zstBottomToTopFixedBottom : int
+        Bottom -> Top stack with a fixed Bottom position.
+    zstSymmetricRangeFixedHomeBottomToTop : int
+        Symmetric range around a fixed Home position (Bottom -> Top).
+    zstAsymmetricRangeFixedHomeBottomToTop : int
+        Asymmetric range around a fixed Home position (Bottom -> Top).
+    zstTopToBottomFixedTop : int
+        Top -> Bottom stack with a fixed Top position.
+    zstTopToBottomFixedBottom : int
+        Top -> Bottom stack with a fixed Bottom position.
+    zstSymmetricRangeFixedHomeTopToBottom : int
+        Symmetric range around a fixed Home position (Top -> Bottom).
+    zstAsymmetricRangeFixedHomeTopToBottom : int
+        Asymmetric range around a fixed Home position (Top -> Bottom).
+    """
+    zstBottomToTopFixedTop                  = 0
+    zstBottomToTopFixedBottom               = 1
+    zstSymmetricRangeFixedHomeBottomToTop   = 2
+    zstAsymmetricRangeFixedHomeBottomToTop  = 3
+    zstTopToBottomFixedTop                  = 4
+    zstTopToBottomFixedBottom               = 5
+    zstSymmetricRangeFixedHomeTopToBottom   = 6
+    zstAsymmetricRangeFixedHomeTopToBottom  = 7
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
+    """
+    Dataclass for storing parameters about Z-stack experiment in the image.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    uiCount : int
+        Number of frames in the experiment (total from frames in all periods)
+    dZLow : float
+        The lowest Z position in the experiment.
+    dZLowPFSOffset : float
+        Offset applied to the lowest Z position for Perfect Focus System (PFS).
+    dZHigh : float
+        The highest Z position in the experiment.
+    dZHighPFSOffset : float
+        Offset applied to the highest Z position for Perfect Focus System (PFS).
+    dZHome : float
+        The home (central) Z position in the experiment.
+    dZStep : float
+        Step size between Z positions in the experiment.
+    """
     dZLow: float                            = LV_field(0.0,   LVType.DOUBLE)
     dZLowPFSOffset: float                   = LV_field(0.0,   LVType.DOUBLE)
     dZHigh: float                           = LV_field(0.0,   LVType.DOUBLE)
@@ -216,6 +337,9 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
 
     @property
     def homeIndex(self):
+        """
+        Returns index of the frame with home position.
+        """
         tol = 0.05
         range = abs(self.dZHigh - self.dZLow)
         homeRangeF = abs(self.dZLow - self.dZHome)
@@ -235,6 +359,9 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
 
     @property
     def step(self):
+        """
+        Returns step size between Z positions in the experiment in micrometers.
+        """
         dStep = self.dZStep
         uiCount = max(self.uiCount, 2)
         uiHome = self.homeIndex
@@ -246,20 +373,29 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
 
     @property
     def top(self):
-         if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
+        """
+        Returns the highest Z position in the experiment.
+        """
+        if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
             return self.dZHigh - self.dZHome
-         else:
+        else:
             return -self.dZLow + self.dReferencePosition if self.bZInverted else self.dZHigh + self.dReferencePosition
 
     @property
     def bottom(self):
-         if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
+        """
+        Returns the lowest Z position in the experiment.
+        """
+        if self.iType in (ZStackType.zstSymmetricRangeFixedHomeBottomToTop, ZStackType.zstAsymmetricRangeFixedHomeBottomToTop, ZStackType.zstSymmetricRangeFixedHomeTopToBottom, ZStackType.zstAsymmetricRangeFixedHomeTopToBottom):
             return self.dZLow - self.dZHome
-         else:
+        else:
             return -self.dZHigh + self.dReferencePosition if self.bZInverted else self.dZLow + self.dReferencePosition
 
     @property
     def info(self) -> list[dict[str, any]]:
+        """
+        Returns information about zstack experiment.
+        """
         return [ dict(Step=self.step, Top=self.top, Bottom=self.bottom, Count=self.uiCount, Drive=self.wsZDevice)]
 
     def __str__(self):
@@ -287,6 +423,9 @@ class ExperimentSpectralLoopPoint(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
+    """
+    Dataclass for storing parameters about spectral loop experiment in the image.
+    """
     pPlanes: PictureMetadataPicturePlanes       = LV_field(PictureMetadataPicturePlanes,    LVType.LEVEL)
     iOffsetReference: int                       = LV_field(0,                               LVType.INT32)
     bMergeCameras: bool                         = LV_field(False,                           LVType.BOOL)
@@ -330,6 +469,9 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
 
     @property
     def info(self) -> list[dict[str, any]]:
+        """
+        Returns information about spectral loop experiment.
+        """
         ret = []
         for i, plane in enumerate(self.pPlanes.sPlaneNew):
             idx = f'#{i+1}'
@@ -342,6 +484,22 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class ExperimentXYPosLoopPoint(LVSerializable):
+    """
+    Dataclass for storing infomartion about a single point in multipoint experiment.
+
+    Attributes
+    ----------
+    dPosX : float
+        The X-coordinate of the position.
+    dPosY : float
+        The Y-coordinate of the position.
+    dPosZ : float
+        The Z-coordinate of the position.
+    dPFSOffset : float
+        The offset applied for Perfect Focus System (PFS).
+    dPosName : str
+        A descriptive name for the position.
+    """
     dPosX: float                    = LV_field(0.0,               LVType.DOUBLE)
     dPosY: float                    = LV_field(0.0,               LVType.DOUBLE)
     dPosZ: float                    = LV_field(0.0,               LVType.DOUBLE)
@@ -376,6 +534,39 @@ class ExperimentXYPosLoopPoint(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
+    """
+    Dataclass for storing parameters about multipoint experiment in the image.
+
+    Attributes
+    ----------
+
+    bUseZ : bool
+        Whether Z-axis positions are used in the experiment.
+    bRelativeXY : bool
+        Whether XY coordinates are defined relative to a reference point.
+    dReferenceX : float
+        The X-coordinate of the reference point.
+    dReferenceY : float
+        The Y-coordinate of the reference point.
+    bRedefineAfterPFS : bool
+        Whether to redefine points after using the Perfect Focus System (PFS).
+    bRedefineAfterAutoFocus : bool
+        Whether to redefine points after performing autofocus.
+    bKeepPFSOn : bool
+        Whether to keep the Perfect Focus System (PFS) active during the experiment.
+    bSplitMultipoints : bool
+        Whether to split multipoints into separate groups or sequences.
+    bUseAFPlane : bool
+        Whether to use the autofocus plane for determining Z positions.
+    bZEnabled : bool
+        Whether the Z-axis is enabled in the experiment.
+    sZDevice : str
+        The name of the Z-axis device used in the experiment.
+    sAFBefore : dict
+        Settings for autofocus performed before the experiment.
+    Points : list of ExperimentXYPosLoopPoint
+        A list of points defining the XY positions for the experiment.
+    """
     bUseZ: bool                             = LV_field(False,             LVType.BOOL)
     bRelativeXY: bool                       = LV_field(True,              LVType.BOOL)
     dReferenceX: float                      = LV_field(0.0,               LVType.DOUBLE)
@@ -418,6 +609,9 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
     @property
     def info(self) -> list[dict[str, any]]:
+        """
+        Returns information about multipoint experiment.
+        """
         ret = []
         for i in range(self.uiCount):
             name = self.Points[i].dPosName if i < len(self.Points) and self.Points[i].dPosName else f"#{i}"
@@ -510,7 +704,46 @@ class ExperimentIterator:
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentLevel(LVSerializable):
     """
-    Experiment Level
+    This class stores information about experiments used in an image, this class stores information about one experiment level directly and
+    it may contain nested experiments (similar to linked list data structure).
+
+    This nesting of experimtents is used to define the order of experiments in the image.
+
+    To iterate over all experiments in the image, iterate over this class instance in for loop like this:
+
+    ```py
+    for exp in experiment:
+        print(exp.name)
+        print(exp.count)
+        # another experiment specific instructions
+    ```
+
+    Each experiment level has a type, which is defined by [`ExperimentLoopType`](experiment.md#limnd2.experiment.ExperimentLoopType) enum stored in `eType` attribute,
+    this type defines which experiment parameters are used in given level, those parameters are stored in `uLoopPars` attribute.
+
+    In order to get experiment of specific type, use [`findLevel`](experiment.md#limnd2.experiment.ExperimentLevel.findLevel) method with an
+    instance of [`ExperimentLoopType`](experiment.md#limnd2.experiment.ExperimentLoopType) enum as argument.
+
+    This will allow you to get attributes for specific experiment type, for example, to get z-stack loop experiment attributes, use this code:
+
+    ```py
+    zstack = experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
+    ```
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    eType : ExperimentLoopType
+        Experiment type used in the image, also defines which parameters are used in this level.
+    uLoopPars: ExperimentLoop
+        Parameters of the current level loop, the structure depends on the content of `eType` member variable.
+    ppNextLevelEx: list[ExperimentLevel]
+        List of nested ExperimentLevel instances.
+    uiNextLevelCount: int
+        Number of nested experiments.
     """
     eType: ExperimentLoopType               = LV_field(ExperimentLoopType.eEtUnknown,     LVType.UINT32)
     # Type of the current loop, determines the union member to be used
@@ -599,10 +832,16 @@ class ExperimentLevel(LVSerializable):
 
     @property
     def dims(self) -> dict[str, int]:
+        """
+        Returns a dictionary mapping each experiment to number of frames in that experiment.
+        """
         return { exp_loop.typeName: exp_loop.count for exp_loop in self }
 
     @property
     def valid(self) -> bool:
+        """
+        Checks if experiment and all subexperiments are valid.
+        """
         return (
             self.eType != ExperimentLoopType.eEtUnknown
             and 0 < self.uLoopPars.uiCount
@@ -611,34 +850,58 @@ class ExperimentLevel(LVSerializable):
 
     @property
     def isLambda(self) -> bool:
+        """
+        Checks if experiment is spectral loop experiment.
+        """
         return self.eType == ExperimentLoopType.eEtSpectLoop
 
     @property
     def count(self) -> int:
+        """
+        Returns number of frames in the experiment.
+        """
         return len([item for item in self.pItemValid if item]) if self.pItemValid and len(self.pItemValid) else self.uLoopPars.uiCount
 
     @property
     def name(self) -> str:
+        """
+        Returns name of the experiment.
+        """
         return ExperimentLoopType.toLongName(self.eType)
 
     @property
     def shortName(self) -> str:
+        """
+        Returns short name of the experiment.
+        """
         return ExperimentLoopType.toShortName(self.eType)
 
     @property
     def typeName(self) -> str:
+        """
+        Returns type name of the experiment.
+        """
         return ExperimentLoopType.toName(self.eType)
 
     def loopTypes(self, *, skipSpectralLoop: bool = True) -> tuple[ExperimentLoopType]:
+        """
+        Returns tuple with `ExperimentLoopType` instances of all experiments in the image.
+        """
         ret = tuple() if self.isLambda and skipSpectralLoop else (self.eType, )
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].loopTypes(skipSpectralLoop=skipSpectralLoop)
         return ret
 
-    def indexOfLoop(self, loopType: ExperimentLoopType, *, skipSpectralLoop: bool = True) -> int:
+    def indexOfLoop(self, loopType: ExperimentLoopType, *, skipSpectralLoop: bool = True) -> int | None:
+        """
+        Returns index of specified loop type or None.
+        """
         return self.loopTypes(skipSpectralLoop=skipSpectralLoop).index(loopType)
 
-    def findLevel(self, loopType: ExperimentLoopType) -> ExperimentLevel|None:
+    def findLevel(self, loopType: ExperimentLoopType) -> ExperimentLevel | None:
+        """
+        Find and returns experiment of specified type or None.
+        """
         if self.eType == loopType:
             return self
         if 0 < len(nl := self._nextLevels()):
@@ -648,24 +911,36 @@ class ExperimentLevel(LVSerializable):
         return None
 
     def ndim(self, skipSpectralLoop: bool = True) -> int:
+        """
+        Returns number of experiments in the experiment level.
+        """
         ret = 0 if self.isLambda and skipSpectralLoop else 1
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].ndim(skipSpectralLoop=skipSpectralLoop)
         return ret
 
     def shape(self, *, skipSpectralLoop: bool = True) -> tuple[int]:
+        """
+        Returns shape of the experiment. (number of frames in each experiment)
+        """
         ret = tuple() if self.isLambda and skipSpectralLoop else (self.count, )
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].shape(skipSpectralLoop=skipSpectralLoop)
         return ret
 
     def dimnames(self, *, skipSpectralLoop: bool = True) -> tuple[str]:
+        """
+        Returns names of nested dimensions.
+        """
         ret = tuple() if self.isLambda and skipSpectralLoop else (ExperimentLoopType.toName(self.eType),)
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0].dimnames(skipSpectralLoop=skipSpectralLoop)
         return tuple(ret)
 
     def generateLoopIndexes(self, *, named: bool = False) -> list[tuple]:
+        """
+        Generate list of indexes for all experiments in the image.
+        """
         ranges = [list(range(dim)) for dim in self.shape(skipSpectralLoop=True)]
         loopindexes = itertools.product(*ranges)
         if named:
