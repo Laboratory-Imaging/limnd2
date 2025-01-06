@@ -86,20 +86,20 @@ class ImageAttributes(LVSerializable):
         return (width * comps * (bits + 7) // 8 + 3) // 4 * 4
 
     @staticmethod
-    def create(width: int, height: int, component_count: int, bits: int, sequence_count: int) -> ImageAttributes:
+    def create(height: int, width: int, component_count: int, bits: int, sequence_count: int) -> ImageAttributes:
         """
         !!! warning
             This function is used for creating new ImageAttributes instance, usually for creating new .nd2 files with [Nd2Writer](nd2.md#limnd2.nd2.Nd2Writer) class.
             Do not use this function if you only read `.nd2` file.
 
-        Create ImageAttributes instance from simplified parameters:
+        Create ImageAttributes instance from following arguments (all must be passed as named arguments)
 
         Parameters
         ----------
-        width : int
-            width in pixels
         height : int
             height in pixels
+        width : int
+            width in pixels
         component_count : int
             number of components
         bits : int
@@ -107,26 +107,23 @@ class ImageAttributes(LVSerializable):
         sequence_count : int
             total number of frames in ND2 file (product of size of each dimension)
         """
-        shape = (width, height, component_count)
 
         if bits == 32:
             pixel_type = ImageAttributesPixelType.pxtReal
         else:
             pixel_type = ImageAttributesPixelType.pxtUnsigned
 
-        components = (1 if len(shape) <= 2 else shape[2])
-
         return ImageAttributes(
-            uiWidth = shape[0],
-            uiWidthBytes = ImageAttributes.calcWidthBytes(shape[0], bits, components),
-            uiHeight = shape[1],
-            uiComp = components,
+            uiWidth = width,
+            uiWidthBytes = ImageAttributes.calcWidthBytes(width, bits, component_count),
+            uiHeight = height,
+            uiComp = component_count,
             uiBpcInMemory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8,
             uiBpcSignificant = bits,
             uiSequenceCount = sequence_count,
-            uiTileWidth = shape[0],
-            uiTileHeight = shape[1],
-            uiVirtualComponents = components,
+            uiTileWidth = width,
+            uiTileHeight = height,
+            uiVirtualComponents = component_count,
             ePixelType = pixel_type
         )
 
