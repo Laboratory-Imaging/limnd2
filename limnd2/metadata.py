@@ -3,7 +3,7 @@ This module module stores comprehensive metadata related to microscopy images. K
 
 - **Picture Planes**: Descriptions of individual image components or channels, including their modalities and spectral properties.
 
-    See [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) class storing information abut individual image plane.
+    See [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) class storing information about individual image plane.
 
     Or [`PictureMetadataPicturePlanes`](metadata.md#limnd2.metadata.PictureMetadataPicturePlanes) class storing information about all image planes.
 
@@ -93,6 +93,26 @@ class PictureMetadataPicturePlanesRepresentation(enum.IntEnum):
     eRepHDR: typing.Final       = 2
 
 class OpticalFilterPlacement(enum.IntEnum):
+    """
+    Enumeration that defines the placement of an optical filter in an optical system.
+
+    Attributes
+    ----------
+    eOfpNoFilter : int
+        No filter applied.
+    eOfpExcitation : int
+        Position for the excitation filter, typically located near the light source (lamp).
+    eOfpEmission : int
+        Position for the emission filter, usually located near the camera.
+    eOfpFilterTurret : int
+        Position for the filter block, commonly used in fluorescence microscopy systems.
+    eOfpLamp : int
+        Position related to the lamp's spectrum.
+    eOfnCameraChip : int
+        Position related to the sensitivity of the camera chip.
+    eOfpUserOverride : int
+        User-defined emission wavelength position, allowing customization of the filter setup.
+    """
     eOfpNoFilter: typing.Final          = 0
     eOfpExcitation: typing.Final        = 1         # excitation filter (position by a lamp)
     eOfpEmission: typing.Final          = 2         # emission filter (position by a camera)
@@ -102,6 +122,23 @@ class OpticalFilterPlacement(enum.IntEnum):
     eOfpUserOverride: typing.Final      = 6         # user defined emission wavelength
 
 class OpticalFilterNature(enum.IntFlag):
+    """
+    Enumeration that defines the nature of an optical filter, indicating the type of spectra it handles.
+
+    Attributes
+    ----------
+    eOfnGeneric : int
+        A wide-band or unspecified spectrum filter, often used for general applications.
+    eOfnRGB : int
+        A triple-band filter suitable for use with RGB cameras or for human visual perception.
+    eOfnRed : int
+        A filter that passes the red part of the spectrum.
+    eOfnGreen : int
+        A filter that passes the green part of the spectrum.
+    eOfnBlue : int
+        A filter that passes the blue part of the spectrum.
+    """
+
     eOfnGeneric: typing.Final           = 0x0000    # wide-band or unspecified spectra
     eOfnRGB: typing.Final               = 0x0001    # triple-band filter suitable for RGB cameras (or naked eye)
     eOfnRed: typing.Final 	            = 0x0002
@@ -109,6 +146,28 @@ class OpticalFilterNature(enum.IntFlag):
     eOfnBlue: typing.Final              = 0x0008
 
 class OpticalFilterSpectType(enum.IntEnum):
+    """
+    Enumeration that defines the types of optical spectra that an optical filter can handle.
+
+    Attributes
+    ----------
+    eOftBandpass : int
+        A bandpass filter defined by a lower (raising edge) and higher (falling edge) wavelength.
+    eOftNarrowBandpass : int
+        A narrow bandpass filter specified by a single wavelength (peak).
+    eOftLowpass : int
+        A lowpass filter specified by one wavelength (falling edge).
+    eOftHighpass : int
+        A highpass filter specified by one wavelength (raising edge).
+    eOftBarrier : int
+        A barrier filter defined by a lower (falling edge) and higher (raising edge) wavelength.
+    eOftMultiplepass : int
+        A filter allowing multiple passes, specified by a few edges.
+    eOftFull : int
+        The full position in a filterwheel, indicating that the filter allows all wavelengths to pass.
+    eOftEmpty : int
+        The empty position in a filterwheel, where no filter is present.
+    """
     eOftBandpass: typing.Final          = 1         # specified by lower (raising edge) and higher (falling) wavelength
     eOftNarrowBandpass: typing.Final    = 2         # specified by one wavelength (peak)
     eOftLowpass: typing.Final           = 3         # specified by one wavelength (falling edge)
@@ -139,6 +198,9 @@ class PicturePlaneModality(enum.IntEnum):
     eModDSDConfocal: typing.Final         = 12
 
 class PicturePlaneModalityFlags(enum.IntFlag):
+    """
+    Enum for modality flags of given plane.
+    """
     modFluorescence: typing.Final                     = 0x0000000000000001
     modBrightfield: typing.Final                      = 0x0000000000000002
     modDarkfield: typing.Final                        = 0x0000000000000004
@@ -218,7 +280,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
     @staticmethod
     def modality_string_map() -> dict[str, PicturePlaneModalityFlags]:
         """
-        Returns mapping of known modality strings ("Wide-field", "Brightfield", ...) to PicturePlaneModalityFlags.
+        Returns mapping of known modality strings ("Wide-field", "Brightfield", ...) to `PicturePlaneModalityFlags`.
         """
         return {
             "Undefined": 0,
@@ -376,6 +438,24 @@ class PicturePlaneModalityFlags(enum.IntFlag):
 
 
 class OpticalSpectrumPointType(enum.IntEnum):
+    """
+    Enum class representing different types of optical spectrum points.
+
+    Attributes
+    ----------
+    eSptInvalid
+        Represents an invalid spectrum point.
+    eSptPoint
+        Represents a standard spectrum point.
+    eSptRaisingEdge
+        Represents a raising edge in the spectrum.
+    eSptFallingEdge
+        Represents a falling edge in the spectrum.
+    eSptPeak
+        Represents a peak point in the spectrum.
+    eSptRange
+        Represents a range or span of spectrum points.
+    """
     eSptInvalid: typing.Final         = 0
     eSptPoint: typing.Final           = 1
     eSptRaisingEdge: typing.Final     = 2
@@ -386,6 +466,22 @@ class OpticalSpectrumPointType(enum.IntEnum):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class OpticalSpectrumPoint(LVSerializable):
+    """
+    Class representing a single point in an optical spectrum.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    eType : OpticalSpectrumPointType
+        Type of the point (most commonly `OpticalSpectrumPointType.eSptPeak` storing peak value).
+    dWavelength : float
+        Wavelength of the point.
+    dTValue : float
+        Intensity value of the point.
+    """
     eType: OpticalSpectrumPointType             = LV_field(OpticalSpectrumPointType.eSptInvalid,  LVType.UINT32)
     dWavelength: float                          = LV_field(0.0,                                   LVType.DOUBLE)
     dTValue: float                              = LV_field(1.0,                                   LVType.DOUBLE)
@@ -397,6 +493,18 @@ class OpticalSpectrumPoint(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class OpticalSpectrum(LVSerializable):
+    """
+    Class representing an optical spectrum, consisting of a series of spectrum points.
+
+    Attributes
+    ----------
+    uiCount : int
+        The number of points in the optical spectrum.
+    bPoints : bool
+        A flag indicating whether the spectrum contains only points. (`OpticalSpectrumPointType.eSptPoint`)
+    pPoint : list[OpticalSpectrumPoint]
+        A list of [`OpticalSpectrumPoint`](metadata.md#limnd2.metadata.OpticalSpectrumPoint) instances representing the spectrum.
+    """
     uiCount: int                                = LV_field(0,           LVType.UINT32)
     bPoints: bool                               = LV_field(False,       LVType.BOOL)
     pPoint: list[OpticalSpectrumPoint]          = LV_field(list,        LVType.LEVEL)
@@ -409,16 +517,34 @@ class OpticalSpectrum(LVSerializable):
 
     @property
     def isValid(self) -> bool:
+        """
+        Check whether the optical spectrum is valid (has at least one point).
+        """
         return 0 < len(self.pPoint)
 
     @property
     def count(self) -> int:
+        """
+        Returns number of points in the optical spectrum.
+        """
         return len(self.pPoint)
 
     def findmaxtvalue(self) -> tuple[int, float]:
+        """
+        Finds the index and value of the maximum dTValue in the spectrum.
+        """
         return max(enumerate(pt.dTValue for pt in self.pPoint), key=operator.itemgetter(1))
 
     def peakAndFWHM(self) -> tuple[float, float, float]:
+        """
+        Calculates the peak wavelength and Full Width at Half Maximum (FWHM) for the spectrum.
+
+        Returns
+        -------
+        tuple[float, float, float]
+            Wavelegth of lower edge of the FWHM, peak wavelegth and upper edge of the FWHM.
+        """
+
         if self.bPoints:
             if not self.isValid:
                raise ValueError
@@ -445,6 +571,9 @@ class OpticalSpectrum(LVSerializable):
             return 0, 0, 0      # more error handling?
 
     def singleWavelength(self) -> float:
+        """
+        Returns the single representative wavelength for the spectrum, calculated as the peak wavelength or weighted average of wavelengths.
+        """
         try:
             peak, _, _ = self.peakAndFWHM()
             return peak
@@ -459,6 +588,9 @@ class OpticalSpectrum(LVSerializable):
         return num / denom if 0 < denom else 0
 
     def wavelengthRange(self) -> tuple[float, float]:
+        """
+        Returns the minimum and maximum wavelengths of the spectrum.
+        """
         if not self.isValid:
             raise ValueError
         dWlMin = self.pPoint[ 0].dWavelength
@@ -472,6 +604,9 @@ class OpticalSpectrum(LVSerializable):
 
     @staticmethod
     def combine(a: OpticalSpectrum, b: OpticalSpectrum) -> OpticalSpectrum:
+        """
+        Combines two optical spectra into a single spectrum.
+        """
         ret, tol = OpticalSpectrum._combine_low(a, b, 0)
         if 0 < tol:
             ret, _ = OpticalSpectrum._combine_low(a, b, tol)
@@ -549,6 +684,23 @@ class OpticalSpectrum(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class FluorescentProbe(LVSerializable):
+    """
+    A class representing a fluorescent probe.
+
+    Attributes
+    ----------
+    m_sName : str
+        The name of the fluorescent probe.
+    m_uiColor : int
+        The color of the probe.
+    m_ExcitationSpectrum : OpticalSpectrum
+        An object representing the excitation spectrum of the probe, typically defining
+        the wavelengths at which the probe absorbs light.
+    m_EmissionSpectrum : OpticalSpectrum
+        An object representing the emission spectrum of the probe, typically defining
+        the wavelengths at which the probe emits light after excitation.
+    """
+
     m_sName: str                            = LV_field("",                  LVType.STRING)
     m_uiColor: int                          = LV_field(0xFFFFFF,            LVType.UINT32)
     m_ExcitationSpectrum: OpticalSpectrum   = LV_field(OpticalSpectrum,     LVType.LEVEL)
@@ -558,22 +710,33 @@ class FluorescentProbe(LVSerializable):
         object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**self.m_ExcitationSpectrum))
         object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**self.m_EmissionSpectrum))
 
-    """
-    def __init__(   self,
-                    *,
-                    m_sName: str = "",
-                    m_uiColor: int = 0,
-                    m_ExcitationSpectrum: OpticalSpectrum|dict = {},
-                    m_EmissionSpectrum: OpticalSpectrum|dict = {},
-                    **kwargs):
-        object.__setattr__(self, 'm_sName', m_sName)
-        object.__setattr__(self, 'm_uiColor', m_uiColor)
-        object.__setattr__(self, 'm_ExcitationSpectrum', OpticalSpectrum(**m_ExcitationSpectrum) if type(m_ExcitationSpectrum) == dict else m_ExcitationSpectrum)
-        object.__setattr__(self, 'm_EmissionSpectrum', OpticalSpectrum(**m_EmissionSpectrum) if type(m_EmissionSpectrum) == dict else m_EmissionSpectrum)
-    """
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class OpticalFilter(LVSerializable):
+    """
+    Represents an optical filter in an optical system, typically used in fluorescence microscopy.
+
+    Attributes
+    ----------
+    m_sName : str
+        The name of the optical filter.
+    m_sUserName : str
+        A user-defined name for the optical filter.
+    m_ePlacement : OpticalFilterPlacement
+        Specifies the position of the filter in the optical path (e.g., excitation, emission, filter turret, etc.).
+    m_eNature : OpticalFilterNature
+        Specifies the nature of the filter (e.g., wide-band, RGB, or specific color filters).
+    m_eSpctType : OpticalFilterSpectType
+        Defines the spectrum type of the filter (e.g., bandpass, narrow-bandpass, lowpass, etc.).
+    m_uiColor : int
+        The color of the filter.
+    m_ExcitationSpectrum : OpticalSpectrum
+        The spectrum of the filter that allows specific excitation wavelengths to pass through.
+    m_EmissionSpectrum : OpticalSpectrum
+        The spectrum of the filter that allows specific emitted wavelengths to pass through.
+    m_MirrorSpectrum : OpticalSpectrum
+        The spectrum related to the mirror spectrum.
+    """
     m_sName: str                            = LV_field("",                                      LVType.STRING)
     m_sUserName: str                        = LV_field("",                                      LVType.STRING)
     m_ePlacement: OpticalFilterPlacement    = LV_field(OpticalFilterPlacement.eOfpNoFilter,     LVType.UINT32)
@@ -597,8 +760,22 @@ class OpticalFilter(LVSerializable):
             self._unknown_fields.pop("m_wcTiName")
 
 
+
 @dataclass(frozen=True, kw_only=True)
 class OpticalFilterPath(LVSerializable):
+    """
+    Represents a path of optical filters within an optical system, typically in fluorescence microscopy setups.
+
+    Attributes
+    ----------
+    m_sDescr : str
+        A description of the optical filter path, typically used for identification or documentation.
+    m_uiCount : int
+        The number of filters in the optical filter path.
+    m_pFilter : list[OpticalFilter]
+        A list of [`OpticalFilter`](metadata.md#limnd2.metadata.OpticalFilter) objects, each representing an optical filter in the path.
+    """
+
     m_sDescr: str                       = LV_field("",          LVType.STRING)
     m_uiCount: int                      = LV_field(0,           LVType.UINT32)
     m_pFilter: list[OpticalFilter]      = LV_field(list,        LVType.LEVEL)
@@ -612,29 +789,17 @@ class OpticalFilterPath(LVSerializable):
             object.__setattr__(self, "m_pFilter", filters)
 
 
-    """
-    def __init__(   self,
-                    *,
-                    m_sDescr: str = "",
-                    m_pFilter: list[OpticalFilter]|dict = {},
-                    **kwargs):
-        object.__setattr__(self, 'm_sDescr', m_sDescr)
-        if type(m_pFilter) == dict:
-            m_pFilter_ = []
-            for _, item in m_pFilter.items():
-                m_pFilter_.append(OpticalFilter(**item))
-            object.__setattr__(self, 'm_pFilter', m_pFilter_)
-        elif type(m_pFilter) == list and all(isinstance(item, OpticalFilter) for item in m_pFilter):
-            object.__setattr__(self, 'm_pFilter', m_pFilter)
-        else:
-            object.__setattr__(self, 'm_pFilter', [])
-    """
-
     @property
-    def isValid(self):
+    def isValid(self) -> bool:
+        """
+        Returns whether the filter path is valid (has at least one filter).
+        """
         return 0 < len(self.m_pFilter)
 
     def meanEmissionWavelength(self) -> float:
+        """
+        Calculates the mean emission wavelength based on the emission spectra of the filters in the path.
+        """
         def em2pt(s: OpticalSpectrum) -> float:
             if s.pPoint[0].eType == OpticalSpectrumPointType.eSptRaisingEdge and s.pPoint[1].eType == OpticalSpectrumPointType.eSptFallingEdge:
                 return (s.pPoint[0].dWavelength + s.pPoint[1].dWavelength) / 2
@@ -690,6 +855,9 @@ class OpticalFilterPath(LVSerializable):
 
 
     def closestExcitationWavelength(self, emission: float) -> float:
+        """
+        Finds the excitation wavelength that is closest to a given emission wavelength from the filters in the path.
+        """
         for flt in self.m_pFilter:
             if flt.m_ePlacement == OpticalFilterPlacement.eOfpUserOverride and 1 == flt.m_ExcitationSpectrum.count:
                 return flt.m_ExcitationSpectrum.pPoint[0].dWavelength
@@ -713,6 +881,46 @@ class OpticalFilterPath(LVSerializable):
 
 @dataclass(frozen=True, init=False, kw_only=True)
 class PicturePlaneDesc(LVSerializable):
+    """
+    Metadata for a single plane in a picture, typically used in microscopy or imaging systems.
+
+    This class contains information about the image plane's calibration, modality, fluorescent probe,
+    optical filter path, acquisition settings, and other relevant details that define how the image plane
+    was captured and how it should be processed.
+
+    Some metadata is stored in this class directly, more information is stored in corresponding [`SampleSettings`](metadata.md#limnd2.metadata.SampleSettings)
+    instance, this `SampleSetting` instance can be retvieved calling [`PictureMetadata.sampleSettings`](metadata.md#limnd2.metadata.PictureMetadata.sampleSettings)
+    function with an instance of this class as a parameter.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    uiCompCount : int
+        The number of components in the picture plane, usually it is 1, can be 3 for an RGB image.
+    uiSampleIndex : int
+        Hold index of sample settings used for this picture plane.
+        See [`PictureMetadataPicturePlanes.sSampleSetting`](metadata.md#limnd2.metadata.PictureMetadataPicturePlanes) attribute storing sample settings.
+    dObjCalibration1to1 : float
+        Calibration factor for the camera chip used during acquisition.
+    uiModalityMask : PicturePlaneModalityFlags
+        Bitmask indicating the modality of the picture plane, such as fluorescence.
+    pFluorescentProbe : FluorescentProbe
+        Description of the fluorescent probe used in the picture plane.
+    pFilterPath : OpticalFilterPath
+        Describes the optical filter path used in the picture plane.
+    uiColor : int
+        Color used for representing the picture plane.
+    sDescription : str
+        Name for the picture plane.
+    dAcqTime : float
+        Acquisition time for one single image plane. This can vary for different planes in a picture.
+    dPinholeDiameter : float
+        The diameter of the pinhole used in the optical setup, in micrometers.
+
+    """
     uiCompCount: int                                = LV_field(1,                                           LVType.UINT32)
     uiSampleIndex: int                              = LV_field(0,                                           LVType.UINT32)
     # Specifies a sample relation of this instance. SLxPicturePlaneDesc instances are
@@ -790,8 +998,6 @@ class PicturePlaneDesc(LVSerializable):
         object.__setattr__(self, "pFluorescentProbe", FluorescentProbe(**self.pFluorescentProbe))
         object.__setattr__(self, "pFilterPath", OpticalFilterPath(**self.pFilterPath))
 
-
-
     def to_serializable_dict(self, parent_path=""):
         result = super().to_serializable_dict(parent_path)
         if "sizeObjFullChip_cy" in result:
@@ -800,69 +1006,11 @@ class PicturePlaneDesc(LVSerializable):
             result["sizeObjFullChip.cx"] = result.pop("sizeObjFullChip_cx")
         return result
 
-
-
-    """
-    def __init__(   self,
-                    *,
-                    uiCompCount: int = 1,
-                    uiSampleIndex: int = 0,
-                    dObjCalibration1to1: float = 0,
-                    sizeObjFullChip: tuple[int, int] = (0, 0),
-                    uiModalityMask: PicturePlaneModalityFlags = PicturePlaneModalityFlags.modFluorescence,
-                    pFluorescentProbe: dict|FluorescentProbe = FluorescentProbe,
-                    pFilterPath: dict = {},
-                    dLampVoltage: float = 0,
-                    dFadingCorr: float = 0,
-                    uiColor: int = 0x00ffffff,
-                    sDescription: str = "",
-                    dAcqTime: float = 0,
-                    dPinholeDiameter: float = -1,
-                    iChannelSeriesIndex: int = -1,
-                    iCapturedPlaneIndex: int = -1,
-                    **kwargs):
-        sizeObjFullChip = (kwargs.get('sizeObjFullChip.cx', sizeObjFullChip[0]), kwargs.get('sizeObjFullChip.cy', sizeObjFullChip[1]))
-        uiModalityMask = PicturePlaneModalityFlags.from_modality(kwargs['eModality']) if 'eModality' in kwargs else uiModalityMask
-        object.__setattr__(self, 'uiCompCount', uiCompCount)
-        object.__setattr__(self, 'uiSampleIndex', uiSampleIndex)
-        object.__setattr__(self, 'dObjCalibration1to1', dObjCalibration1to1)
-        object.__setattr__(self, 'sizeObjFullChip', sizeObjFullChip)
-        object.__setattr__(self, 'uiModalityMask', uiModalityMask)
-
-        if type(pFluorescentProbe) == dict:
-            object.__setattr__(self, 'pFluorescentProbe', FluorescentProbe(**pFluorescentProbe))
-        elif isinstance(pFluorescentProbe, FluorescentProbe):
-            object.__setattr__(self, 'pFluorescentProbe', pFluorescentProbe)
-        else:
-            object.__setattr__(self, 'pFluorescentProbe', FluorescentProbe())
-
-        if type(pFilterPath) == dict:
-            object.__setattr__(self, 'pFilterPath', OpticalFilterPath(**pFilterPath))
-        elif isinstance(pFilterPath, OpticalFilterPath):
-            object.__setattr__(self, 'pFilterPath', pFilterPath)
-        else:
-            object.__setattr__(self, 'pFilterPath', OpticalFilterPath())
-
-        object.__setattr__(self, 'dLampVoltage', dLampVoltage)
-        object.__setattr__(self, 'dFadingCorr', dFadingCorr)
-        object.__setattr__(self, 'uiColor', uiColor)
-        object.__setattr__(self, 'sDescription', sDescription)
-        object.__setattr__(self, 'dAcqTime', dAcqTime)
-        object.__setattr__(self, 'dPinholeDiameter', dPinholeDiameter)
-        object.__setattr__(self, 'iChannelSeriesIndex', iChannelSeriesIndex)
-        object.__setattr__(self, 'iCapturedPlaneIndex', iCapturedPlaneIndex)
-
-        if self.pFluorescentProbe.m_EmissionSpectrum.isValid:
-            object.__setattr__(self, 'emissionWavelengthNm', self.pFluorescentProbe.m_EmissionSpectrum.singleWavelength())
-        if self.pFluorescentProbe.m_ExcitationSpectrum.isValid:
-            object.__setattr__(self, 'excitationWavelengthNm', self.pFluorescentProbe.m_ExcitationSpectrum.singleWavelength())
-        if self.emissionWavelengthNm is None and self.pFilterPath.isValid:
-            object.__setattr__(self, 'emissionWavelengthNm', self.pFilterPath.meanEmissionWavelength())
-        if self.excitationWavelengthNm is None and self.emissionWavelengthNm is not None and self.pFilterPath.isValid:
-            object.__setattr__(self, 'excitationWavelengthNm', self.pFilterPath.closestExcitationWavelength(self.emissionWavelengthNm))
-    """
     @cached_property
     def emissionWavelengthNm(self) -> float:
+        """
+        Returns the single emission wavelength for the picture plane, calculated from the fluorescent probe or optical filter path.
+        """
         if self.pFluorescentProbe.m_EmissionSpectrum.isValid:
             return self.pFluorescentProbe.m_EmissionSpectrum.singleWavelength()
         elif self.pFilterPath.isValid:
@@ -871,6 +1019,9 @@ class PicturePlaneDesc(LVSerializable):
 
     @cached_property
     def excitationWavelengthNm(self) -> float:
+        """
+        Returns the single excitation wavelength for the picture plane, calculated from the fluorescent probe or optical filter path.
+        """
         if self.pFluorescentProbe.m_ExcitationSpectrum.isValid:
             return self.pFluorescentProbe.m_ExcitationSpectrum.singleWavelength()
         elif self.emissionWavelengthNm is not None and self.pFilterPath.isValid:
@@ -879,26 +1030,44 @@ class PicturePlaneDesc(LVSerializable):
 
     @property
     def isBrightfield(self) -> bool:
+        """
+        Returns whether the picture plane is a brightfield image.
+        """
         return (self.uiModalityMask & PicturePlaneModalityFlags.modBrightfield)
 
     @property
     def isDarkfield(self) -> bool:
+        """
+        Returns whether the picture plane is a darkfield image.
+        """
         return (self.uiModalityMask & PicturePlaneModalityFlags.modDarkfield)
 
     @property
     def isFluorescence(self) -> bool:
+        """
+        Returns whether the picture plane is a fluorescence image.
+        """
         return (self.uiModalityMask & PicturePlaneModalityFlags.modFluorescence)
 
     @property
     def isContrast(self) -> bool:
+        """
+        Returns whether the picture plane is a contrast image.
+        """
         return (self.uiModalityMask & PicturePlaneModalityFlags.modMaskContrast)
 
     @property
     def modalityList(self) -> list[str]:
+        """
+        Returns a list of modalities present in the picture plane converted to strings.
+        """
         return PicturePlaneModalityFlags.to_str_list(self.uiModalityMask)
 
     @property
     def colorAsTuple(self):
+        """
+        Get the color of the picture plane as an RGB tuple.
+        """
         b = (self.uiColor >> 16) & 0xFF
         g = (self.uiColor >> 8) & 0xFF
         r = self.uiColor & 0xFF
@@ -906,6 +1075,9 @@ class PicturePlaneDesc(LVSerializable):
 
     @property
     def colorAsClampedTuple(self):
+        """
+        Get the color of the picture plane as an RGB tuple normalized to range [0.0, 1.0].
+        """
         b = ((self.uiColor >> 16) & 0xFF) / 255.0
         g = ((self.uiColor >> 8) & 0xFF) / 255.0
         r = (self.uiColor & 0xFF) / 255.0
@@ -913,6 +1085,9 @@ class PicturePlaneDesc(LVSerializable):
 
     @property
     def colorAsHtmlString(self):
+        """
+        Get the color of the picture plane as HTML string.
+        """
         b = (self.uiColor >> 16) & 0xFF
         g = (self.uiColor >> 8) & 0xFF
         r = self.uiColor & 0xFF
@@ -920,6 +1095,19 @@ class PicturePlaneDesc(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class CameraSetting(LVSerializable):
+    """
+    Stores information about the camera used for image acquisition.
+
+    Attributes
+    ----------
+    CameraUniqueName : str
+        A unique name identifier for the camera.
+    CameraUserName : str
+        The user-assigned name for the camera.
+    CameraFamilyName : str
+        The name of the camera family or model group.
+
+    """
     CameraUniqueName: str                   = LV_field("",                  LVType.STRING)
     CameraUserName: str                     = LV_field("",                  LVType.STRING)
     CameraFamilyName: str                   = LV_field("",                  LVType.STRING)
@@ -929,6 +1117,16 @@ class CameraSetting(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class DeviceSetting(LVSerializable):
+    """
+    Stores information about the microscope device settings.Stores information about the microscope device settings.
+
+    Attributes
+    ----------
+    m_sMicroscopeFullName : str
+        The full name of the microscope.
+    m_sMicroscopeShortName : str
+        A short name for the microscope.
+    """
     m_sMicroscopeFullName: str              = LV_field("",                  LVType.STRING)
     m_sMicroscopeShortName: str             = LV_field("",                  LVType.STRING)
     m_sMicroscopePhysFullName: str          = LV_field("",                  LVType.STRING)
@@ -941,11 +1139,37 @@ class DeviceSetting(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class SampleSettingsOC(LVSerializable):
+    """
+    Stores optical configuration settings for a sample.
+
+    Attributes
+    ----------
+    sOpticalConfigName: str
+        The name of the optical configuration being used for the sample.
+    """
     uiOCTypeKey: int                        = LV_field(0,                   LVType.UINT32)
     sOpticalConfigName: str                 = LV_field("",                  LVType.STRING)
 
 @dataclass(frozen=True, kw_only=True)
 class ObjectiveSetting(LVSerializable):
+    """
+    Stores information about the objective lens used to acquire an image.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    wsObjectiveName : str
+        The name of the objective lens (e.g., "40x Objective" or "100x Oil Immersion").
+    dObjectiveMag : float
+        The magnification power of the objective lens (e.g., 10x, 40x, 100x).
+    dObjectiveNA : float
+        The numerical aperture (NA) of the objective lens.
+    dRefractIndex : float
+        The refractive index of the medium between the objective lens and the sample (e.g., air, water, oil).
+    """
     wsObjectiveName: str                    = LV_field("",                  LVType.STRING)
     wsObjectiveCode: str                    = LV_field("",                  LVType.STRING)
     dObjectiveMag: float                    = LV_field(0.0,                 LVType.DOUBLE)
@@ -959,6 +1183,30 @@ class ObjectiveSetting(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class SampleSettings(LVSerializable):
+    """
+    Stores settings related to the acquisition of an image, including information about
+    the camera, device, objective lens, and optical configurations.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    pCameraSetting : CameraSetting
+        The camera settings used during image acquisition, including camera-specific
+        properties such as name, type, and family.
+    pDeviceSetting : DeviceSetting
+        Settings related to the device or microscope used for imaging, including
+        microscope names, size, and usage.
+    pObjectiveSetting : ObjectiveSetting
+        Details of the objective lens used during acquisition, such as magnification,
+        numerical aperture, and refractive index.
+    sOpticalConfigs : list[SampleSettingsOC]
+        A list of optical configurations used during imaging, each represented as a
+        `SampleSettingsOC` object.
+    """
+
     pCameraSetting: CameraSetting           = LV_field(CameraSetting,       LVType.LEVEL)
     pDeviceSetting: DeviceSetting           = LV_field(DeviceSetting,       LVType.LEVEL)
     pObjectiveSetting: ObjectiveSetting     = LV_field(ObjectiveSetting,    LVType.LEVEL)
@@ -1007,34 +1255,58 @@ class SampleSettings(LVSerializable):
 
     @property
     def cameraName(self) -> str:
+        """
+        Return name of the camera used to aquire given sample.
+        """
         return self.pCameraSetting.CameraUserName
 
     @property
     def microscopeName(self) -> str:
+        """
+        Return name of the microscope used to aquire given sample.
+        """
         return self.pDeviceSetting.m_sMicroscopeFullName
 
     @property
     def objectiveName(self) -> str:
+        """
+        Return name of the objective used to aquire given sample.
+        """
         return self.pObjectiveSetting.wsObjectiveName
 
     @property
     def objectiveCode(self) -> str:
+        """
+        Return name of the camera used to aquire given sample.
+        """
         return self.pObjectiveSetting.wsObjectiveCode
 
     @property
     def objectiveMagnification(self) -> float:
+        """
+        Return magification of used objective.
+        """
         return self.pObjectiveSetting.dObjectiveMag
 
     @property
     def objectiveNumericAperture(self) -> float:
+        """
+        Return numerical aperture of used objective lens.
+        """
         return self.pObjectiveSetting.dObjectiveNA
 
     @property
     def refractiveIndex(self) -> float:
+        """
+        Return refractive index of the medium in given sample.
+        """
         return self.pObjectiveSetting.dRefractIndex
 
     @property
     def opticalConfigurations(self) -> list[str]:
+        """
+        Return list of all optical configurations.
+        """
         if not self.sOpticalConfigs:
             return []
         return [item.sOpticalConfigName for item in self.sOpticalConfigs]
@@ -1042,6 +1314,29 @@ class SampleSettings(LVSerializable):
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class PictureMetadataPicturePlanes(LVSerializable):
+    """
+    Stores metadata for the picture planes and their associated settings in a microscopy imaging experiment.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
+
+    Attributes
+    ----------
+    uiCount : int
+        The number of picture planes in `sPlaneNew`.
+    uiCompCount : int
+        The total number of components across all picture planes. It is the sum of `uiCompCount` values
+        from all members of `sPlaneNew`.
+    sPlaneNew : list[PicturePlaneDesc]
+        A list of `PicturePlaneDesc` objects, each representing metadata for a single picture plane.
+    uiSampleCount : int
+        The number of sample settings in the file.
+    sSampleSetting : list[SampleSettings]
+        A list of `SampleSettings` objects, each containing the detailed configuration for a sample,
+        one sample setting can be used for one or multiple planes.
+    """
+
     uiCount: int                                                = LV_field(0,                                                       LVType.UINT32)                   # == len(sPlane)
     uiCompCount: int                                            = LV_field(0,                                                       LVType.UINT32)    # the sum of uiCompCount of all sPlane members
     sPlaneNew: list[PicturePlaneDesc]                           = LV_field(list,                                                    LVType.LEVEL)
@@ -1167,6 +1462,13 @@ class PictureMetadata(LVSerializable):
 
     """
     Dataclass for storing metadata associated with a captured picture.
+
+    Stores some attributes valid for whole image, metadata for individual channels
+    can be retrieved using [`PictureMetadata.channels`](metadata.md#limnd2.metadata.PictureMetadata.channels) attribute.
+
+    **Attributes:**
+    !!! note
+        Only selected attributes are listed, for full list of attributes see class definition.
 
     Attributes
     ----------
@@ -1297,25 +1599,59 @@ class PictureMetadata(LVSerializable):
 
     @property
     def valid(self) -> bool:
+        """
+        Checks if metadata have correct number of channels.
+        """
         return self.sPicturePlanes.valid
 
     def makeValid(self, comps: int, **kwargs) -> None:
+        """
+        Attempts to fix info about channels using specified number of channels.
+
+        This function creates channel info basec on component count like this:
+
+        ```
+        comps == 1: function creates one Mono channel
+        comps == 2: function creates channels Channel_1, Channel_2
+        comps == 3: function creates one RGB channel
+        comps >= 4: function creates channels Channel_1, ..., Channel_N
+        ```
+
+        Parameters
+        ----------
+        comps : int
+            The number of components in the image.
+        **kwargs : dict
+            Additional parameters to pass to each plane.
+        """
         self.sPicturePlanes.makeValid(comps, **kwargs)
 
     @property
     def isRgb(self) -> bool:
+        """
+        Checks if image is an RGB image.
+        """
         return 1 == self.sPicturePlanes.uiCount and 3 == self.sPicturePlanes.uiCompCount
 
     @property
     def channels(self) -> list[PicturePlaneDesc]:
+        """
+        Returns list of channels (planes) in the image.
+        """
         return self.sPicturePlanes.sPlaneNew
 
     @property
     def channelNames(self) -> list[str]:
+        """
+        Returns names of all channels (planes).
+        """
         return [ "RGB" if 3 == plane.uiCompCount else plane.sDescription for plane in self.sPicturePlanes.sPlaneNew ]
 
     @property
     def componentNames(self) -> list[str]:
+        """
+        Returns names of all components.
+        """
         ret = []
         for plane in self.sPicturePlanes.sPlaneNew:
             if 3 == plane.uiCompCount:
@@ -1328,11 +1664,9 @@ class PictureMetadata(LVSerializable):
 
     @property
     def componentColors(self) -> list[tuple[float, float, float]]:
-        def color_as_tuple(color):
-            b = ((color >> 16) & 0xFF) / 255.0
-            g = ((color >> 8) & 0xFF) / 255.0
-            r = (color & 0xFF) / 255.0
-            return (r, g, b)
+        """
+        Returns colors of each component as normalized tuple in a list.
+        """
         ret = []
         for plane in self.sPicturePlanes.sPlaneNew:
             if 3 == plane.uiCompCount:
@@ -1340,10 +1674,14 @@ class PictureMetadata(LVSerializable):
                 ret.append((0, 1, 0))
                 ret.append((1, 0, 0))
             else:
-                ret.append(color_as_tuple(plane.uiColor))
+                ret.append(plane.colorAsClampedTuple)
         return ret
 
     def sampleSettings(self, plane: int | PicturePlaneDesc = 0) -> SampleSettings|None:
+        """
+        Returns an instance of [`SampleSettings`](metadata.md#limnd2.metadata.SampleSettings) using either
+        [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             if isinstance(plane, int):
                 return self.sPicturePlanes.sSampleSetting[self.sPicturePlanes.sPlaneNew[plane].uiSampleIndex]
@@ -1353,42 +1691,63 @@ class PictureMetadata(LVSerializable):
             return None
 
     def cameraName(self, plane: int | PicturePlaneDesc = 0) -> str:
+        """
+        Returns camera name using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             return self.sampleSettings(plane).cameraName
         except (AttributeError, IndexError) as _:
             return ""
 
     def microscopeName(self, plane: int | PicturePlaneDesc = 0) -> str:
+        """
+        Returns microscope name using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             return self.sampleSettings(plane).microscopeName
         except (AttributeError, IndexError):
             return ""
 
     def refractiveIndex(self, plane: int | PicturePlaneDesc = 0) -> float:
+        """
+        Returns refractive index using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             return self.sampleSettings(plane).refractiveIndex
         except (AttributeError, IndexError):
             return -1.0
 
     def objectiveName(self, plane: int | PicturePlaneDesc = 0) -> str:
+        """
+        Returns name of objective using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             return self.sampleSettings(plane).objectiveName
         except (AttributeError, IndexError):
             return ""
 
     def objectiveMagnification(self, plane: int | PicturePlaneDesc = 0) -> float:
+        """
+        Returns objective magnification using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             return self.sampleSettings(plane).objectiveMagnification
         except (AttributeError, IndexError):
             return -1.0
 
     def objectiveNumericAperture(self, plane: int | PicturePlaneDesc = 0) -> float:
+        """
+        Returns objective numeric aperture using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
+        """
         try:
             return self.sampleSettings(plane).objectiveNumericAperture
         except (AttributeError, IndexError):
             return -1.0
 
     def opticalConfigurations(self, plane: int | PicturePlaneDesc = 0) -> list[str]:
+        """
+        Returns list of optical configurations.
+        """
         try:
             return self.sampleSettings(plane).opticalConfigurations
         except (AttributeError, IndexError):

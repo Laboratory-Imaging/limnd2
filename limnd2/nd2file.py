@@ -1,8 +1,16 @@
 """
-This file serves as compatibility layer between this
-limnd2 library maintained by Laboratory Imaging s.r.o. (https://github.com/Laboratory-Imaging/limnd2) and
-nd2 library maintained by Talley Lambert (https://github.com/tlambert03/nd2)
-It copies the interface of nd2 library, but uses limnd2 library on the "backend", essentially making a wrapper around it.
+This file serves as a compatibility layer between the
+[limnd2](https://github.com/Laboratory-Imaging/limnd2) library by [Laboratory Imaging s.r.o.](https://github.com/Laboratory-Imaging)
+and the [nd2](https://github.com/tlambert03/nd2) library by Harvard Medical School microscopist [Talley Lambert](https://github.com/tlambert03).
+
+It is designed for users familiar with Talley Lambert's `nd2` library, providing a seamless transition by mimicking its
+interface while utilizing the `limnd2` library as the underlying implementation.
+
+We extend our heartfelt thanks to Talley Lambert for his outstanding work on the `nd2` library, which has greatly benefited the imaging community,
+and for his invaluable input in helping us develop the `limnd2` library.
+
+!!! warning "Under Development"
+    This feature is under development. Only some methods are currently supported and sometimes only partially.
 """
 
 # ORIGINAL TYPES FOR ND2
@@ -40,10 +48,12 @@ class ND2File:
 
     @cached_property
     def version(self) -> tuple[int, ...]:
+        """works"""
         return self.limnd2.version
 
     @property
     def path(self) -> str:
+        """works"""
         return str(self._path)
 
     @property
@@ -77,6 +87,7 @@ class ND2File:
 
     @cached_property
     def attributes(self) -> Attributes:
+        """works"""
         att = self.limnd2.imageAttributes
         compressionLevel = att.dCompressionParam
         if att.eCompression == ImageAttributesCompression.ictLossy:
@@ -115,10 +126,7 @@ class ND2File:
 
     @cached_property
     def experiment(self) -> list[ExpLoop]:
-        """
-ExpLoop = Union["TimeLoop", "NETimeLoop", "XYPosLoop", "ZStackLoop", "CustomLoop"]
-LoopParams = Union["TimeLoopParams", "NETimeLoopParams", "XYPosLoopParams", "ZStackLoopParams"]
-        """
+        """works for T, M, Z experiments"""
         if self.limnd2.experiment == None:
             return []
 

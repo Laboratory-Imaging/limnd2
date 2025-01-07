@@ -6,7 +6,7 @@ site_author: Laboratory Imaging s.r.o.
 repo_name: limnd2
 repo_url: https://github.com/Laboratory-Imaging/limnd2
 site_description: A pure Python ND2 file reader and writer.
-copyright: '&copy; 2024 Laboratory Imaging s.r.o.'
+copyright: '&copy; 2025 Laboratory Imaging s.r.o.'
 
 watch:
  - limnd2
