@@ -318,10 +318,10 @@ class Nd2Reader:
 
         Parameters
         ----------
-        sequence_index : int
+        seqindex : int
             The index of the sequence for which the deepSIM data is being retrieved.
 
-        component : str
+        componentindex : str
             The index of the component for which the deepSIM data is requested.
 
         Returns
