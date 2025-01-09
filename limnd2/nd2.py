@@ -313,7 +313,7 @@ class Nd2Reader:
 
         !!! warning
             Even if file contains deepSIM data, not all channels or sequence indices must have deepSim data,
-            use [`crestDeepSimRawDataIndices()`](nd2.md#limnd2.Nd2Reader.crestDeepSimRawDataIndices) method to
+            use [`crestDeepSimRawDataIndices()`](nd2.md#limnd2.nd2.Nd2Reader.crestDeepSimRawDataIndices) method to
             see all valid indices for deepSIM data.
 
         Parameters
@@ -352,7 +352,7 @@ class Nd2Reader:
 
         Indices are returned as tuples of (sequence_index, component_index) in a list.
 
-        See [`crestDeepSimRawData()`](nd2.md#limnd2.Nd2Reader.crestDeepSimRawData) method that uses those indices to retrieve deepSIM data.
+        See [`crestDeepSimRawData()`](nd2.md#limnd2.nd2.Nd2Reader.crestDeepSimRawData) method that uses those indices to retrieve deepSIM data.
         """
         return self._chunker.crestDeepSimRawDataIndices()
 
