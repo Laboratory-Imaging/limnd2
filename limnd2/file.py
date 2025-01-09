@@ -523,6 +523,74 @@ class LimBinaryIOChunker(BaseChunker):
                 data = zlib.compress(buffer, binmeta.binCompressionLevel)
                 self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
 
+    def crestDeepSimRawData(self, seqindex: int, componentindex: int) -> \
+        tuple[NumpyArrayLike, str, str, tuple[float, float], tuple[int, int], tuple[int, int]]:
+
+        data = self.chunk(ND2_CHUNK_FORMAT_DeepSIMRawChannel % (componentindex, seqindex))
+        if not data:
+            raise NameNotInChunkmapError(f"DeepSIM chunk for sequnce index {seqindex} and component index {componentindex} not found.")
+
+        # deepSim chunk data structure
+
+        # Size                                      size_t        Q
+        # Width                                     int16         h
+        # Height                                    int16         h
+        # Raw channel count                         int16         h
+        # Raw channel size                          size_t        Q
+        # PSF correction                            double        d
+        # PSF correction - default value            double        d
+        # Number of iterations                      uint16        H
+        # Number of iterations - default value      uint16        H
+        # ROI offset x                              int16         h
+        # ROI offset y                              int16         h
+
+        # ADDED PADDING TO OFFSET 166
+
+        # Calibration data size                     size_t        Q
+        # Calibration key size                      uint32        I
+
+        # OFFSET 178 - DATA_START_OFFSET
+
+        # Calibration key (optional)
+        # Calibration data as XML (optional)
+        # Raw channel data                          starts at CHANNEL_DATA_START_OFFSET
+
+
+        header_struct = struct.Struct('<QhhhQddHHhh')
+
+        # Unpack the data using struct.unpack
+        size, width, height, channel_count, channel_size, psf, psf_def, iter, iter_def, roi_offset_x, roi_offset_y = header_struct.unpack(data[:header_struct.size])
+
+        DATA_START_OFFSET = 178
+
+        calibration_sizes_struct = struct.Struct("<QI")
+        calibration_data_size, calibration_key_size = calibration_sizes_struct.unpack(data[DATA_START_OFFSET - calibration_sizes_struct.size:DATA_START_OFFSET])
+
+        CHANNEL_DATA_START_OFFSET = DATA_START_OFFSET + calibration_data_size + calibration_key_size
+
+        calibration_key = data[DATA_START_OFFSET : DATA_START_OFFSET + calibration_key_size].decode('utf-16-le')
+        calibration_data = data[DATA_START_OFFSET + calibration_key_size: DATA_START_OFFSET + calibration_key_size + calibration_data_size].decode('utf-8')
+
+        channels = []
+        for i in range(channel_count):
+            subarray = data[CHANNEL_DATA_START_OFFSET + i * channel_size : CHANNEL_DATA_START_OFFSET + (i + 1) * channel_size]
+            if not len(subarray):
+                raise ValueError("Missing DeepSIM data to parse")       # should not happen
+            np_array = np.frombuffer(subarray, dtype=np.uint16).reshape((height, width))
+            channels.append(np_array)
+
+        channels = np.stack(channels, axis=0)
+        return channels, calibration_key, calibration_data, (psf, psf_def), (iter, iter_def), (roi_offset_x, roi_offset_y)
+
+    def crestDeepSimRawDataIndices(self) -> list[tuple[int, int]]:
+        result = []
+        for chunk_name in self.chunk_names:
+            match = ND2_CHUNK_RE_DeepSIMRawChannel.match(chunk_name)
+            if match:
+                result.append((int(match.group(2)), int(match.group(1))))
+        return result
+
+
     def finalize(self) -> None:
         if Nd2LoggerEnabled:
             logger.info(f"Finalizing {self._filename}")
@@ -558,3 +626,7 @@ class LimBinaryIOChunker(BaseChunker):
         self._chunkmap_is_dirty = False
         self._fh.truncate()
         self._fh.close()
+
+
+
+current_frame = 0  # Start with the first image

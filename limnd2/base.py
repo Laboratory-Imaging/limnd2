@@ -68,6 +68,9 @@ ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_3p    = b'CustomDataSeq|Downsa
 ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_5p        = re.compile(b'^CustomDataSeq\\|DownsampledTiledRasterBinaryData_(\\d+)_(\\d+)_(\\d+)_(\\d+)\\|(\\d+)!$')
 ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p        = re.compile(b'^CustomDataSeq\\|DownsampledTiledRasterBinaryData_(\\d+)_(\\d+)\\|(\\d+)!$')
 
+ND2_CHUNK_FORMAT_DeepSIMRawChannel                      = b'CustomDataSeq|AUXIMAGE_21_%u|%u!'       # component index | sequence index
+ND2_CHUNK_RE_DeepSIMRawChannel                          = re.compile(b'^CustomDataSeq\\|AUXIMAGE_21_(\\d+)\\|(\\d+)!$')
+
 
 
 class NameNotInChunkmapError(Exception):
@@ -190,6 +193,14 @@ class BaseChunker(abc.ABC):
 
     @abc.abstractmethod
     def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
+        pass
+
+    @abc.abstractmethod
+    def crestDeepSimRawData(self, seqindex: int, componentindex: int) -> tuple[NumpyArrayLike, str, str, tuple[float, float], tuple[int, int], tuple[int, int]]:
+        pass
+
+    @abc.abstractmethod
+    def crestDeepSimRawDataIndices(self) -> list[tuple[int, int]]:
         pass
 
     @abc.abstractmethod
