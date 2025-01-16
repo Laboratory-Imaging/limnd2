@@ -313,6 +313,34 @@ class PicturePlaneModalityFlags(enum.IntFlag):
 
 
     @staticmethod
+    def modality_OME_map() -> dict[str, PicturePlaneModalityFlags]:
+        """
+        Returns mapping of modality strings of OME-XML `AcquisitionMode` and `ContrastMethod` attributes to `PicturePlaneModalityFlags`.
+
+        !!! note
+            When parsing OME-XML, you must convert `AcquisitionMode` and `ContrastMethod` attributes separately
+            and use binary or with the flags.
+        """
+        return {
+            "LaserScanningConfocalMicroscopy": PicturePlaneModalityFlags.modLaserScanConfocal,
+            "SpinningDiskConfocal": PicturePlaneModalityFlags.modSpinDiskConfocal,
+            "SlitScanConfocal": PicturePlaneModalityFlags.modSweptFieldConfocalSlit,
+            "SpinningDiskConfocal": PicturePlaneModalityFlags.modDSDConfocal,
+            "RescanningConfocal": PicturePlaneModalityFlags.modRCM,
+            "WideField": PicturePlaneModalityFlags.modFluorescence,
+            "Brightfield": PicturePlaneModalityFlags.modBrightfield,
+            "Darkfield": PicturePlaneModalityFlags.modDarkfield,
+            "Phase": PicturePlaneModalityFlags.modPhaseContrast,
+            "DIC": PicturePlaneModalityFlags.modDIContrast,
+            "MC": PicturePlaneModalityFlags.modNAMC,
+            "MultiPhotonMicroscopy": PicturePlaneModalityFlags.modMultiPhotonFluo,
+            "SpectralImaging": PicturePlaneModalityFlags.modSpectral,
+            "TIRF": PicturePlaneModalityFlags.modTIRF,
+            "StructuredIllumination": PicturePlaneModalityFlags.modSIM,
+            "iSIM": PicturePlaneModalityFlags.modISIM,
+        }
+
+    @staticmethod
     def from_modality_string(modality: str) -> PicturePlaneModalityFlags:
         """
         Converts modality string to PicturePlaneModalityFlags.
@@ -335,6 +363,9 @@ class PicturePlaneModalityFlags(enum.IntFlag):
             return 0
         if modality_parsed in modality_map_parsed:
             return modality_map_parsed[modality_parsed]
+        ome_map = PicturePlaneModalityFlags.modality_OME_map()
+        if modality in ome_map:
+            return ome_map[modality]
         raise ValueError(f"Non-recognized modality string: {modality}")
 
     @staticmethod

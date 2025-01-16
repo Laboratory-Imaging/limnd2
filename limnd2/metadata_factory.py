@@ -520,6 +520,9 @@ class MetadataFactory:
             for plane in planes:
                 self.addPlane(plane)
 
+    def __str__(self):
+        return str(self.__dict__)
+
     def getChannel(self, key: int | str) -> Plane:
         if isinstance(key, str):
             for plane in self.planes:
