@@ -33,14 +33,14 @@ def jdn_now():
    result += 2_440_587.5    # JDN EPOCH
    return result
 
-def calculateColor(color_string: str) -> int:
+def calculateColor(color: str | tuple[int, int, int]) -> int:
         """
         Calculates channel color integer (used as uiColor).
 
         Parameters
         ----------
-        color_string : str
-            Color to be converted, either as hex string ("#ff0000"), common colors are also supported ("Red").
+        color_string : str | tuple[int, int, int]
+            Color to be converted, either as hex string ("#ff0000"), common colors are also supported ("Red") or as rgb color tuple (r, g, b).
 
         Returns
         -------
@@ -63,19 +63,27 @@ def calculateColor(color_string: str) -> int:
             "Brown": "#a52a2a",
         }
 
-        hex_color = COLOR_NAME_TO_HTML.get(color_string.capitalize(), color_string)
+        if isinstance(color, str):
+            hex_color = COLOR_NAME_TO_HTML.get(color.capitalize(), color)
 
-        if hex_color.startswith('#'):
-            hex_color = hex_color[1:]
+            if hex_color.startswith('#'):
+                hex_color = hex_color[1:]
 
-        if len(hex_color) != 6 or not all(char in "0123456789abcdefABCDEF" for char in hex_color):
-            raise ValueError(f"Invalid HTML color string: '{color_string}'")
+            if len(hex_color) != 6 or not all(char in "0123456789abcdefABCDEF" for char in hex_color):
+                raise ValueError(f"Invalid HTML color string: '{color}'")
 
-        r = int(hex_color[0:2], 16)
-        g = int(hex_color[2:4], 16)
-        b = int(hex_color[4:6], 16)
+            r = int(hex_color[0:2], 16)
+            g = int(hex_color[2:4], 16)
+            b = int(hex_color[4:6], 16)
+
+        elif isinstance(color, tuple) and len(color) == 3:
+            r, g, b = color
+
+        else:
+            r, g, b = 255, 255, 255
 
         return (b << 16) | (g << 8) | r
+
 
 class PictureMetadataTimeSourceType(enum.IntEnum):
     etsSW: typing.Final    = 0
@@ -338,6 +346,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
             "TIRF": PicturePlaneModalityFlags.modTIRF,
             "StructuredIllumination": PicturePlaneModalityFlags.modSIM,
             "iSIM": PicturePlaneModalityFlags.modISIM,
+            "Fluorescence": PicturePlaneModalityFlags.modFluorescence
         }
 
     @staticmethod
