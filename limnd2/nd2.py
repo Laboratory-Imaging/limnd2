@@ -374,6 +374,7 @@ class Nd2Reader:
         str
             DeepSIM data detailed outcome in XML Format as string.
         tuple[float, float]
+            PSF values (used, default). Depends on the objective used.
         tuple[int, int]
             Number of iterations for reconstruction (used, default).
         tuple[int, int]
