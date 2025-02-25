@@ -83,7 +83,7 @@ class ImageAttributes(LVSerializable):
         """
         Calculates number of bytes per single image row.
         """
-        return (width * comps * (bits + 7) // 8 + 3) // 4 * 4
+        return (width * comps * ((bits + 7) // 8) + 3) // 4 * 4
 
     @staticmethod
     def create(height: int, width: int, component_count: int, bits: int, sequence_count: int) -> ImageAttributes:
