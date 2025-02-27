@@ -214,10 +214,10 @@ class Nd2Reader:
         frame_res = f"{ia.width} x {ia.height}"
         dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
         file_size = self.chunker.filesize
-        frame_size = _size_fmt(ia.height*ia.widthBytes)
+        frame_size = format_file_size(ia.height*ia.widthBytes)
         z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0
-        volume_size = _size_fmt(ia.height*ia.widthBytes*z_count)
-        sizes = f"{_size_fmt(self.chunker.filesize)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
+        volume_size = format_file_size(ia.height*ia.widthBytes*z_count)
+        sizes = f"{format_file_size(self.chunker.filesize)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
         calibration = f"{self.pictureMetadata.dCalibration:.3f} µm/px" if self.pictureMetadata.bCalibrated else "Uncalibrated"
         mtime = f"{self.chunker.filelastmodified.strftime('%x %X')}"
         app_created = self.appInfo.software
@@ -564,7 +564,7 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
             raise ValueError("File handle passed to LimNd2Wrtier must have \"rb+\" or \"wb\" mode")
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
-def _size_fmt(size):
+def format_file_size(size: int) -> str:
     kB = 1024
     MB = kB*1024
     GB = MB*1024
