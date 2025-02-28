@@ -49,11 +49,25 @@ class Nd2Reader:
         return self._chunker.filename
 
     @property
+    def size_on_disk(self) -> int:
+        """
+        Returns the number of bytes the file takes on disk.
+        """
+        return self._chunker.size_on_disk
+
+    @property
+    def last_modified(self) -> datetime.datetime:
+        """
+        Returns the modify time of the file on disk.
+        """
+        return self._chunker.size_on_disk
+
+    @property
     def version(self) -> tuple[int, int]:
         """
         Returns the version of the `.nd2` file as a tuple of two integers.
         """
-        return self._chunker.fileVersion
+        return self._chunker.format_version
 
     @functools.cached_property
     def is3d(self) -> bool:
@@ -213,13 +227,13 @@ class Nd2Reader:
         bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
         frame_res = f"{ia.width} x {ia.height}"
         dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
-        file_size = self.chunker.filesize
+        file_size = self.chunker.size_on_disk
         frame_size = format_file_size(ia.height*ia.widthBytes)
         z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0
         volume_size = format_file_size(ia.height*ia.widthBytes*z_count)
-        sizes = f"{format_file_size(self.chunker.filesize)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
+        sizes = f"{format_file_size(self.chunker.size_on_disk)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
         calibration = f"{self.pictureMetadata.dCalibration:.3f} µm/px" if self.pictureMetadata.bCalibrated else "Uncalibrated"
-        mtime = f"{self.chunker.filelastmodified.strftime('%x %X')}"
+        mtime = f"{self.chunker.last_modified.strftime('%x %X')}"
         app_created = self.appInfo.software
         return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, file_size=file_size, frame_res=frame_res, volume_size=volume_size, sizes=sizes, calibration=calibration, mtime=mtime, app_created=app_created)
 
@@ -458,10 +472,31 @@ class Nd2Writer:
     def __exit__(self, exc_type, exc_value, traceback):
         self.finalize()
 
+    @property
+    def filename(self) -> str|None:
+        return self._chunker.filename
+
+    @property
+    def size_on_disk(self) -> int:
+        """
+        Returns the number of bytes the file takes on disk.
+        """
+        return self._chunker.size_on_disk
+
+    @property
+    def last_modified(self) -> datetime.datetime:
+        """
+        Returns the modify time of the file on disk.
+        """
+        return self._chunker.size_on_disk
+
 
     @property
     def version(self) -> tuple[int, int]:
-        return self._chunker.fileVersion
+        """
+        Returns the version of the `.nd2` file as a tuple of two integers.
+        """
+        return self._chunker.format_version
 
 
     @property

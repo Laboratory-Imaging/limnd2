@@ -127,17 +127,17 @@ class BaseChunker(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def filesize(self) -> int:
+    def size_on_disk(self) -> int:
         pass
 
     @property
     @abc.abstractmethod
-    def filelastmodified(self) -> datetime.datetime:
+    def last_modified(self) -> datetime.datetime:
         pass
 
     @property
     @abc.abstractmethod
-    def fileVersion(self) -> tuple[int, int]:
+    def format_version(self) -> tuple[int, int]:
         pass
 
     @property

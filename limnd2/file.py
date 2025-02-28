@@ -86,15 +86,15 @@ class LimBinaryIOChunker(BaseChunker):
         return None if self._filename is None else os.path.abspath(self._filename)
 
     @property
-    def filesize(self) -> int:
+    def size_on_disk(self) -> int:
         return self._file_size()
 
     @property
-    def filelastmodified(self) -> datetime.datetime:
+    def last_modified(self) -> datetime.datetime:
         return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime) if self._filename else datetime.now
 
     @property
-    def fileVersion(self) -> tuple[int, int]:
+    def format_version(self) -> tuple[int, int]:
         return self._version
 
     @property
