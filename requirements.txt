@@ -1,1 +1,4 @@
+h5py
 numpy
+ome_types
+pandas

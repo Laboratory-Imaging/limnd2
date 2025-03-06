@@ -9,7 +9,10 @@ authors = [
     {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
 ]
 dependencies = [
+    "h5py",
     "numpy",
+    "ome_types",
+    "pandas",
     'importlib-metadata; python_version<="3.12"',
 ]
 

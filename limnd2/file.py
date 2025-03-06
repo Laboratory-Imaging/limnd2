@@ -110,12 +110,12 @@ class LimBinaryIOChunker(BaseChunker):
         return "rb+" == self._fh.mode
 
     def _file_size(self):
-        def calcsize(fh):
+        def calc_size(fh):
             curr = fh.tell()
             size = fh.seek(0, os.SEEK_END)
             fh.seek(curr)
             return size
-        return self._mmap.size() if self._mmap else calcsize(self._fh)
+        return self._mmap.size() if self._mmap else calc_size(self._fh)
 
     def _currpos(self) -> int:
         return self._fh.tell()

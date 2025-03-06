@@ -8,6 +8,7 @@ __all__ = [
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
     "Nd2Reader", "Nd2Writer",
     "ImageTextInfo",
+    "ResultItem", "ResultPane", "TableData", "ResultPanesConfiguration",
     "TiffReader",
 ]
 
@@ -17,4 +18,5 @@ from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadata
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .nd2 import Nd2Reader, Nd2Writer
+from .results import ResultItem, ResultPane, TableData, ResultPanesConfiguration
 from .textinfo import ImageTextInfo

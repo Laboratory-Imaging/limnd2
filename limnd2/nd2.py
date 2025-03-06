@@ -1,12 +1,14 @@
 import datetime, functools, numpy as np, os
+from abc import abstractmethod, ABC
 from pathlib import Path
 
 from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
-from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
+from .custom_data import CustomDescription, CustomDescriptionItemType, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
+from .results import create_table_data_from_h5, read_results_from_h5, TableData, ResultItem, ResultPane
 from .textinfo import ImageTextInfo, AppInfo
 from .variant import decode_var
 
@@ -14,7 +16,79 @@ if Nd2LoggerEnabled:
     import logging
     logger = logging.getLogger("limnd2")
 
-class Nd2Reader:
+class Nd2Base(ABC):
+    @property
+    def filename(self) -> str|None:
+        return self.chunker.filename
+
+    @property
+    def size_on_disk(self) -> int:
+        """
+        Returns the number of bytes the file takes on disk.
+        """
+        try:
+            return Nd2Base.file_size_on_disk(self.filename)
+        except ValueError or FileNotFoundError or PermissionError:
+            return self.chunker.size_on_disk
+
+    @property
+    def last_modified(self) -> datetime.datetime:
+        """
+        Returns the modify time of the file on disk.
+        """
+        try:
+            return Nd2Base.file_last_modified(self.filename)
+        except ValueError or FileNotFoundError or PermissionError:
+            return self.chunker.last_modified
+
+    @property
+    def version(self) -> tuple[int, int]:
+        """
+        Returns the version of the `.nd2` file as a tuple of two integers.
+        """
+        return self.chunker.format_version
+
+    @property
+    @abstractmethod
+    def chunker(self):
+        raise NotImplementedError
+
+    @staticmethod
+    def file_size_on_disk(filename: str|Path) -> int:
+        if filename is None:
+            raise ValueError()
+
+        if type(filename) == str:
+            filename = Path(filename)
+        size = filename.stat().st_size
+        filename = filename.with_suffix('.h5')
+        try:
+            size += filename.stat().size
+        except:
+            pass
+
+        return size
+
+    @staticmethod
+    def file_last_modified(filename: str|Path) -> datetime.datetime:
+        if filename is None:
+            raise ValueError()
+
+        if type(filename) == str:
+            filename = Path(filename)
+        mtime = filename.stat().st_mtime
+
+        filename = filename.with_suffix('.h5')
+        try:
+            h5_mtime = filename.stat().st_mtime
+            if mtime < h5_mtime:
+                mtime = h5_mtime
+        except:
+            pass
+
+        return datetime.datetime.fromtimestamp(mtime)
+
+class Nd2Reader(Nd2Base):
     """
     Creates Nd2Read instance for reading `.nd2` files and its attributes, metadata, properties, image data and so on.
 
@@ -36,6 +110,7 @@ class Nd2Reader:
         chunker_kwargs
             Additional parameters for chunker.
         """
+        super().__init__()
         self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
 
     def __enter__(self):
@@ -43,31 +118,6 @@ class Nd2Reader:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.finalize()
-
-    @property
-    def filename(self) -> str|None:
-        return self._chunker.filename
-
-    @property
-    def size_on_disk(self) -> int:
-        """
-        Returns the number of bytes the file takes on disk.
-        """
-        return self._chunker.size_on_disk
-
-    @property
-    def last_modified(self) -> datetime.datetime:
-        """
-        Returns the modify time of the file on disk.
-        """
-        return self._chunker.size_on_disk
-
-    @property
-    def version(self) -> tuple[int, int]:
-        """
-        Returns the version of the `.nd2` file as a tuple of two integers.
-        """
-        return self._chunker.format_version
 
     @functools.cached_property
     def is3d(self) -> bool:
@@ -244,6 +294,19 @@ class Nd2Reader:
             return None
         return CustomDescription.from_lv(data)
 
+    @functools.cached_property
+    def smart_experiment_description(self) -> dict[str, any]|None:
+        if self.customDescription is None or self.customDescription.name != "onepush":
+            return None
+        se_custom_data = {}
+        for item in self.customDescription:
+            if item.name in [ 'Assay', 'Date', 'Name', 'Plate', 'User', 'Notes' ]:
+                if item.type == CustomDescriptionItemType.Date:
+                    se_custom_data[item.name.lower()] = item.date.isoformat()
+                else:
+                    se_custom_data[item.name.lower()] = item.valueAsText
+        return se_custom_data
+
 
     def generateLoopIndexes(self, named: bool = False) -> list:
         """
@@ -261,8 +324,8 @@ class Nd2Reader:
             names = ('w', ) + names
             mp_size, wp_size = shape[i], wp_frameinfo.nwells
             true_mp_size = mp_size // wp_size
-            for idexes in self.experiment.generateLoopIndexes(named=False):
-                lst = list(idexes)
+            for indexes in self.experiment.generateLoopIndexes(named=False):
+                lst = list(indexes)
                 windex, lst[i] = lst[i] // true_mp_size, lst[i] % true_mp_size
                 lst = [windex] + lst
                 ret.append(dict(zip(names, lst)) if named else lst)
@@ -286,7 +349,7 @@ class Nd2Reader:
     def chunker(self):
         return self._chunker
 
-    def chunk(self, name : bytes|str, asbytes : bool|None = None) -> bytes|memoryview|None:
+    def chunk(self, name : bytes|str) -> bytes|memoryview|None:
         """
         Returns data for specific chunk name
 
@@ -313,13 +376,13 @@ class Nd2Reader:
     def downsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         return self._chunker.downsampledImage(seqindex, downsize, rect)
 
-    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
-        return self._chunker.binaryRasterData(binid, seqindex, rect)
+    def binaryRasterData(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        return self._chunker.binaryRasterData(bin_id, seqindex, rect)
 
-    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
-        return self._chunker.downsampledBinaryRasterData(binid, seqindex, downsize, rect)
+    def downsampledBinaryRasterData(self, bin_id: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        return self._chunker.downsampledBinaryRasterData(bin_id, seqindex, downsize, rect)
 
-    def crestDeepSimRawData(self, seqindex: int, componentindex: int) -> NumpyArrayLike:
+    def crestDeepSimRawData(self, seqindex: int, component_index: int) -> NumpyArrayLike:
         """
         This method retrieves deepSIM data for a specific sequence index and component.
 
@@ -375,7 +438,7 @@ class Nd2Reader:
         seqindex : int
             The index of the sequence for which the deepSIM data is being retrieved.
 
-        componentindex : str
+        component_index : str
             The index of the component for which the deepSIM data is requested.
 
         Returns
@@ -399,7 +462,7 @@ class Nd2Reader:
         NameNotInChunkmapError
             If chunk with given sequence and component index is missing.
         """
-        return self._chunker.crestDeepSimRawData(seqindex, componentindex)
+        return self._chunker.crestDeepSimRawData(seqindex, component_index)
 
     def crestDeepSimRawDataIndices(self) -> list[tuple[int, int]]:
         """
@@ -411,19 +474,53 @@ class Nd2Reader:
         """
         return self._chunker.crestDeepSimRawDataIndices()
 
+    @functools.cached_property
+    def results(self) -> dict[str, ResultItem]:
+        """
+        Returns a dictionary of all results in the accompanying `.h5` file.
+
+        Each result potentially contains tabular results (tables, graphs, ...) and binary layers.
+        """
+        return read_results_from_h5(self.filename.replace(".nd2", ".h5"))
+
+    def result_binary_data(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        pass
+
+    def result_private_table(self, result_name: str, pane: str, table_name: str) -> TableData:
+        the_pane: ResultPane = None
+        try:
+            the_pane = self.results[result_name].result_panes[pane]
+        except KeyError:
+            raise KeyError(f"Result {result_name} or pane {pane} not found in H5.")
+
+        try:
+            return the_pane.private_tables[table_name]
+        except KeyError:
+            pass
+
+        try:
+            loc = the_pane.private_table_locations[table_name]
+        except KeyError:
+            raise KeyError(f"Table name {table_name} not found in H5 {result_name}/{pane} .")
+
+        table_data: TableData = create_table_data_from_h5(self.filename.replace(".nd2", ".h5"), loc)
+        the_pane.private_tables[table_name] = table_data
+
+        return the_pane.private_tables[table_name]
+
     def finalize(self) -> None:
         return self._chunker.finalize()
 
 
-class Nd2Writer:
+class Nd2Writer(Nd2Base):
     """
     Experimental ND2 file writer.
 
     Supports encoding od all image attributes, most commonly used experiments and most of image metadata.
-    Currently does not support encoding of Wellplates, binary layers, ROIs and any custom data and text into chunk.
+    Currently does not support encoding of Well-plates, binary layers, ROIs and any custom data and text into chunk.
 
     !!! info
-        Data is written in chunks, so you can write data in any order you want, imade data however can
+        Data is written in chunks, so you can write data in any order you want, image data however can
         only be written after image attributes are set, if you write same chunk multiple times, all chunks will be saved,
         however only the last one will be used.
 
@@ -464,6 +561,7 @@ class Nd2Writer:
         chunker_kwargs
             Additional parameters for chunker.
         """
+        super().__init__()
         self._chunker = self.create_chunker(file, append=append, chunker_kwargs=chunker_kwargs)
 
     def __enter__(self):
@@ -471,33 +569,6 @@ class Nd2Writer:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.finalize()
-
-    @property
-    def filename(self) -> str|None:
-        return self._chunker.filename
-
-    @property
-    def size_on_disk(self) -> int:
-        """
-        Returns the number of bytes the file takes on disk.
-        """
-        return self._chunker.size_on_disk
-
-    @property
-    def last_modified(self) -> datetime.datetime:
-        """
-        Returns the modify time of the file on disk.
-        """
-        return self._chunker.size_on_disk
-
-
-    @property
-    def version(self) -> tuple[int, int]:
-        """
-        Returns the version of the `.nd2` file as a tuple of two integers.
-        """
-        return self._chunker.format_version
-
 
     @property
     def imageAttributes(self) -> ImageAttributes:
@@ -569,7 +640,7 @@ class Nd2Writer:
 
     def finalize(self) -> None:
         """
-        Expicitely finalize the file, this is not needed if you use `with` statement.
+        Explicitly finalize the file, this is not needed if you use `with` statement.
         """
         return self._chunker.finalize()
 
@@ -596,7 +667,7 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
         if readonly and "rb" != file.mode:
             raise ValueError("File handle passed to LimNd2Reader must have \"rb\" mode")
         elif not readonly and file.mode not in ("rb+", "wb"):
-            raise ValueError("File handle passed to LimNd2Wrtier must have \"rb+\" or \"wb\" mode")
+            raise ValueError("File handle passed to LimNd2Writer must have \"rb+\" or \"wb\" mode")
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
 def format_file_size(size: int) -> str:

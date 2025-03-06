@@ -32,6 +32,17 @@
             "program": "./tst/legacy_test.py",
             "console": "integratedTerminal",
             "justMyCode": false
+        },
+        {
+            "name": "tst/tst3.py - results",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./tst/tst3.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }
