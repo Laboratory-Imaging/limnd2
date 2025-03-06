@@ -179,7 +179,7 @@ def read_result_item(name: str, result: h5py.Group) -> ResultItem:
 
     return ResultItem(name=name, binaries=bins, result_panes=panes)
 
-def _read_runtime_state_from_h5(tbl : h5py.Group):
+def _read_runtime_state_from_group(tbl : h5py.Group):
     initialSateColumn = runtimeSateColumn = None
     for colName in tbl.keys():
         column = tbl[colName]
@@ -197,7 +197,7 @@ def _read_runtime_state_from_h5(tbl : h5py.Group):
                     raise PaneDataVersionTooLow(ver)
                 runtimeSateColumn = column
     column = runtimeSateColumn or initialSateColumn
-    return json.loads(column[0].decode("utf-8")) if column else None
+    return json.loads(column[0].decode("utf-8") if type(column[0]) == bytes else column[0]) if column else None
 
 def _generate_result_pane(table_group: h5py.Group) -> ResultPane:
     private_tables = {}
@@ -208,7 +208,7 @@ def _generate_result_pane(table_group: h5py.Group) -> ResultPane:
         private_tables[table_name] = table.name
     return ResultPane(
         private_table_locations = private_tables,
-        state = _read_runtime_state_from_h5(table_group)
+        state = _read_runtime_state_from_group(table_group)
         )
 
 def _generate_fake_result_pane(table_meta: list[tuple[h5py.Group, dict[str, any]]]) -> ResultPane:
@@ -221,7 +221,7 @@ def _generate_fake_result_pane(table_meta: list[tuple[h5py.Group, dict[str, any]
         if "result" not in sys_flags:
             continue
         if "html" in sys_flags or "webpage" in sys_flags:
-            rt_state = _read_runtime_state_from_h5(tbl)
+            rt_state = _read_runtime_state_from_group(tbl)
             table_name = chr(curr_name_ord)
             tab = rt_state["panes"][0]["state"]["tabs"][0]
             orig_table_name = tab["state"]["_tableName"]
