@@ -3,7 +3,7 @@ from abc import abstractmethod, ABC
 from pathlib import Path
 
 from .attributes import ImageAttributesPixelType
-from .base import FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
+from .base import FileLikeObject, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .custom_data import CustomDescription, CustomDescriptionItemType, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker

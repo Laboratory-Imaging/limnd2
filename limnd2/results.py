@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
-import errno, enum, h5py, json, numpy, pandas
+import errno, enum, h5py, json, pandas
 
 class PaneDataVersionTooLow(Exception):
     def __init__(self, version: int = 0):
@@ -69,7 +69,7 @@ def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
                         continue
                     latest_result_variant = result_variant
                     latest_time = ctime
-                results[result_name] = _read_result_item(result_name, latest_result_variant)
+                results[result_name] = read_result_item(result_name, latest_result_variant)
         return results
     except OSError as e:
         if e.errno == 33:
@@ -85,7 +85,7 @@ def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> Tabl
     try:
         with h5py.File(h5_filename, 'r') as h5:
             tbl = h5[tbl_location]
-            id_meta, column_data = {}, {}
+            id_meta = {}
             table_data = TableData(name=tbl.attrs["Id"], metadata=json.loads(tbl.attrs["Metadata"]))
             for key in tbl.keys():
                 item = tbl[key]
@@ -109,7 +109,6 @@ def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> Tabl
                         table_data.df[title] = a
                         meta["globalRange"] = { "min": float(a.min()), "max": float(a.max()) }
                     else:
-                        #a = pandas.array([s if isinstance(s, str) else s.decode("utf-8") for s in column[:]], dtype="string")
                         a = pandas.array(column[:])
                         a[a == b''] = pandas.NA
                         table_data.df[title] = a
@@ -126,12 +125,8 @@ def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> Tabl
 
     except Exception as e:
         print(e)
-        print("\n")
-        print("\n")
-        print("\n")
-        print("\n")
 
-def _read_result_item(name: str, result: h5py.Group) -> ResultItem:
+def read_result_item(name: str, result: h5py.Group) -> ResultItem:
     bins = []
     panes = {}
     all_panes = []
