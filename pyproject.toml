@@ -9,7 +9,7 @@ authors = [
     {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
 ]
 dependencies = [
-    "h5py",
+    "h5py==3.12.1",
     "numpy",
     "ome_types",
     "pandas",
