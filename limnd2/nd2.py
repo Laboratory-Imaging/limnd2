@@ -49,6 +49,10 @@ class Nd2Base(ABC):
         return self.chunker.format_version
 
     @property
+    def chunk_size(self) -> tuple[int,int]|None:
+        return None
+
+    @property
     @abstractmethod
     def chunker(self):
         raise NotImplementedError
