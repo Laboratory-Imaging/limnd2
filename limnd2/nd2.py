@@ -22,6 +22,10 @@ class Nd2Base(ABC):
         return self.chunker.filename
 
     @property
+    def url(self) -> str|None:
+        return Path(self.chunker.filename).absolute().as_uri()
+
+    @property
     def size_on_disk(self) -> int:
         """
         Returns the number of bytes the file takes on disk.
@@ -486,6 +490,12 @@ class Nd2Reader(Nd2Base):
         Each result potentially contains tabular results (tables, graphs, ...) and binary layers.
         """
         return read_results_from_h5(self.filename.replace(".nd2", ".h5"))
+
+    def result_size_on_disk(self, result_name: str) -> int|None:
+        """
+        Returns size of the result.
+        """
+        return None
 
     def result_binary_data(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass

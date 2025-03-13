@@ -45,6 +45,7 @@ class ResultPanesConfiguration(enum.StrEnum):
 class ResultItem:
     name: str
     load_error: str|None = None
+    attributes: dict[str, any] = field(default_factory=dict)
     binaries: list[BinaryResultItem] = field(default_factory=list)
     result_panes: dict[str, ResultPane] = field(default_factory=dict)
     result_panes_configuration: ResultPanesConfiguration = ResultPanesConfiguration.none
@@ -162,8 +163,17 @@ def read_result_item(name: str, result: h5py.Group) -> ResultItem:
         except json.decoder.JSONDecodeError:
             continue
 
+    attribute_keys = [ "Application_build_number", "Application_name", "Application_version", "Creation_time", "GA3_recipe_hash", "Username" ]
+    attributes = { k: result.attrs.get(k) for k in attribute_keys if k in result.attrs }
+    if "Creation_time" in attributes and type(attributes["Creation_time"]) == float:
+        attributes["Creation_time"] = int(jdn_to_timestamp(attributes["Creation_time"]))
+
     if result_version_too_low is not None:
-        return ResultItem(name=name, load_error=f'Error: Analysis results version is too low ({result_version_too_low}).',  binaries=bins)
+        if "Application_name" in attributes and "Application_version" in attributes:
+            error_text = f"Error: Analysis results version is too low ({attributes['Application_name']} {attributes['Application_version']})."
+        else:
+            error_text = f"Error: Analysis results version is too low ({result_version_too_low})."
+        return ResultItem(name=name, load_error=error_text,  binaries=bins)
 
     if 0 == len(all_panes):
         panes = {}
@@ -177,7 +187,7 @@ def read_result_item(name: str, result: h5py.Group) -> ResultItem:
         except PaneDataVersionTooLow:
             raise
 
-    return ResultItem(name=name, binaries=bins, result_panes=panes)
+    return ResultItem(name=name, attributes=attributes, binaries=bins, result_panes=panes)
 
 def _read_runtime_state_from_group(tbl : h5py.Group):
     initialSateColumn = runtimeSateColumn = None
@@ -248,3 +258,6 @@ def _make_unique_name(name: str, keys: list[str]) -> str:
         name += f"{original}_{index}"
         index += 1
     return name
+
+def jdn_to_timestamp(jdn):
+   return (jdn - 2_440_587.5) * 86_400.0
