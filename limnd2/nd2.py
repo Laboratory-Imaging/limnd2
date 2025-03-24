@@ -247,6 +247,7 @@ class Nd2Reader(Nd2Base):
     @functools.cached_property
     def imageDataRange(self) -> tuple[int, int]:
         return (np.min(self.compRange[:, 0]), np.max(self.compRange[:, 1])) if self.isFloat else (0, 2 ** self.imageAttributes.uiBpcSignificant - 1)
+
     @property
     def recordedData(self) -> RecordedData:
         recData = RecordedData()
@@ -280,20 +281,22 @@ class Nd2Reader(Nd2Base):
         """
         ia = self.imageAttributes
         loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in self.experiment if 0 < exp_level.count ]) if self.experiment else ""
-        filename = os.path.basename(self.filename)
-        path = os.path.dirname(self.filename)
+        if self.filename:
+            path, filename = os.path.split(self.filename)
+        elif self.url:
+            path, filename = os.path.split(self.url.rstrip("/"))
+
         bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
         frame_res = f"{ia.width} x {ia.height}"
         dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
-        file_size = self.chunker.size_on_disk
-        frame_size = format_file_size(ia.height*ia.widthBytes)
-        z_count = self.experiment.dims.get('z', 0) if self.experiment is not None else 0
-        volume_size = format_file_size(ia.height*ia.widthBytes*z_count)
-        sizes = f"{format_file_size(self.chunker.size_on_disk)} on disk, {frame_size} frame" + (f", {volume_size} volume" if z_count else "")
         calibration = f"{self.pictureMetadata.dCalibration:.3f} µm/px" if self.pictureMetadata.bCalibrated else "Uncalibrated"
+
         mtime = f"{self.chunker.last_modified.strftime('%x %X')}"
         app_created = self.appInfo.software
-        return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, file_size=file_size, frame_res=frame_res, volume_size=volume_size, sizes=sizes, calibration=calibration, mtime=mtime, app_created=app_created)
+
+        sizes = format_general_info_sizes(self.chunker.size_on_disk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*self.experiment.dims.get('z', 0) if self.experiment is not None else 0)
+
+        return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
 
     @functools.cached_property
     def customDescription(self) -> CustomDescription|None:
@@ -698,3 +701,15 @@ def format_file_size(size: int) -> str:
     if kB <= size:
         return f"{size/kB:.0f}kB"
     return f"{size} B"
+
+def format_general_info_sizes(file_bytes: int, frame_bytes: int, volume_bytes: int) -> dict[str, any]:
+    ret = {
+        "file_bytes": file_bytes,
+        "frame_bytes": frame_bytes,
+        "volume_bytes": volume_bytes,
+        "file_size": format_file_size(file_bytes),
+        "frame_size": format_file_size(frame_bytes),
+        "volume_size": format_file_size(volume_bytes)
+    }
+    ret["sizes"] = f"{ret['file_size']} on disk, {ret['frame_size']} frame" + (f", {ret['volume_size']} volume" if volume_bytes else "")
+    return ret
