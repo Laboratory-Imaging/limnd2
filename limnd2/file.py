@@ -29,17 +29,18 @@ def _ceil_align(x: int, alignment: int) -> int:
     return (x + (alignment - 1)) // alignment * alignment
 
 class LimBinaryIOChunker(BaseChunker):
-    def __init__(self, fh: typing.BinaryIO,
+    def __init__(self, fh_or_memory: typing.BinaryIO|memoryview,
                  *,
-                 nommap:bool = False,
+                 nommap: bool = False,
                  filename: str = None,
                  with_image_attributes: ImageAttributes|None = None,
                  with_binary_raster_metadata: BinaryRasterMetadata|None = None,
                  **kwargs) -> None:
         super().__init__(with_image_attributes=with_image_attributes, with_binary_raster_metadata=with_binary_raster_metadata)
         self._filename = filename
-        self._fh: typing.BinaryIO = fh
+        self._fh: typing.BinaryIO = None if isinstance(fh_or_memory, memoryview) else fh_or_memory
         self._mmap: mmap.mmap|None = None
+        self._memory: mmap.mmap|memoryview|None = None
         self._version: tuple[int, int] = None
         self._chunkmap: collections.OrderedDict|None = None
         self._chunkmap_is_dirty: bool = False
@@ -48,14 +49,17 @@ class LimBinaryIOChunker(BaseChunker):
         if self.is_readonly:
             if Nd2LoggerEnabled:
                 logger.info(f"Opening {self._filename} Chunker for READING.")
-            # 1. try mmap the file for faster access
-            if not nommap:
+            # 1. check if it is memoryview
+            if self._fh is None:
+                self._memory = fh_or_memory
+            # 2. try mmap the file for faster access
+            elif not nommap:
                 try:
                     self._mmap = mmap.mmap(self._fh.fileno(), 0, access=mmap.ACCESS_READ)
                 except Exception as e:
                     print(f"Debug: could not mmap file {e}")
                     self._mmap = None
-            # 2. check the header and version
+            # 3. check the header and version
             self._version = self.read_file_header()
             if self._version is None:
                 raise RuntimeError("Not a valid ND2 file format")
@@ -91,7 +95,10 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def last_modified(self) -> datetime.datetime:
-        return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime) if self._filename else datetime.now
+        try:
+            return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime)
+        except FileNotFoundError:
+            return datetime.datetime.now()
 
     @property
     def format_version(self) -> tuple[int, int]:
@@ -103,36 +110,44 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def is_readonly(self):
-        return "rb" == self._fh.mode
+        return (self._fh is None) or ("rb" == self._fh.mode)
 
     @property
     def is_appending(self):
-        return "rb+" == self._fh.mode
+        return (self._fh is not None) and ("rb+" == self._fh.mode)
 
     def _file_size(self):
-        def calc_size(fh):
-            curr = fh.tell()
-            size = fh.seek(0, os.SEEK_END)
-            fh.seek(curr)
+        if self._mmap:
+            return self._mmap.size()
+        elif self._memory:
+            return self._memory.nbytes
+        else:
+            curr = self._fh.tell()
+            size = self._fh.seek(0, os.SEEK_END)
+            self._fh.seek(curr)
             return size
-        return self._mmap.size() if self._mmap else calc_size(self._fh)
 
     def _currpos(self) -> int:
         return self._fh.tell()
 
-    def _get_buffer_and_offset(self, start : int, len : int) -> bytes:
-        if self._mmap is None:
+    def _get_buffer_and_offset(self, start : int, len : int) -> tuple[bytes, int]:
+        if self._mmap:
+            return self._mmap, start
+        elif self._memory:
+            return self._memory[start:start+len].tobytes(), 0
+        else:
             self._fh.seek(start)
             return self._fh.read(len), 0
-        else:
-            return (self._mmap, start)
+
 
     def _read_struct_at(self, s : struct.Struct, pos : int) -> bytes:
-        if self._mmap is None:
+        if self._mmap:
+            return self._mmap[pos:pos+s.size]
+        elif self._memory:
+            return self._memory[pos:pos+s.size].tobytes()
+        else:
             self._fh.seek(pos)
             return self._fh.read(s.size)
-        else:
-            return self._mmap[pos:pos+s.size]
 
     def _read_chunk(self, pos: int) -> bytes:
         magic, name_length, data_length = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, pos))
@@ -538,7 +553,8 @@ class LimBinaryIOChunker(BaseChunker):
             self._fh.truncate()
         if self._mmap is not None:
             self._mmap.close()
-        self._fh.close()
+        if self._fh:
+            self._fh.close()
 
     def rollback(self) -> None:
         if Nd2LoggerEnabled:

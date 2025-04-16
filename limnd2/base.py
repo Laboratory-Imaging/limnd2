@@ -9,7 +9,7 @@ from .experiment import ExperimentLevel, ExperimentLoopType
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo
 
-FileLikeObject: typing.TypeAlias = str | int | typing.BinaryIO | Path
+FileLikeObject: typing.TypeAlias = str | Path | typing.BinaryIO | memoryview
 ChunkMap: typing.TypeAlias = typing.Mapping[bytes, tuple]
 
 Nd2LoggerEnabled = False

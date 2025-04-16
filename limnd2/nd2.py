@@ -680,6 +680,9 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
         chunker_kwargs.update(dict(filename=file))
         return LimBinaryIOChunker(fh, **chunker_kwargs)
 
+    elif isinstance(file, memoryview):
+        return LimBinaryIOChunker(file, **chunker_kwargs)
+
     elif (hasattr(file, "read") or hasattr(file, "write")) and hasattr(file, "seek") and hasattr(file, "tell") and hasattr(file, "mode"):
         if readonly and "rb" != file.mode:
             raise ValueError("File handle passed to LimNd2Reader must have \"rb\" mode")

@@ -1,7 +1,10 @@
+import limnd2, mmap
 
-import limnd2
+FILE = "tst_data\\zstack.nd2"
 
-FILE = "d:\\file.nd2"
+#ff = open(FILE, "rb")
+#mm = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
+#print(limnd2.allImageInformationAsJsons(memoryview(mm), chunker_kwargs=dict(filename="file.nd2")))
 
 def file_attributes():
     f = limnd2.Nd2Reader(FILE)
