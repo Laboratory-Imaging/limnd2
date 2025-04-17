@@ -4,38 +4,19 @@ from .experiment import ExperimentLevel
 from .metadata import PictureMetadataPicturePlanes
 from .nd2 import Nd2Reader
 
-import base64, hashlib, itertools, json, os
+from pathlib import Path
+from PIL  import Image
 
-def allImageInformationAsJsons(file_like: FileLikeObject, *, chunker_kwargs) -> tuple[str, str]:
-    with Nd2Reader(file_like, chunker_kwargs=chunker_kwargs) as reader:
-        return imageInformationAsJson(reader), recordedDataAsJson(reader)
+import base64, hashlib, itertools, json
 
-def imageInformationAsJson(file_object : Nd2Reader) -> str:
-    ret = {}
-    ret = file_object.generalImageInfo
-    ret["imageTextInfo"] = file_object.imageTextInfo.to_dict() if file_object.imageTextInfo is not None else {}
+def imageInformationAsJSON(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> str:
+    return json.dumps(gatherImageInformation(file_like, filename=filename, last_modified=last_modified))
 
-    exp_data = []
-    if file_object.experiment is not None:
-        for exp in file_object.experiment:
-            json_ = json.dumps(_experiment_to_table(exp))
-            exp_data.append(dict(ClassName=exp.name.lower(), LoopName=f'{exp.name} Loop', InfoData="data:application/json;base64," + base64.b64encode(json_.encode()).decode()))
-    ret["experimentData"] = exp_data
+def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> dict[str, any]:
+    with Nd2Reader(file_like, chunker_kwargs=dict(filename=filename, last_modified=last_modified)) as reader:
+        return gatherImageInfoFromNd2(reader)
 
-    custom_desc = []
-    if file_object.customDescription is not None:
-        for item in file_object.customDescription:
-            custom_desc.append(dict(name=item.name, text=item.valueAsText, type=int(item.type)))
-    ret["customMetadata"] = custom_desc
-
-    json_ = json.dumps(_picture_planes_to_table(file_object.pictureMetadata.sPicturePlanes))
-    ret["acquisitionDetails"] = "data:application/json;base64," + base64.b64encode(json_.encode()).decode()
-    return json.dumps(ret)
-
-def recordedDataAsJson(file_object : Nd2Reader) -> str:
-    return json.dumps(_recorded_data_to_table(file_object.recordedData))
-
-def imageDataAsDict(file_object: Nd2Reader) -> str:
+def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, any]:
     ret = {}
     ret["generalInfo"] = file_object.generalImageInfo
     ret["imageTextInfo"] = file_object.imageTextInfo.to_dict() if file_object.imageTextInfo is not None else {}
@@ -253,33 +234,38 @@ def maybe_wrap_field(value):
     return value
 
 def export_main_image_info(image_info):
+    gi = image_info.get('generalInfo', {})
     return "\n".join([
-        f"Filename:\t{maybe_wrap_field(image_info['generalInfo'].get('filename', ""))}",
-        f"Path:\t{maybe_wrap_field(image_info['generalInfo'].get('path', ""))}",
-        f"Dimension:\t{maybe_wrap_field(image_info['generalInfo'].get('dimension', ""))}",
-        f"Sizes:\t{maybe_wrap_field(image_info['generalInfo'].get('sizes', ""))}",
-        f"Modified time:\t{maybe_wrap_field(image_info['generalInfo'].get('mtime', ""))}",
-        f"Created by:\t{maybe_wrap_field(image_info['generalInfo'].get('app_created', ""))}"
+        f"Filename:\t{maybe_wrap_field(gi.get('filename', ""))}",
+        f"Path:\t{maybe_wrap_field(gi.get('path', ""))}",
+        f"Dimension:\t{maybe_wrap_field(gi.get('dimension', ""))}",
+        f"Sizes:\t{maybe_wrap_field(gi.get('sizes', ""))}",
+        f"Modified time:\t{maybe_wrap_field(gi.get('mtime', ""))}",
+        f"Created by:\t{maybe_wrap_field(gi.get('app_created', ""))}"
     ])
 
 def export_image_text_info(image_info):
-    return "\n".join([
-        f"Calibration:\t{maybe_wrap_field(image_info['generalInfo'].get('calibration', ""))}",
-        f"Optics:\t{maybe_wrap_field(image_info['imageTextInfo'].get('optics', ''))}",
-        f"Type:\t{maybe_wrap_field(image_info['imageTextInfo'].get('type', ''))}",
-        f"Sample ID:\t{maybe_wrap_field(image_info['imageTextInfo'].get('sampleId', ''))}",
-        f"Author:\t{maybe_wrap_field(image_info['imageTextInfo'].get('author', ''))}",
-        f"Description:\t{maybe_wrap_field(image_info['imageTextInfo']['description'])}",
-        f"Image ID:\t{maybe_wrap_field(image_info['imageTextInfo'].get('imageId', ''))}",
-        f"Group:\t{maybe_wrap_field(image_info['imageTextInfo'].get('group', ''))}",
-        f"Capturing:\t{maybe_wrap_field(image_info['imageTextInfo']['capturing'])}",
-        f"Sampling:\t{maybe_wrap_field(image_info['imageTextInfo'].get('sampling', ''))}",
-        f"Location:\t{maybe_wrap_field(image_info['imageTextInfo'].get('location', ''))}",
-        f"Date:\t{maybe_wrap_field(image_info['imageTextInfo'].get('date', ''))}",
-        f"Conclusion:\t{maybe_wrap_field(image_info['imageTextInfo'].get('conclusion', ''))}",
-        f"Info 1:\t{maybe_wrap_field(image_info['imageTextInfo'].get('info1', ''))}",
-        f"Info 2:\t{maybe_wrap_field(image_info['imageTextInfo'].get('info2', ''))}"
-    ])
+    ret = []
+    gi = image_info.get('generalInfo', {})
+    ret.append(f"Calibration:\t{maybe_wrap_field(gi.get('calibration', "Uncalibrated"))}")
+
+    ti = image_info.get('imageTextInfo', {})
+    ret.append(f"Optics:\t{maybe_wrap_field(ti.get('optics', ''))}")
+    ret.append(f"Type:\t{maybe_wrap_field(ti.get('type', ''))}")
+    ret.append(f"Sample ID:\t{maybe_wrap_field(ti.get('sampleId', ''))}")
+    ret.append(f"Author:\t{maybe_wrap_field(ti.get('author', ''))}")
+    ret.append(f"Description:\t{maybe_wrap_field(ti.get('description', ''))}")
+    ret.append(f"Image ID:\t{maybe_wrap_field(ti.get('imageId', ''))}")
+    ret.append(f"Group:\t{maybe_wrap_field(ti.get('group', ''))}")
+    ret.append(f"Capturing:\t{maybe_wrap_field(ti.get('capturing', ''))}")
+    ret.append(f"Sampling:\t{maybe_wrap_field(ti.get('sampling', ''))}")
+    ret.append(f"Location:\t{maybe_wrap_field(ti.get('location', ''))}")
+    ret.append(f"Date:\t{maybe_wrap_field(ti.get('date', ''))}")
+    ret.append(f"Conclusion:\t{maybe_wrap_field(ti.get('conclusion', ''))}")
+    ret.append(f"Info 1:\t{maybe_wrap_field(ti.get('info1', ''))}")
+    ret.append(f"Info 2:\t{maybe_wrap_field(ti.get('info2', ''))}")
+
+    return "\n".join(ret)
 
 def export_experiments(image_info):
     output = ""
@@ -309,8 +295,8 @@ def export_acquisition_details(image_info):
     return output
 
 
-def imageInformationAsTSV(filename):
-    data = imageDataAsDict(filename)
+def imageInformationAsTXT(image_information: str|dict[str, any]) -> str:
+    data = json.loads(image_information) if isinstance(image_information, str) else image_information
 
     result = ""
     result += "Main Image Info:\n" + export_main_image_info(data) + "\n\n"
@@ -325,15 +311,13 @@ def imageInformationAsTSV(filename):
         result += "Acquisition Details:\n" + export_acquisition_details(data) + "\n\n"
     return result
 
-def imageInformationAsXLSL(filename):
-
+def imageInformationAsXLSX(image_information: str|dict[str, any]) -> bytes:
     import io as IO
-
     import openpyxl
     from openpyxl.utils import get_column_letter
 
     wb = openpyxl.Workbook()
-    data = imageDataAsDict(filename)
+    data = json.loads(image_information) if isinstance(image_information, str) else image_information
     def add_sheet(sheet_name, data, col_widths=None, row_height=15):
         ws = wb.create_sheet(title=sheet_name)
         rows = [row.split('\t') for row in data.strip().split('\n')]
@@ -367,49 +351,4 @@ def imageInformationAsXLSL(filename):
     result = IO.BytesIO()
     wb.save(result)
     result.seek(0)
-    return base64.b64encode(result.getvalue()).decode('utf-8')
-
-
-
-def format_file_size(size_bytes: int) -> str:
-    """Converts file size to human-readable format."""
-    units = ["B", "KB", "MB", "GB", "TB"]
-    size = float(size_bytes)
-    unit_index = 0
-    while size >= 1024 and unit_index < len(units) - 1:
-        size /= 1024
-        unit_index += 1
-    return f"{size:.2f} {units[unit_index]}"
-
-def get_nonND2_image_info(file_path: str) -> dict[str, any]:
-    import matplotlib.pyplot as plt
-    from datetime import datetime
-    """
-    Retrieves general information about an image file using only os and matplotlib. (for non-nd2 files)
-    """
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    filename = os.path.basename(file_path)
-    path = os.path.dirname(file_path)
-    file_size = os.path.getsize(file_path)
-    mtime = datetime.fromtimestamp(os.path.getmtime(file_path)).strftime('%m/%d/%y %H:%M:%S')
-
-    try:
-        img = plt.imread(file_path)
-        height, width = img.shape[:2]
-        bit_depth = img.dtype.itemsize * 8
-        num_channels = img.shape[2] if len(img.shape) == 3 else 1
-    except Exception as e:
-        height, width, bit_depth, num_channels = None, None, None, None
-
-    return {
-        "filename": filename,
-        "path": path,
-        "sizes": format_file_size(file_size),
-        "dimension": f"{width} x {height}" if width and height else "Unknown",
-        "bit_depth": f"{bit_depth}-bit" if bit_depth else "Unknown",
-        "num_channels": num_channels if num_channels else "Unknown",
-        "mtime": mtime,
-        "nonND2": True
-    }
+    return result.read()

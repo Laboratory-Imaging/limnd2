@@ -285,6 +285,7 @@ class Nd2Reader(Nd2Base):
             path, filename = os.path.split(self.filename)
         elif self.url:
             path, filename = os.path.split(self.url.rstrip("/"))
+        path += os.sep
 
         bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
         frame_res = f"{ia.width} x {ia.height}"

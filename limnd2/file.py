@@ -32,12 +32,14 @@ class LimBinaryIOChunker(BaseChunker):
     def __init__(self, fh_or_memory: typing.BinaryIO|memoryview,
                  *,
                  nommap: bool = False,
-                 filename: str = None,
+                 filename: str|None = None,
+                 last_modified: datetime.datetime|str|None = None,
                  with_image_attributes: ImageAttributes|None = None,
                  with_binary_raster_metadata: BinaryRasterMetadata|None = None,
                  **kwargs) -> None:
         super().__init__(with_image_attributes=with_image_attributes, with_binary_raster_metadata=with_binary_raster_metadata)
-        self._filename = filename
+        self._filename: str|None = filename
+        self._last_modified: datetime.datetime|None = datetime.datetime.fromisoformat(last_modified) if isinstance(last_modified, str) else last_modified
         self._fh: typing.BinaryIO = None if isinstance(fh_or_memory, memoryview) else fh_or_memory
         self._mmap: mmap.mmap|None = None
         self._memory: mmap.mmap|memoryview|None = None
@@ -72,7 +74,7 @@ class LimBinaryIOChunker(BaseChunker):
                 # 1. check the header and version
                 self._version = self.read_file_header()
                 if self._version is None:
-                    raise RuntimeError("Not a valid ND2 file format")
+                    raise NotNd2Format()
                 # 2. read the chunk map
                 self._chunkmap = self._read_chunkmap()
                 # 3. keep the file position at the end of the map as in NIS
@@ -95,10 +97,16 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def last_modified(self) -> datetime.datetime:
-        try:
-            return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime)
-        except FileNotFoundError:
-            return datetime.datetime.now()
+        if self._last_modified:
+            return self._last_modified
+
+        if self._filename:
+            try:
+                return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime)
+            except FileNotFoundError:
+                pass
+
+        return datetime.datetime.now()
 
     @property
     def format_version(self) -> tuple[int, int]:

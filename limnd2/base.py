@@ -71,7 +71,10 @@ ND2_CHUNK_RE_DownsampledTiledRasterBinaryData_3p        = re.compile(b'^CustomDa
 ND2_CHUNK_FORMAT_DeepSIMRawChannel                      = b'CustomDataSeq|AUXIMAGE_21_%u|%u!'       # component index | sequence index
 ND2_CHUNK_RE_DeepSIMRawChannel                          = re.compile(b'^CustomDataSeq\\|AUXIMAGE_21_(\\d+)\\|(\\d+)!$')
 
-
+class NotNd2Format(Exception):
+    def __init__(self):
+        self.message = "Not an ND2 file format: header does not match"
+        super().__init__(self.message)
 
 class NameNotInChunkmapError(Exception):
     def __init__(self, name: bytes|str):
