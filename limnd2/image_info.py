@@ -4,10 +4,7 @@ from .experiment import ExperimentLevel
 from .metadata import PictureMetadataPicturePlanes
 from .nd2 import Nd2Reader
 
-from pathlib import Path
-from PIL  import Image
-
-import base64, hashlib, itertools, json
+import hashlib, itertools, json
 
 def imageInformationAsJSON(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> str:
     return json.dumps(gatherImageInformation(file_like, filename=filename, last_modified=last_modified))
