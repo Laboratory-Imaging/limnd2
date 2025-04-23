@@ -8,6 +8,7 @@ __all__ = [
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX",
     "Nd2Reader", "Nd2Writer",
+    "PictureMetadata",
     "ImageTextInfo",
     "ResultItem", "ResultPane", "TableData", "ResultPanesConfiguration",
     "TiffReader",
@@ -20,5 +21,6 @@ from .custom_data import CustomDescription, RecordedData, RecordedDataItem, Reco
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX
 from .nd2 import Nd2Reader, Nd2Writer
+from .metadata import PictureMetadata
 from .results import ResultItem, ResultPane, TableData, ResultPanesConfiguration
 from .textinfo import ImageTextInfo
