@@ -33,7 +33,7 @@ def tiff_to_ND2(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_
     for plane in parsed_args.channels.values():
         parsed_args.metadata.addPlane(plane)
 
-    nd2_metadata = parsed_args.metadata.createMetadata()
+    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount)
     if not nd2_metadata.valid:
         nd2_metadata.makeValid(nd2_attributes.componentCount)
 
@@ -77,7 +77,7 @@ def tiff_to_ND2_multipage(files: list[dict[Path, list]], parsed_args: PathParser
     for plane in parsed_args.channels.values():
         parsed_args.metadata.addPlane(plane)
 
-    nd2_metadata = parsed_args.metadata.createMetadata()
+    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount)
     if not nd2_metadata.valid:
         nd2_metadata.makeValid(nd2_attributes.componentCount)
 
@@ -146,7 +146,7 @@ def tiff_to_ND2_OME(files: list[dict[Path, list]], parsed_args: PathParserArgs, 
     for plane in parsed_args.channels.values():
         parsed_args.metadata.addPlane(plane)
 
-    nd2_metadata = parsed_args.metadata.createMetadata()
+    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount)
     if not nd2_metadata.valid:
         nd2_metadata.makeValid(nd2_attributes.componentCount)
 

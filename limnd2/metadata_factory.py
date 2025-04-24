@@ -366,7 +366,7 @@ class Plane:
             pPoint = [emission_point]
         )
 
-        color = calculateColor(plane_fixed.color) if plane_fixed.color else ""
+        color = calculateColor(plane_fixed.color) if plane_fixed.color else 0xFF6A0
         filter = OpticalFilter(m_ePlacement = OpticalFilterPlacement.eOfpFilterTurret,
                                m_eNature = OpticalFilterNature.eOfnGeneric,
                                m_eSpctType = OpticalFilterSpectType.eOftNarrowBandpass,
@@ -565,12 +565,21 @@ class MetadataFactory:
         self.planes.append(new_plane)
         return new_plane
 
-    def createMetadata(self) -> PictureMetadata:
+    def createMetadata(self, *, number_of_channels_fallback: int = 1) -> PictureMetadata:
         """
         Creates a new PictureMetadata instance from the factory settings.
         """
         planes: list[PicturePlaneDesc] = []
         settings: list[SampleSettings] = []
+
+        # if no planes were added, add empty planes using number_of_channels_fallback
+        if not self.planes:
+            for i in range(number_of_channels_fallback):
+                plane_settings: dict = self._other_settings.copy()
+                plane_settings["name"] = f"Channel {i + 1}"
+                plane_settings["modality"] = PicturePlaneModalityFlags.modFluorescence
+                plane = Plane(**plane_settings)
+                self.addPlane(plane)
 
         # get list of planes, settings
         for index, p in enumerate(self.planes):

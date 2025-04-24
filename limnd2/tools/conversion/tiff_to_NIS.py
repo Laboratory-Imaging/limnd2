@@ -102,8 +102,12 @@ def tiff_to_NIS(args: list[str] | None = None):
 
     ome = OMEUtils.parse_ometiff(list(files.keys())[0])
 
+    if(ome["error"]):
+        print(ome["error_message"], file=sys.stderr)
+        return 1
+
     if ome["is_rgb"] and "channel" in exp_count:
-        logprint("Can not use channel dimension with RGB image.")
+        print("Can not use channel dimension with RGB image.", file=sys.stderr)
         return 1
 
     if "channel" in exp_order and parsed_args.channels:

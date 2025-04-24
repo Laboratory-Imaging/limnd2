@@ -97,12 +97,6 @@ class ProgressPrinter:
 class OMEUtils:
     @staticmethod
     def parse_ometiff(filename: Path = None) -> dict:
-        if filename is None:
-            # get filename from command line arguments
-            if len(sys.argv) < 2:
-                print("Usage: python -m limnd2 parse_ome <filename>")
-                sys.exit(1)
-            filename = Path(sys.argv[1])
         result = {
             "t" : 1,
             "z" : 1,
@@ -117,43 +111,53 @@ class OMEUtils:
             "error_message" : False,
         }
         with tifffile.TiffReader(filename) as tiff:
-
-            if len(tiff.series) != 1:
-                return {}
-            prod = 1
-            for axis, size in zip(tiff.series[0].axes, tiff.series[0].shape):
-                if axis in "T" :
-                    result["t"] = size
-                    result["axis_orig"] += axis
-                    result["axis_parsed"].append("timeloop")
-                    result["shape"].append(size)
-                elif axis in "CS":
-                    result["c"] = size
-                    result["axis_orig"] += axis
-                    result["axis_parsed"].append("channel")
-                    result["shape"].append(size)
-                elif axis in "Z":
-                    result["z"] = size
-                    result["axis_orig"] += axis
-                    result["axis_parsed"].append("zstack")
-                    result["shape"].append(size)
-                elif axis in "RM":
-                    result["m"] = size
-                    result["axis_orig"] += axis
-                    result["axis_parsed"].append("multipoint")
-                    result["shape"].append(size)
-                elif axis in "IO":
-                    result["unknown"] = size
-                    result["axis_orig"] += axis
+            if len(tiff.series) > 1:
+                resolutions = [s.shape[-2:] for s in tiff.series if len(s.shape) >= 2]
+                same_res = all(r == resolutions[0] for r in resolutions)
+                if same_res:
+                    total_images = sum(len(s.pages) for s in tiff.series)
+                    result["unknown"] = total_images
+                    result["axis_orig"] += "U"
                     result["axis_parsed"].append("unknown")
-                    result["shape"].append(size)
+                    result["shape"].append(total_images)
+                else:
+                    result["error"] = True
+                    result["error_message"] = "Multi-series with different resolutions not supported"
+                    return result
+            else:
+                prod = 1
+                for axis, size in zip(tiff.series[0].axes, tiff.series[0].shape):
+                    if axis in "T" :
+                        result["t"] = size
+                        result["axis_orig"] += axis
+                        result["axis_parsed"].append("timeloop")
+                        result["shape"].append(size)
+                    elif axis in "CS":
+                        result["c"] = size
+                        result["axis_orig"] += axis
+                        result["axis_parsed"].append("channel")
+                        result["shape"].append(size)
+                    elif axis in "Z":
+                        result["z"] = size
+                        result["axis_orig"] += axis
+                        result["axis_parsed"].append("zstack")
+                        result["shape"].append(size)
+                    elif axis in "RM":
+                        result["m"] = size
+                        result["axis_orig"] += axis
+                        result["axis_parsed"].append("multipoint")
+                        result["shape"].append(size)
+                    elif axis in "IO":
+                        result["unknown"] = size
+                        result["axis_orig"] += axis
+                        result["axis_parsed"].append("unknown")
+                        result["shape"].append(size)
 
-                if axis not in "XY":
-                    prod *= size
-
-            if len(tiff.pages) * tiff.pages[0].samplesperpixel != prod:
-                result["error"] = True
-                result["error_message"] = "Incorrect number of images (probably OME spanning over several tiff files)."
+                    if axis not in "XY":
+                        prod *= size
+                if len(tiff.pages) * tiff.pages[0].samplesperpixel != prod:
+                    result["error"] = True
+                    result["error_message"] = "Incorrect number of images (probably OME spanning over several tiff files)."
 
             if tiff.pages[0].photometric.name == "RGB":
                 result["is_rgb"] = True

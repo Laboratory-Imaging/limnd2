@@ -43,6 +43,17 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
+        },
+        {
+            "name": "conversion test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./tst/_conversion_test.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }
