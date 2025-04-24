@@ -24,4 +24,4 @@ limnd2-index = "limnd2.tools.index:main"
 
 
 [tool.setuptools]
-packages = ["limnd2"]
+packages = ["limnd2", "limnd2.tools", "limnd2.tools.conversion"]
