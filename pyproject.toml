@@ -8,13 +8,20 @@ version = "0.3.0"
 authors = [
     {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
 ]
+
 dependencies = [
     "h5py==3.12.1",
     "numpy",
     "ome_types",
     "pandas",
+    "tifffile",
+    "imagecodecs",
     'importlib-metadata; python_version<="3.12"',
 ]
+
+[project.scripts]
+limnd2-index = "limnd2.tools.index:main"
+
 
 [tool.setuptools]
 packages = ["limnd2"]
