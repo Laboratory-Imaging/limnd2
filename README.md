@@ -13,6 +13,11 @@ limnd2 package requires following packages (also listed in `requirements.txt`) t
 
 - python>=3.12.0
 - numpy
+- h5py
+- ome_types
+- pandas
+- tifffile
+- imagecodecs
 
 ### Installation scripts
 
