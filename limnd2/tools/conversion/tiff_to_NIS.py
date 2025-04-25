@@ -77,7 +77,7 @@ def tiff_to_NIS(args: list[str] | None = None):
         sys.exit(1)
 
     crawler = FileCrawler(parsed_args.folder,
-                          file_extensions = ["tif", "tiff"],
+                          file_extensions = ["tif", "tiff", "btf"],
                           regexp = parsed_args.regexp)
 
     logprint("Getting files.")
