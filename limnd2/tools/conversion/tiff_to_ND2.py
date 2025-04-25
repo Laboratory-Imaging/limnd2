@@ -8,7 +8,7 @@ from .tiff_reader import TiffReader
 
 import ome_types
 
-def tiff_to_ND2(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_count: dict[str, int]):
+def tiff_to_ND2(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_count: dict[str, int], ome: dict):
 
     #prepare dimensions and files
     dims = exp_count.copy()
@@ -33,7 +33,7 @@ def tiff_to_ND2(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_
     for plane in parsed_args.channels.values():
         parsed_args.metadata.addPlane(plane)
 
-    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount)
+    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback=-1 if ome["is_rgb"] else nd2_attributes.componentCount)
     if not nd2_metadata.valid:
         nd2_metadata.makeValid(nd2_attributes.componentCount)
 
@@ -47,7 +47,7 @@ def tiff_to_ND2(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_
 
 
 
-def tiff_to_ND2_multipage(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_count: dict[str, int]):
+def tiff_to_ND2_multipage(files: list[dict[Path, list]], parsed_args: PathParserArgs, exp_count: dict[str, int], ome: dict):
 
     #prepare dimensions and files
     files, dims = DimensionUtils.add_dimensions_as_idf(files, exp_count, {parsed_args.unknown_dim: parsed_args.unknown_dim_size})
@@ -77,7 +77,7 @@ def tiff_to_ND2_multipage(files: list[dict[Path, list]], parsed_args: PathParser
     for plane in parsed_args.channels.values():
         parsed_args.metadata.addPlane(plane)
 
-    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount)
+    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback=-1 if ome["is_rgb"] else nd2_attributes.componentCount)
     if not nd2_metadata.valid:
         nd2_metadata.makeValid(nd2_attributes.componentCount)
 

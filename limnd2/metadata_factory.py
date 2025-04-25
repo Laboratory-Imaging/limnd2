@@ -565,7 +565,7 @@ class MetadataFactory:
         self.planes.append(new_plane)
         return new_plane
 
-    def createMetadata(self, *, number_of_channels_fallback: int = 1) -> PictureMetadata:
+    def createMetadata(self, *, number_of_channels_fallback: int = -1) -> PictureMetadata:
         """
         Creates a new PictureMetadata instance from the factory settings.
         """
@@ -573,13 +573,30 @@ class MetadataFactory:
         settings: list[SampleSettings] = []
 
         # if no planes were added, add empty planes using number_of_channels_fallback
-        if not self.planes:
-            for i in range(number_of_channels_fallback):
+        if not self.planes and number_of_channels_fallback != -1:
+            if (number_of_channels_fallback == 1):
                 plane_settings: dict = self._other_settings.copy()
-                plane_settings["name"] = f"Channel {i + 1}"
+                plane_settings["name"] = "Mono"
                 plane_settings["modality"] = PicturePlaneModalityFlags.modFluorescence
+                plane_settings["color"] = "gray"
                 plane = Plane(**plane_settings)
                 self.addPlane(plane)
+            if (number_of_channels_fallback == 3):
+                for color in ["Blue", "Green", "Red"]:
+                    plane_settings: dict = self._other_settings.copy()
+                    plane_settings["name"] = f"{color}"
+                    plane_settings["modality"] = PicturePlaneModalityFlags.modBrightfield
+                    plane_settings["color"] = color.lower()
+                    plane = Plane(**plane_settings)
+                    self.addPlane(plane)
+
+            else:
+                for i in range(number_of_channels_fallback):
+                    plane_settings: dict = self._other_settings.copy()
+                    plane_settings["name"] = f"Channel {i + 1}"
+                    plane_settings["modality"] = PicturePlaneModalityFlags.modFluorescence
+                    plane = Plane(**plane_settings)
+                    self.addPlane(plane)
 
         # get list of planes, settings
         for index, p in enumerate(self.planes):

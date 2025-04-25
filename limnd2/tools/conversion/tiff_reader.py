@@ -13,6 +13,48 @@ from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="tifffile")
 logging.getLogger('tifffile').setLevel(logging.ERROR)
 
+def calculate_bpc_significant(numpy_bits_memory: int, tiff_bits_memory: int | tuple, max_sample_value: int | tuple) -> int:
+    """
+    Numpy bits memory is derived from the numpy dtype, which is the dtype used for actual array when reading data from the TIFF file.
+    TIFF bits memory is derived from the TIFF file itself using BitsPerSample tag.
+
+    Those 2 values should be the same.
+
+    Significant bits are calculated from the max sample value, which is derived from the MaxSampleValue tag.
+    It can be lower than the TIFF bits memory, if the image is not full range (for example 16 bit image in memory - maximum theoritical value is 65535, but the max sample value is 4095).
+    """
+
+    # turns out that the BitsPerSample tag can be a tuple, for example (8, 8, 8) for RGB image.
+    # in that case, we need to check if all values are the same, and if not, raise an error.
+    # this is not a common case, but it can happen.
+    if isinstance(tiff_bits_memory, tuple):
+        if len(set(tiff_bits_memory)) != 1:
+            raise ValueError(f"TIFF bits memory is a tuple with different values: {tiff_bits_memory}.")
+        tiff_bits_memory = tiff_bits_memory[0]
+
+    if isinstance(max_sample_value, tuple):
+        if len(set(max_sample_value)) != 1:
+            raise ValueError(f"Max sample value is a tuple with different values: {max_sample_value}.")
+        max_sample_value = max_sample_value[0]
+
+    if numpy_bits_memory != tiff_bits_memory:
+        raise ValueError(f"Mismatch between numpy dtype bits ({numpy_bits_memory}) and TIFF bits ({tiff_bits_memory}).")
+
+    if max_sample_value <= 0:
+        return tiff_bits_memory
+
+    bpc_significant = max_sample_value.bit_length()
+    if bpc_significant <= 8 and tiff_bits_memory > 8:
+        return tiff_bits_memory
+    return bpc_significant
+
+def get_significant_bits_from_ome(path) -> int:
+    try:
+        return ome_types.from_tiff(path).images[0].pixels.significant_bits             # try to get significant bits from OME
+    except:
+        return None
+
+
 class TiffPageMetadata:
     page_index: int
     shape: tuple[int, ...]
@@ -74,13 +116,17 @@ class TiffReader:
         return str(self.path) + str(self.pages_metadata)
 
     def asarray(self, page_index: int = 0) -> np.array:
+        """
+        Usage of this function is not recommended, as this class loads a lot of additional data,
+        if you just want to load the image data, use the `asarray` method of `tifffile.TiffFile`.
+
+        This class is designed to provide metadata, tags and information about the TIFF file, reading might be unnecesisary slow.
+        """
         if page_index < 0 or page_index >= self.number_of_pages:
             raise ValueError(f"Invalid page index, requested index: {page_index}, valid indices: 0 - {self.number_of_pages - 1}")
 
         with tifffile.TiffFile(self.path) as tif:
             return tif.pages[page_index].asarray()
-
-
 
     def get_nd2_attributes(self, page_index: int = 0, *, sequence_count = 1):
         if page_index < 0 or page_index >= self.number_of_pages:
@@ -88,11 +134,17 @@ class TiffReader:
         page = self.pages_metadata.pages[page_index]
         shape = page.shape
 
-        bits = page.dtype.itemsize * 8
-        try:
-            bits = ome_types.from_tiff(self.path).images[0].pixels.significant_bits             # try to get significant bits from OME
-        except:
-            bits = page.dtype.itemsize * 8                                                      # fallback to numpy element size
+
+        numpy_bits = page.dtype.itemsize * 8
+        tiff_bits = page.tags.get('BitsPerSample', numpy_bits)
+        max_value = page.tags.get('MaxSampleValue', -1)
+
+
+        # get significant bits from OME, if not available, calculate it using bits per sample and max sample value
+        if not (bits:= get_significant_bits_from_ome(self.path)):
+            bits = calculate_bpc_significant(numpy_bits, tiff_bits, max_value)
+
+        bpc_memory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8
 
         if page.dtype in (np.int8, np.int16, np.int32):
             pixel_type = ImageAttributesPixelType.pxtSigned
@@ -107,10 +159,10 @@ class TiffReader:
 
         return ImageAttributes(
             uiWidth = shape[1],
-            uiWidthBytes = shape[1] * components * page.dtype.itemsize,
+            uiWidthBytes = shape[1] * components * bpc_memory,
             uiHeight = shape[0],
             uiComp = components,
-            uiBpcInMemory = bits if bits % 8 == 0 else math.ceil(bits / 8) * 8,
+            uiBpcInMemory = bpc_memory,
             uiBpcSignificant = bits,
             uiSequenceCount = sequence_count,
             uiTileWidth = shape[1],

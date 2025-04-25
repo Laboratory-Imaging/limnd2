@@ -54,7 +54,7 @@ def get_group_values(path: Path, regexp: re.Pattern) -> list[list[str]]:
 
 def check_channels(parsed_channels: dict, found_channels: list[str]):
     for channel in found_channels:
-        if channel not in parsed_channels:
+        if str(channel) not in parsed_channels:
             print(f"Missing information for channel {channel}, provide info for all channels in files or for none.")
             sys.exit(1)
 
@@ -138,14 +138,14 @@ def tiff_to_NIS(args: list[str] | None = None):
         if ome["unknown"] > 0 and parsed_args.unknown_dim:
             #branch for existing unknown dimension = normal config + unknown dim        (used with multipage tiff files)
             parsed_args.unknown_dim_size = ome["unknown"]
-            tiff_to_ND2_multipage(files, parsed_args, exp_count)
+            tiff_to_ND2_multipage(files, parsed_args, exp_count, ome)
 
         elif OMEUtils.ome_dim(ome):
             #branch for only filename dimensions = normal config + ome dims             (used with ome.tiff files)
             tiff_to_ND2_OME(files, parsed_args, exp_count, ome)
         else:
             #branch for only filename dimensions = normal config                        (used with normal tiff files)
-            tiff_to_ND2(files, parsed_args, exp_count)
+            tiff_to_ND2(files, parsed_args, exp_count, ome)
 
         logprint(f"ND2 file created at {outpath.absolute()}.")
 

@@ -54,6 +54,17 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
+        },
+        {
+            "name": "AUTO: conversion test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./tst/_conversion_test_automated.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }
