@@ -19,7 +19,6 @@ from limnd2.metadata_factory import MetadataFactory, Plane
 
 LOG_TO_JSON = False
 
-
 def logprint(msg: str):
     # Function for printing logs to console or JSON format (that can be parsed in other places)
     if LOG_TO_JSON:
@@ -97,6 +96,16 @@ class ProgressPrinter:
 class OMEUtils:
     @staticmethod
     def parse_ometiff(filename: Path = None) -> dict:
+        def update_axis_result(result, full_category, short_category, size):
+            if full_category in result["axis_parsed"]:
+                result["error"] = True
+                result["error_message"] = f"Error: {full_category} already exists in axis_parsed."
+                return
+
+            result[short_category] = size
+            result["axis_parsed"].append(full_category)
+            result["shape"].append(size)
+
         result = {
             "t" : 1,
             "z" : 1,
@@ -104,78 +113,101 @@ class OMEUtils:
             "m" : 1,
             "is_rgb" : False,
             "unknown": 0,
-            "axis_orig": "",
             "axis_parsed": [],
             "shape" : [],
             "error" : False,
             "error_message" : False,
         }
         with tifffile.TiffReader(filename) as tiff:
-            if len(tiff.series) > 1:
+            """
+            Map axes character codes to dimension names (from tifffile source code):
+            - X : width          (image width)
+            - Y : height         (image length)
+            - Z : depth          (image depth)
+            - S : sample         (color space and extra samples)
+            - I : sequence       (generic sequence of images, frames, planes, pages)
+            - T : time           (time series)
+            - C : channel        (acquisition path or emission wavelength)
+            - A : angle          (OME)
+            - P : phase          (OME. In LSM, **P** maps to **position**)
+            - R : tile           (OME. Region, position, or mosaic)
+            - H : lifetime       (OME. Histogram)
+            - E : lambda         (OME. Excitation wavelength)
+            - Q : other          (OME)
+            - L : exposure       (FluoView)
+            - V : event          (FluoView)
+            - M : mosaic         (LSM 6)
+            - J : column         (NDTiff)
+            - K : row            (NDTiff)
+            """
+
+            # Following dictionary will try to correctly map tifffile dimension names to limnd2 dimensions:
+
+            GROUPED_AXIS_CATEGORIES = {
+                ("multipoint", "m"): "RPMJK",
+                ("time", "t"): "TVL",
+                ("zstack", "z"): "ZA",
+                ("channel", "c"): "CSEH",
+                ("unknown", "unknown"): "IQ",
+            }
+
+            DIMENSIONAL_AXIS = "XY"     # tiffile reports those as dimensions, but they are not added in experiments or metadata
+
+            # turns dictionary above to mapping of letters to dimension names
+            AXIS_CATEGORY_BY_LETTER = {
+                letter: (full, short)
+                for (full, short), letters in GROUPED_AXIS_CATEGORIES.items()
+                for letter in letters
+            }
+
+            if tiff.pages[0].photometric.name == "RGB":
+                result["is_rgb"] = True
+
+            if len(tiff.series) == 1:
+                prod = 1
+                for axis, size in zip(tiff.series[0].axes, tiff.series[0].shape):
+                    if axis not in AXIS_CATEGORY_BY_LETTER and axis not in DIMENSIONAL_AXIS:
+                        result["error"] = True
+                        result["error_message"] = f"Error: {axis} is not a known axis type."
+                        return result
+                    if axis in DIMENSIONAL_AXIS:
+                        continue
+
+                    full_category, short_category = AXIS_CATEGORY_BY_LETTER[axis]
+                    update_axis_result(result, full_category, short_category, size)
+                    if result["error"]:
+                        return result
+                    prod *= size
+
+                if len(tiff.pages) * tiff.pages[0].samplesperpixel != prod:
+                    result["error"] = True
+                    result["error_message"] = "Incorrect number of images (probably OME spanning over several tiff files)."
+            else:
+                # Allow multi-series tiff file ONLY IF all series have the same resolution
+                # in this case, we will treat it as a single series with multiple images
+
                 resolutions = [s.shape[-2:] for s in tiff.series if len(s.shape) >= 2]
                 same_res = all(r == resolutions[0] for r in resolutions)
                 if same_res:
                     total_images = sum(len(s.pages) for s in tiff.series)
-                    result["unknown"] = total_images
-                    result["axis_orig"] += "U"
-                    result["axis_parsed"].append("unknown")
-                    result["shape"].append(total_images)
+                    update_axis_result(result, "unknown", "unknown", total_images)
                 else:
                     result["error"] = True
                     result["error_message"] = "Multi-series with different resolutions not supported"
-                    return result
-            else:
-                prod = 1
-                for axis, size in zip(tiff.series[0].axes, tiff.series[0].shape):
-                    if axis in "T" :
-                        result["t"] = size
-                        result["axis_orig"] += axis
-                        result["axis_parsed"].append("timeloop")
-                        result["shape"].append(size)
-                    elif axis in "CS":
-                        result["c"] = size
-                        result["axis_orig"] += axis
-                        result["axis_parsed"].append("channel")
-                        result["shape"].append(size)
-                    elif axis in "Z":
-                        result["z"] = size
-                        result["axis_orig"] += axis
-                        result["axis_parsed"].append("zstack")
-                        result["shape"].append(size)
-                    elif axis in "RM":
-                        result["m"] = size
-                        result["axis_orig"] += axis
-                        result["axis_parsed"].append("multipoint")
-                        result["shape"].append(size)
-                    elif axis in "IO":
-                        result["unknown"] = size
-                        result["axis_orig"] += axis
-                        result["axis_parsed"].append("unknown")
-                        result["shape"].append(size)
-
-                    if axis not in "XY":
-                        prod *= size
-                if len(tiff.pages) * tiff.pages[0].samplesperpixel != prod:
-                    result["error"] = True
-                    result["error_message"] = "Incorrect number of images (probably OME spanning over several tiff files)."
-
-            if tiff.pages[0].photometric.name == "RGB":
-                result["is_rgb"] = True
         return result
 
     @staticmethod
     def ome_dim(ome: dict) -> bool:
         # this function checks if an image has known dimension (TMZ), most likely originating from an OME-TIFF file.
-        if ome["t"] > 1:
+        if ome["t"] > 1 or ome["m"] > 1 or ome["z"] > 1:
             return True
-        if ome["m"] > 1:
-            return True
-        if ome["z"] > 1:
-            return True
+
         if ome["is_rgb"]:
             return False
+
         elif ome["c"] > 1:
             return True
+
         return False
 
     @staticmethod
@@ -334,6 +366,9 @@ class DimensionUtils:
 
 
 class LIMND2Utils:
+
+    STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = False
+
     @staticmethod
     def create_experiment(dims: dict[str, int], tstep, zstep):
         exp = ExperimentFactory()
@@ -356,12 +391,21 @@ class LIMND2Utils:
         progress: ProgressPrinter,
         nd2_file_lock: Lock = None
     ):
+
+        stacked_mismatch = None
+
         # If we have multiple TIFF files, this is a multi-channel case
         if len(tiff_files) > 1:
             if isinstance(tiff_files[0], tuple):
                 arrays = tuple(tifffile.TiffReader(file).asarray(idf) for file, idf in tiff_files)
             else:
                 arrays = tuple(tifffile.TiffReader(file).asarray(0) for file in tiff_files)
+
+            # Check if arrays have the same shape
+            if not LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED:
+                dtypes = [arr.dtype for arr in arrays]
+                if len(set(dtypes)) > 1:
+                    stacked_mismatch = dtypes
 
             if arrays[0].ndim == 3:
                 print("This should not happen I think? several channels in filenames AND file?")
@@ -387,8 +431,14 @@ class LIMND2Utils:
         if nd2_file_lock:
             with nd2_file_lock:
                 nd2.setImage(image_seq_index, array)
+                if stacked_mismatch and not LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED:
+                    logprint(f"Warning: Stacked channels have different dtypes: {stacked_mismatch}. This may lead to data loss. This mesage will only be shown once")
+                    LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = True
         else:
             nd2.setImage(image_seq_index, array)
+            if stacked_mismatch and not LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED:
+                logprint(f"Warning: Stacked channels have different dtypes: {stacked_mismatch}. This may lead to data loss. This mesage will only be shown once")
+                LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = True
 
     @staticmethod
     def write_files_to_nd2(parsed_args, attr: limnd2.ImageAttributes, exp: limnd2.ExperimentLevel, metadata: limnd2.PictureMetadata, grouped_files: list[dict[str, list[Path]]]):

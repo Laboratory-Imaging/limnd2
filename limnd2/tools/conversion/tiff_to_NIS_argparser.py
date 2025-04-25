@@ -343,13 +343,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
                 tiff_to_NIS_utils.logprint(f"Could not convert emission wavelength value of '{lst[4]}' for channel '{lst[0]}' to integer, defaulting to 0.")
                 lst[4] = 0
 
-            try:
-                filename = int(lst[0])
-            except:
-                filename = lst[0]
-
-
-
+            filename = lst[0]
             result[filename] = Plane(name=lst[1], modality=lst[2], excitation_wavelength=int(lst[3]), emission_wavelength=int(lst[4]), color=lst[5])
         return result
 
