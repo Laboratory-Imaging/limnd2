@@ -1,4 +1,4 @@
-
+from __future__ import annotations
 import copy
 import itertools
 import math
@@ -11,9 +11,13 @@ import tifffile
 import limnd2
 from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
 from limnd2.metadata_factory import MetadataFactory, Plane
-from limnd2.tools.conversion.tiff_to_NIS_argparser import PathParserArgs
 from .LimImageSource import LimImageSource
 from .tiff_to_NIS_utils import logprint
+
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from limnd2.tools.conversion.tiff_to_NIS_argparser import PathParserArgs
 
 
 class LimImageSourceTiff(LimImageSource):

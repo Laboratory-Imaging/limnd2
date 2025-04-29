@@ -20,9 +20,7 @@ def tiff_to_NIS(args: list[str] | None = None):
     parsed_args: PathParserArgs = tiff_to_nis_argparser(args)
     filename_regexp = parsed_args.regexp
 
-    input_format = image_format_from_regexp(filename_regexp)
-
-    input_format_extensions = EXTENSION_MAP[input_format]
+    input_format_extensions = EXTENSION_MAP[parsed_args.extension]
 
     logprint("Starting script.")
     if not parsed_args:
@@ -38,7 +36,7 @@ def tiff_to_NIS(args: list[str] | None = None):
     if len(files) == 0:
         raise ValueError("ERROR: No tiff files matching given criteria were found.")
 
-    file_sources = {READER_CLASS_MAP[input_format](path): dims for path, dims in files.items()}
+    file_sources = {READER_CLASS_MAP[parsed_args.extension](path): dims for path, dims in files.items()}
     sample_file: LimImageSource = next(iter(file_sources.keys()))
 
     file_dimensions = sample_file.get_file_dimensions()

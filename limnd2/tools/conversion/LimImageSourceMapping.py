@@ -1,12 +1,18 @@
+from __future__ import annotations
+
 import enum
 import os
 from pathlib import Path
 import re
 
-from .LimImageSource import LimImageSource
+
 from .LimImageSourceJpeg import LimImageSourceJpeg
 from .LimImageSourcePng import LimImageSourcePng
 from .LimImageSourceTiff import LimImageSourceTiff
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .LimImageSource import LimImageSource
 
 class ImageFormat(enum.Enum):
     TIFF = enum.auto()

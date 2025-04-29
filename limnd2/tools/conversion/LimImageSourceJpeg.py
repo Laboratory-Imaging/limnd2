@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
 from limnd2.tools.conversion.tiff_to_NIS_utils import logprint
+
 from .LimImageSource import LimImageSource
 
 from PIL import Image

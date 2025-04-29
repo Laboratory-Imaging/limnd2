@@ -1,10 +1,15 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import copy
 from pathlib import Path
 
 import numpy as np
 from limnd2.attributes import ImageAttributes
-from limnd2.tools.conversion.tiff_to_NIS_argparser import PathParserArgs
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from limnd2.tools.conversion.tiff_to_NIS_argparser import PathParserArgs
 
 
 class LimImageSource(ABC):

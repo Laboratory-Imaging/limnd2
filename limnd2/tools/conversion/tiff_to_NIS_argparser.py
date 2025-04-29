@@ -4,6 +4,8 @@ from pathlib import Path
 import re
 import sys
 
+from limnd2.tools.conversion.LimImageSourceMapping import EXTENSION_TO_FORMAT, ImageFormat, image_format_from_regexp
+
 from . import tiff_to_NIS_utils
 
 from limnd2.metadata_factory import MetadataFactory, Plane
@@ -60,6 +62,7 @@ class S:
 class PathParserArgs:
     folder: Path = None
     regexp: re.Pattern = None
+    extension: ImageFormat = None
     groups: dict[int, str] = None
     # maps capture group number to experiment string
 
@@ -86,6 +89,10 @@ def create_parser() -> argparse.ArgumentParser:
     # positional args
     parser.add_argument("folder", help="Folder containing tiff files.")
     parser.add_argument("regexp", help="The regular expression with capture groups to match filenames.")
+    parser.add_argument("--extension",
+                        type=str,
+                        default=None,
+                        help="File extension to match. Default is empty string, tries to detect extension from regular expression.")
 
     # optional arguments
 
@@ -277,6 +284,19 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         print(f"ERROR: Invalid regex pattern: {e}")
         sys.exit(1)
 
+    extension = parsed_args.extension
+    if extension is None:
+        extensionType = image_format_from_regexp(regexp)
+    else:
+        if not extension.startswith("."):
+            extension = "." + extension
+        if extension in EXTENSION_TO_FORMAT:
+            extensionType = EXTENSION_TO_FORMAT[extension]
+        else:
+            print(f"ERROR: Extension '{extension}' is either incorrect or not supported.")
+            parser.print_usage()
+            sys.exit(1)
+
 
     # check if groups properly match arguments
     groups = get_groups(parsed_args, regexp)
@@ -353,6 +373,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
 
     return PathParserArgs(folder = folder_path,
                           regexp = regexp,
+                          extension = extensionType,
                           groups = groups,
                           time_step = tstep,
                           z_step = zstep,
