@@ -4,3 +4,4 @@ ome_types
 pandas
 tifffile
 imagecodecs
+Pillow

@@ -16,6 +16,7 @@ dependencies = [
     "pandas",
     "tifffile",
     "imagecodecs",
+    "Pillow",
     'importlib-metadata; python_version<="3.12"',
 ]
 
