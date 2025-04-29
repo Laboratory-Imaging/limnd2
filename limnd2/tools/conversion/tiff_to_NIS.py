@@ -36,7 +36,7 @@ def tiff_to_NIS(args: list[str] | None = None):
     if len(files) == 0:
         raise ValueError("ERROR: No tiff files matching given criteria were found.")
 
-    file_sources = {READER_CLASS_MAP[parsed_args.extension](path): dims for path, dims in files.items()}
+    file_sources: dict[LimImageSource, tuple] = {READER_CLASS_MAP[parsed_args.extension](path): dims for path, dims in files.items()}
     sample_file: LimImageSource = next(iter(file_sources.keys()))
 
     file_dimensions = sample_file.get_file_dimensions()
