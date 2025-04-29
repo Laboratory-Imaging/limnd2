@@ -573,6 +573,16 @@ class MetadataFactory:
         settings: list[SampleSettings] = []
 
         # if no planes were added, add empty planes using number_of_channels_fallback
+        """
+        # TODO: fix this
+        # problem: if you dont add channels manualy, PicturePlaneDesc will not be created and later code will be fixed by makeValid()
+        # however this ignored all the settings provided in this factory
+        # idea was to create empty planes here so that makeValid() will not be needed, but something is wrong with the code
+
+        # possibly we will need to pass a bool checking if image is rgb or not as here we dont have as big control over metadata
+        # as makeValid() does
+
+
         if not self.planes and number_of_channels_fallback != -1:
             if (number_of_channels_fallback == 1):
                 plane_settings: dict = self._other_settings.copy()
@@ -597,6 +607,10 @@ class MetadataFactory:
                     plane_settings["modality"] = PicturePlaneModalityFlags.modFluorescence
                     plane = Plane(**plane_settings)
                     self.addPlane(plane)
+        """
+
+        #for lookup:
+        f = PictureMetadata.makeValid
 
         # get list of planes, settings
         for index, p in enumerate(self.planes):

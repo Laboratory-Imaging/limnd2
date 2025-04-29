@@ -128,7 +128,7 @@ class TiffReader:
         with tifffile.TiffFile(self.path) as tif:
             return tif.pages[page_index].asarray()
 
-    def get_nd2_attributes(self, page_index: int = 0, *, sequence_count = 1):
+    def get_nd2_attributes(self, page_index: int = 0, *, sequence_count = 1) -> ImageAttributes:
         if page_index < 0 or page_index >= self.number_of_pages:
             raise ValueError(f"Invalid page index, requested index: {page_index}, valid indices: 0 - {self.number_of_pages - 1}")
         page = self.pages_metadata.pages[page_index]

@@ -309,10 +309,8 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         zoom_magnification = parsed_args.ms_zoom_magnification,
         immersion_refractive_index = parsed_args.ms_immersion_refractive_index,
         pinhole_diameter = parsed_args.ms_pinhole_diameter,
-
         pixel_calibration = parsed_args.pixel_calibration
     )
-
 
 
     def parse_channels(channels: list[str]) -> dict[str, Plane]:
@@ -335,12 +333,12 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
             try:
                 int(lst[3])
             except:
-                tiff_to_NIS_utils.logprint(f"Could not convert excitation wavelength value of '{lst[3]}' for channel '{lst[0]}' to integer, defaulting to 0.")
+                tiff_to_NIS_utils.logprint(f"Could not convert excitation wavelength value of '{lst[3]}' for channel '{lst[0]}' to integer, defaulting to 0.", type="warning")
                 lst[3] = 0
             try:
                 int(lst[4])
             except:
-                tiff_to_NIS_utils.logprint(f"Could not convert emission wavelength value of '{lst[4]}' for channel '{lst[0]}' to integer, defaulting to 0.")
+                tiff_to_NIS_utils.logprint(f"Could not convert emission wavelength value of '{lst[4]}' for channel '{lst[0]}' to integer, defaulting to 0.", type="warning")
                 lst[4] = 0
 
             filename = lst[0]
