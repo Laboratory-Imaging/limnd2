@@ -78,9 +78,10 @@ def tiff_to_NIS(args: list[str] | None = None):
             logprint(f"Describe JSON created at {outpath.absolute()}.")
 
     elif parsed_args.nd2_output:
+            logprint(f"Starting conversion to ND2.")
             outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
             convert_to_nd2(file_sources, sample_file, parsed_args, exp_count)
-            logprint(f"ND2 file created at {outpath.absolute()}.")
+            logprint(f"ND2 file created at {outpath.absolute()}.", type="success")
 
     logprint(f"Ending script, total time taken: {datetime.now() - start}")
     return outpath
