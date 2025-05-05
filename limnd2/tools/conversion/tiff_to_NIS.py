@@ -12,7 +12,7 @@ from .tiff_to_NIS_json import tiff_to_json
 from .tiff_to_NIS_argparser import tiff_to_nis_argparser, PathParserArgs
 from .tiff_to_NIS_utils import logprint
 
-from .LimImageSourceMapping import EXTENSION_MAP, READER_CLASS_MAP, image_format_from_regexp
+from .LimImageSourceMapping import EXTENSION_MAP, READER_CLASS_MAP
 
 def tiff_to_NIS(args: list[str] | None = None):
 
@@ -80,8 +80,10 @@ def tiff_to_NIS(args: list[str] | None = None):
     elif parsed_args.nd2_output:
             logprint(f"Starting conversion to ND2.")
             outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
-            convert_to_nd2(file_sources, sample_file, parsed_args, exp_count)
-            logprint(f"ND2 file created at {outpath.absolute()}.", type="success")
+            if convert_to_nd2(file_sources, sample_file, parsed_args, exp_count) == False:
+                sys.exit(1)
+            else:
+                logprint(f"ND2 file created at {outpath.absolute()}.", type="success")
 
     logprint(f"Ending script, total time taken: {datetime.now() - start}")
     return outpath

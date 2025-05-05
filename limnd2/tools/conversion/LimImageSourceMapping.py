@@ -52,10 +52,6 @@ def open_lim_image_source(filename: str | Path) -> LimImageSource:
 
 def image_format_from_regexp(regexp_str: re.Pattern) -> ImageFormat | None:
 
-    # TODO: possibly improve this so that input regexp doesnt have to contain the file extension,
-    # maybe add a flag to the parser saying what type of files to parse (tiff / png / jpeg) and if
-    # it is not provided, use the extension from the regexp
-
     path = regexp_str.pattern.removesuffix(".*")           # remove the last .* from the regexp string
     _, ext = os.path.splitext(path)
     if ext in EXTENSION_TO_FORMAT:

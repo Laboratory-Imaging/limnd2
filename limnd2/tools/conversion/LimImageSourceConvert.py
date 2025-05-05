@@ -46,7 +46,7 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
 
     # get image experiments
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
-    LIMND2Utils.write_files_to_nd2(parsed_args, nd2_attributes, nd2_experiment, nd2_metadata, grouped_files)
+    return LIMND2Utils.write_files_to_nd2(parsed_args, nd2_attributes, nd2_experiment, nd2_metadata, grouped_files)
 
 
 class LIMND2Utils:
@@ -117,7 +117,8 @@ class LIMND2Utils:
             try:
                 nd2_path.unlink()
             except PermissionError:
-                raise PermissionError(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.")
+                logprint(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.", type="error")
+                return False
 
         with limnd2.Nd2Writer(nd2_path) as nd2:
             nd2.imageAttributes = attr

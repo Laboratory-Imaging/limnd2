@@ -17,13 +17,16 @@ class LimImageSourcePng(LimImageSource):
     def read(self) -> np.ndarray:
         """Read the image into numpy array writeable by limnd2 library."""
         with Image.open(self.filename) as img:
-            if img.mode in ["L", "P", "RGB"]:
+            if img.mode in ["L", "P"]:
                 return np.array(img, dtype=np.uint8)
+
+            elif img.mode in ["RGB"]:
+                return np.array(img, dtype=np.uint8)[..., ::-1]
 
             elif img.mode in ["RGBA"]:
                 # Convert RGBA to RGB by dropping the alpha channel
                 img = img.convert("RGB")
-                return np.array(img, dtype=np.uint8)
+                return np.array(img, dtype=np.uint8)[..., ::-1]
 
             elif img.mode == "I":
                 return np.array(img, dtype=np.int32)
@@ -34,7 +37,7 @@ class LimImageSourcePng(LimImageSource):
             else:
                 # default for other modes:
                 img = img.convert("RGB")
-                return np.array(img, dtype=np.uint8)
+                return np.array(img, dtype=np.uint8)[..., ::-1]
 
     @property
     def is_rgb(self) -> bool:

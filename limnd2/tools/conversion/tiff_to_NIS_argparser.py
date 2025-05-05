@@ -235,7 +235,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         parser.print_usage()
         return
 
-    tstep = 100.0
+    tstep = 100.0       #default value, if not provided
     if parsed_args.__dict__[TSTEP.LONG] is not None:
         tstep = float(parsed_args.__dict__[TSTEP.LONG])
 
@@ -246,7 +246,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         parser.print_usage()
         return
 
-    zstep = 0.0
+    zstep = 100.0       #default value, if not provided
     if parsed_args.__dict__[ZSTEP.LONG] is not None:
         zstep = float(parsed_args.__dict__[ZSTEP.LONG])
 
