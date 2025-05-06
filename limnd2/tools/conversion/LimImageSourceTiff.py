@@ -79,7 +79,7 @@ class LimImageSourceTiff(LimImageSource):
         # Following dictionary will try to correctly map tifffile dimension names to limnd2 dimensions:
         GROUPED_AXIS_CATEGORIES = {
             ("multipoint", "m"): "RPMJK",
-            ("time", "t"): "TVL",
+            ("timeloop", "t"): "TVL",
             ("zstack", "z"): "ZA",
             ("channel", "c"): "CSEH",
             ("unknown", "unknown"): "IQ",

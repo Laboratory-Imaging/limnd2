@@ -148,7 +148,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--channel-setting",
         type=str,
         action="append",
-        help="List made of [original_name,new_name,modality,ex,em,color], separated by commas. Pass multiple times for multiple channels.",
+        help="List made of [original_name|new_name|modality|ex|em|color], separated by pipe character ('|'). Pass multiple times for multiple channels.",
     )
 
     parser.add_argument(
@@ -339,7 +339,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         """
         result = {}
         for chan in channels:
-            lst = chan.split(",")
+            lst = chan.split("|")
             if len(lst) == 5:
                 lst.insert(0, lst[0])
 
