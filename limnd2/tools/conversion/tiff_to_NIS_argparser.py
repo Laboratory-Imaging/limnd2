@@ -293,7 +293,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         if extension in EXTENSION_TO_FORMAT:
             extensionType = EXTENSION_TO_FORMAT[extension]
         else:
-            print(f"ERROR: Extension '{extension}' is either incorrect or not supported.")
+            tiff_to_NIS_utils.logprint(f"Extension '{extension}' is either incorrect or not supported.", type="error")
             parser.print_usage()
             sys.exit(1)
 
@@ -306,7 +306,7 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
 
     folder_path = Path(parsed_args.folder)
     if not (folder_path.exists() and folder_path.is_dir()):
-        print(f"ERROR: TIFF Folder {folder_path} does not exist.")
+        tiff_to_NIS_utils.logprint(f"ERROR: TIFF Folder {folder_path} does not exist.", type="error")
         parser.print_usage()
         sys.exit(1)
 
