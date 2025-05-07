@@ -304,10 +304,6 @@ def tiff_to_nis_argparser(args: list[str] | None = None) -> PathParserArgs:
         parser.print_usage()
         sys.exit(1)
 
-    if groups == {}:
-        print(f"ERROR: No capture groups in regexp, exiting.")
-        sys.exit(1)
-
     folder_path = Path(parsed_args.folder)
     if not (folder_path.exists() and folder_path.is_dir()):
         print(f"ERROR: TIFF Folder {folder_path} does not exist.")

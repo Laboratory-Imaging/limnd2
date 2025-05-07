@@ -45,17 +45,19 @@ def tiff_to_NIS(args: list[str] | None = None):
     convert_values(file_sources)
 
     logprint("Checking if all files exist.")
-    found_values = check_files(list(file_sources.values()))
-    if not found_values:
-        raise ValueError("No files found matching provided regexp.")
+    if len(file_sources) != 1:
+        found_values = check_files(list(file_sources.values()))
+        if not found_values:
+            raise ValueError("No files found matching provided regexp.")
+        groups_count = [len(s) for s in found_values]
+        exp_order = [parsed_args.groups[k] for k in sorted(parsed_args.groups)]
 
-    groups_count = [len(s) for s in found_values]
-    exp_order = [parsed_args.groups[k] for k in sorted(parsed_args.groups)]
-
-    # creates a dictionary with the number of files for each dimension
-    # ordered by the the position of the dimension in the regexp
-    # e.g. exp_count = {"zstack": 3, "timeloop": 4}
-    exp_count = {exp: count for exp, count in zip(exp_order, groups_count)}
+        # creates a dictionary with the number of files for each dimension
+        # ordered by the the position of the dimension in the regexp
+        # e.g. exp_count = {"zstack": 3, "timeloop": 4}
+        exp_count = {exp: count for exp, count in zip(exp_order, groups_count)}
+    else:
+        exp_count = {}
 
 
     if sample_file.is_rgb and "channel" in exp_count:
