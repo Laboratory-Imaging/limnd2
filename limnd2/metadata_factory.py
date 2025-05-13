@@ -257,6 +257,9 @@ def _update(updated: dict, values: dict):
             updated[key] = value
     return updated
 
+def datetime_to_jdn(datetime: datetime.datetime) -> int:
+    return datetime.timestamp() / 86400 + 2440587.5
+
 @dataclass(kw_only=True)
 class Plane:
     """
@@ -271,6 +274,8 @@ class Plane:
         The excitation wavelength in nanometers.
     emission_wavelength : int
         The emission wavelength in nanometers.
+    filter_name : str
+        The name of the filter used.
     color : str
         The color associated with the plane.
     objective_magnification : float
@@ -287,6 +292,8 @@ class Plane:
         The name of the camera used. (overrides setting from MetadataFactory)
     microscope_name : str
         The name of the microscope used. (overrides setting from MetadataFactory)
+    acquisition_time : datetime.datetime
+        Acquistion time of the plane.
     """
     name: str = None
     modality: str | PicturePlaneModality | PicturePlaneModalityFlags = None
@@ -302,6 +309,9 @@ class Plane:
     camera_name: str = None
     microscope_name: str = None
 
+    filter_name: str = None
+    acquisition_time: datetime.datetime = None
+
     def _getPlaneWithDefaults(self) -> "Plane":
         plane_defaults = {
             "name": "",
@@ -315,7 +325,9 @@ class Plane:
             "immersion_refractive_index": -1.0,
             "pinhole_diameter": -1.0,
             "camera_name": "N/A",
-            "microscope_name": "N/A"
+            "microscope_name": "N/A",
+            "filter_name": "N/A",
+            "acquisition_time": 0.0
         }
 
         for key, val in asdict(self).items():
@@ -371,6 +383,7 @@ class Plane:
                                m_eNature = OpticalFilterNature.eOfnGeneric,
                                m_eSpctType = OpticalFilterSpectType.eOftNarrowBandpass,
                                m_uiColor = color,
+                               m_sName = plane_fixed.filter_name,
                                m_ExcitationSpectrum = excitation_spectrum,
                                m_EmissionSpectrum = emission_spectrum,
                                m_MirrorSpectrum = OpticalSpectrum()
@@ -383,6 +396,7 @@ class Plane:
                                  uiModalityMask = plane_fixed._modalityFlags(),
                                  sDescription = plane_fixed.name if plane_fixed.name else f"Channel {index + 1}",
                                  dPinholeDiameter = plane_fixed.pinhole_diameter,
+                                 dAcqTime = datetime_to_jdn(plane_fixed.acquisition_time) if plane_fixed.acquisition_time else 0.0,
                                  pFilterPath = filter_path,
                                  uiColor = color)
 
@@ -413,8 +427,11 @@ class Plane:
         return plane, setting
 
 class MetadataFactory:
+    planes: list[Plane]
+    pixel_calibration: float
+
     """
-    Helper class for creating metada, see examples below on how to create metadata witch channels and microscope settings.
+    Helper class for creating metadata, see examples below on how to create metadata witch channels and microscope settings.
 
     To actually create metadata instance, make sure to call either [`.createMetadata()`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory.createMetadata)
     method or use call operator.
@@ -565,25 +582,17 @@ class MetadataFactory:
         self.planes.append(new_plane)
         return new_plane
 
-    def createMetadata(self, *, number_of_channels_fallback: int = -1) -> PictureMetadata:
+    def createMetadata(self, *, number_of_channels_fallback: int = 1, is_rgb_fallback: bool = False) -> PictureMetadata:
         """
         Creates a new PictureMetadata instance from the factory settings.
         """
         planes: list[PicturePlaneDesc] = []
         settings: list[SampleSettings] = []
 
-        # if no planes were added, add empty planes using number_of_channels_fallback
-        """
-        # TODO: fix this
-        # problem: if you dont add channels manualy, PicturePlaneDesc will not be created and later code will be fixed by makeValid()
-        # however this ignored all the settings provided in this factory
-        # idea was to create empty planes here so that makeValid() will not be needed, but something is wrong with the code
+        forceRGB = False
 
-        # possibly we will need to pass a bool checking if image is rgb or not as here we dont have as big control over metadata
-        # as makeValid() does
-
-
-        if not self.planes and number_of_channels_fallback != -1:
+        if not self.planes and number_of_channels_fallback != -1 and not is_rgb_fallback:
+            # if channels were not added, add empty planes using number_of_channels_fallback, only if image is not RGB
             if (number_of_channels_fallback == 1):
                 plane_settings: dict = self._other_settings.copy()
                 plane_settings["name"] = "Mono"
@@ -591,15 +600,6 @@ class MetadataFactory:
                 plane_settings["color"] = "gray"
                 plane = Plane(**plane_settings)
                 self.addPlane(plane)
-            if (number_of_channels_fallback == 3):
-                for color in ["Blue", "Green", "Red"]:
-                    plane_settings: dict = self._other_settings.copy()
-                    plane_settings["name"] = f"{color}"
-                    plane_settings["modality"] = PicturePlaneModalityFlags.modBrightfield
-                    plane_settings["color"] = color.lower()
-                    plane = Plane(**plane_settings)
-                    self.addPlane(plane)
-
             else:
                 for i in range(number_of_channels_fallback):
                     plane_settings: dict = self._other_settings.copy()
@@ -607,10 +607,16 @@ class MetadataFactory:
                     plane_settings["modality"] = PicturePlaneModalityFlags.modFluorescence
                     plane = Plane(**plane_settings)
                     self.addPlane(plane)
-        """
 
-        #for lookup:
-        f = PictureMetadata.makeValid
+        elif not self.planes and is_rgb_fallback:
+            # if channels were not added and it is RGB image, add one empty plane and later rearrange metadata do make it RGB
+            plane_settings: dict = self._other_settings.copy()
+            plane_settings["name"] = "RGB"
+            plane_settings["modality"] = PicturePlaneModalityFlags.modBrightfield
+            plane = Plane(**plane_settings)
+            self.addPlane(plane)
+            forceRGB = True
+
 
         # get list of planes, settings
         for index, p in enumerate(self.planes):
@@ -640,6 +646,9 @@ class MetadataFactory:
         zoo_mags = [plane.zoom_magnification for plane in self.planes]
         zoo_mags = zoo_mags[0] if zoo_mags and all([x == zoo_mags[0] for x in zoo_mags]) and zoo_mags[0] != None else -1.0
 
+        acq_times = [plane.acquisition_time for plane in self.planes]
+        acq_time = max((dt for dt in acq_times if dt is not None), default=None)
+
         # create picture planes
         picture_planes = PictureMetadataPicturePlanes(uiCount = len(planes),
                                                     uiCompCount = len(planes),
@@ -652,11 +661,19 @@ class MetadataFactory:
                                 dCalibration = self.pixel_calibration,
                                 dAspect = 1.0 if self.pixel_calibration != -1.0 else -1.0,
                                 bCalibrated = self.pixel_calibration != -1.0,
-
                                 dObjectiveMag = obj_mags,
                                 dObjectiveNA = num_apes,
                                 dRefractIndex1 = imm_refs,
                                 dZoom = zoo_mags,
+                                dTimeAbsolute = datetime_to_jdn(acq_time) if acq_time else 0.0,
                                 wsObjectiveName = f"{round(zoo_mags)}x" if zoo_mags != -1.0 else ""
         )
+
+        if forceRGB:
+            object.__setattr__(result.sPicturePlanes.sPlaneNew[0], "uiCompCount", 3)
+            object.__setattr__(result.sPicturePlanes, "uiCount", 1)
+            object.__setattr__(result.sPicturePlanes, "uiCompCount", 3)
+            object.__setattr__(result.sPicturePlanes, "uiSampleCount", 1)
+
+
         return result

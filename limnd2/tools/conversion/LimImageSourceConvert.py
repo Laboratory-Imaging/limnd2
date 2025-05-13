@@ -40,13 +40,14 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
     for plane in parsed_args.channels.values():
         parsed_args.metadata.addPlane(plane)
 
-    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount)
+    nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount, is_rgb_fallback=sample_file.is_rgb)
     if not nd2_metadata.valid:
-        nd2_metadata.makeValid(nd2_attributes.componentCount)
+        raise ValueError("CREATE METADATA FAILED")
 
     # get image experiments
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
-    return LIMND2Utils.write_files_to_nd2(parsed_args, nd2_attributes, nd2_experiment, nd2_metadata, grouped_files)
+    outfile = Path(parsed_args.output_dir) / parsed_args.nd2_output
+    return LIMND2Utils.write_files_to_nd2(outfile, grouped_files, nd2_attributes, nd2_experiment, nd2_metadata, parsed_args.multiprocessing)
 
 
 class LIMND2Utils:
@@ -72,13 +73,13 @@ class LIMND2Utils:
         nd2: limnd2.Nd2Writer,
         image_seq_index: int,
         frame_sources: list[LimImageSource],
-        progress: ProgressPrinter,
+        progress: ProgressPrinter = None,
         nd2_file_lock: Lock = None
     ):
 
         stacked_mismatch = None
 
-        # If we have multiple TIFF files, this is a multi-channel case
+        # If we have multiple files together, this is a multi-channel case
         if len(frame_sources) > 1:
             arrays = tuple(file.read() for file in frame_sources)
             array = np.stack(arrays, axis=-1)
@@ -90,7 +91,7 @@ class LIMND2Utils:
                     stacked_mismatch = dtypes
 
 
-        # Single TIFF case
+        # Single channel case
         else:
             tiff_file = frame_sources[0]
             array = tiff_file.read()
@@ -107,12 +108,17 @@ class LIMND2Utils:
                 logprint(f"WARNING: Stacked channels have different dtypes: {stacked_mismatch}. This may lead to data loss. This message will only be shown once", type="warning")
                 LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = True
 
-        progress.increase(len(frame_sources))
+        if progress:
+            progress.increase(len(frame_sources))
 
     @staticmethod
-    def write_files_to_nd2(parsed_args, attr: limnd2.ImageAttributes, exp: limnd2.ExperimentLevel, metadata: limnd2.PictureMetadata, grouped_files: list[dict[str, list[Path]]]):
+    def write_files_to_nd2(nd2_path: Path,
+                           grouped_files: list[list[LimImageSource]],
+                           attr: limnd2.ImageAttributes,
+                           exp: limnd2.ExperimentLevel,
+                           metadata: limnd2.PictureMetadata,
+                           multiprocessing: bool = True):
 
-        nd2_path = Path(parsed_args.output_dir) / parsed_args.nd2_output
         if nd2_path.is_file():
             try:
                 nd2_path.unlink()
@@ -125,14 +131,14 @@ class LIMND2Utils:
             nd2.experiment = exp
             nd2.pictureMetadata = metadata
 
-            progress = ProgressPrinter(nd2_path, len(grouped_files) * len(grouped_files[0]["files"]))
+            progress = ProgressPrinter(nd2_path, len(grouped_files) * len(grouped_files[0]))
 
-            if parsed_args.multiprocessing:
+            if multiprocessing:
                 nd2_file_lock = Lock()
                 with ThreadPoolExecutor(max_workers=100) as executor:
                     futures = []
                     for image_seq_index, frames in enumerate(grouped_files):
-                        futures.append(executor.submit(LIMND2Utils.store_frame_or_frames, nd2, image_seq_index, frames["files"], progress, nd2_file_lock))
+                        futures.append(executor.submit(LIMND2Utils.store_frame_or_frames, nd2, image_seq_index, frames, progress, nd2_file_lock))
 
                 logprint(f"Waiting for processes to finish.")
                 wait(futures)
@@ -142,7 +148,7 @@ class LIMND2Utils:
                     LIMND2Utils.store_frame_or_frames(
                         nd2,
                         image_seq_index,
-                        frame["files"],
+                        frame,
                         progress
                     )
 
@@ -187,7 +193,7 @@ class ConvertUtils:
     def group_by_channel(files, arguments, exp_count: dict[str, int]):
         if "channel" not in exp_count:
             sorted_paths = [file for file in sorted(files, key=lambda k: files[k])]
-            frames = [{"files": [file]} for file in sorted_paths]
+            frames = [[file] for file in sorted_paths]
         else:
             # last item in a tuple is channel name, group results by all but last items (channel is ALWAYS last) in the list
             grouped_files = {}
@@ -215,5 +221,5 @@ class ConvertUtils:
                     for group_key in sorted(group):
                         file = group[group_key]
                         group_files.append(file)
-                frames.append({"files": group_files})
+                frames.append(group_files)
         return frames

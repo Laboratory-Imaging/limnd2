@@ -13,7 +13,7 @@ For creating experiments, you should use [`ExperimentFactory`](experiment_factor
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from .experiment import ExperimentLevel, ExperimentTimeLoop, ExperimentNETimeLoop, ExperimentXYPosLoop, ExperimentXYPosLoopPoint, ExperimentZStackLoop, ExperimentLoopType
+from .experiment import ExperimentLevel, ExperimentTimeLoop, ExperimentNETimeLoop, ExperimentXYPosLoop, ExperimentXYPosLoopPoint, ExperimentZStackLoop, ExperimentLoopType, ZStackType
 from typing import Any
 
 @dataclass
@@ -93,14 +93,29 @@ class _ZExp(_Exp):
     """
     count: int = 0
     step: float = 0.0
+    start: float = None
+    end: float = None
 
     def _create_experiment_level(self) -> ExperimentLevel:
+        if self.start is None and self.end is None:
+            self.start = 0.0
+            self.end = float(self.step * (self.count - 1))
+        elif self.start is None:
+            self.start = self.end - float(self.step * (self.count - 1))
+        elif self.end is None:
+            self.end = self.start + float(self.step * (self.count - 1))
+
+
         loop = ExperimentZStackLoop(uiCount = self.count,
                                     dZStep = float(self.step),
-                                    dZHigh = float(self.step * self.count))
+                                    dZLow = float(self.start),
+                                    dZHigh = float(self.end),
+                                    bAbsolute = True,
+                                    dZHome = float(self.start + (self.end - self.start) / 2)
+                                    )
 
-        return ExperimentLevel(eType = ExperimentLoopType.eEtZStackLoop,
-                               uLoopPars=loop)
+
+        return ExperimentLevel(eType = ExperimentLoopType.eEtZStackLoop, uLoopPars=loop)
 
     def __str__(self) -> str:
         return f"_Z{self.count}"
