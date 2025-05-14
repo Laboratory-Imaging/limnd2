@@ -43,7 +43,9 @@ class _TExp(_Exp):
         Creates ExperimentLevel instance from simplified settings.
         """
         return ExperimentLevel(eType = ExperimentLoopType.eEtTimeLoop,
-                               uLoopPars = ExperimentTimeLoop(uiCount=self.count, dPeriod=float(self.step)))
+                               uLoopPars = ExperimentTimeLoop(uiCount = self.count,
+                                                              dPeriod = float(self.step),
+                                                              dDuration = (self.count - 1) * float(self.step)))
 
     def __str__(self) -> str:
         return f"_T{self.count}"
