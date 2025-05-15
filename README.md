@@ -50,10 +50,15 @@ pip install -r requirements.txt
 code .
 ```
 
-for building and uploading to private Pypi
+Commands for building and uploading to private Pypi
 
 ```powershell
 pip install build setuptools twine
 python -m build
 twine upload -r local dist\*
+```
+
+Command to preview documentation 
+```
+mkdocs serve
 ```
