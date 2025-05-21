@@ -131,11 +131,12 @@ def index_file(path: Path) -> Record:
             "Version": f"{file_version[0]}.{file_version[1]}" if file_version is not None else "",
             "Size": size_fmt(path.stat().st_size),
             "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
+            "Frames": 1,
             "Experiment": "",
             "Dtype": "",
-            "Bits": "",
+            "Bits": 0,
             "Resolution": "",
-            "Channels": "",
+            "Channels": 1,
             "Binary": "",
             "Software": "",
             "Grabber": "",
@@ -298,7 +299,7 @@ def _parse_args(argv: Sequence[str] = ()) -> argparse.Namespace:
         help="Filter the output. Each filter "
         "should be a python expression (string)\nthat evaluates to True or False. "
         "It will be evaluated in the context\nof each row. You can use any of the "
-        "column names as variables.\ne.g.: \"acquired > '2020' and kb < 500\". (May "
+        "column names as variables.\ne.g.: \"Frames > 50 and 'T' in Experiment\". (May "
         "be used multiple times).",
     )
 
