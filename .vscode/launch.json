@@ -4,67 +4,56 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
-            "name": "tst/main.py",
+            "name": "Conversion test: Auto",
             "type": "debugpy",
             "request": "launch",
-            "program": "tst/main.py",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "util/Index.py",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "./util/index.py",
+            "program": "./tst/conversion_test.py",
             "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         },
         {
-            "name": "util/TiffToNis.py",
+            "name": "Conversion test: Single",
             "type": "debugpy",
             "request": "launch",
-            "program": "./util/tiff_to_NIS.py",
+            "program": "./tst/conversion_test_single.py",
             "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         },
         {
-            "name": "tst/LegacyTest.py",
+            "name": "Talley legacy test",
             "type": "debugpy",
             "request": "launch",
             "program": "./tst/legacy_test.py",
             "console": "integratedTerminal",
-            "justMyCode": false
-        },
-        {
-            "name": "tst/tst3.py - results",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "./tst/tst3.py",
-            "console": "integratedTerminal",
             "justMyCode": false,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
         },
         {
-            "name": "conversion test",
+            "name": "Index",
             "type": "debugpy",
             "request": "launch",
-            "program": "./tst/_conversion_test.py",
+            "program": "./limnd2/tools/index.py",
             "console": "integratedTerminal",
             "justMyCode": false,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
-            }
+            },
+            "args": [
+                "C:\\Users\\lukas.jirusek\\Desktop",
+                "-r",
+                "--filter",
+                "Frames > 50 and 'T' in Experiment"
+            ]
         },
-        {
-            "name": "AUTO: conversion test",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "./tst/_conversion_test_automated.py",
-            "console": "integratedTerminal",
-            "justMyCode": false,
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            }
-        }
     ]
 }
