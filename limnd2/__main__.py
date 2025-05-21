@@ -1,9 +1,8 @@
 import sys
 
-from limnd2.tools.conversion.LimImageSourceMapping import open_lim_image_source
+from limnd2.tools.conversion.LimImageSource import LimImageSource, get_file_dimensions_as_json
 
-from .tools import tiff_to_NIS, OMEUtils, limnd2_index
-import json
+from .tools import convert_sequence_to_nd2_cli, limnd2_index
 
 def main():
     if(len(sys.argv) < 2):
@@ -13,40 +12,20 @@ def main():
     program_name = sys.argv[1]
     args = sys.argv[2:]
 
-
     if program_name.lower() == "tiff_to_nis":
-        tiff_to_NIS(args)
-
-
-    elif program_name.lower() == "parse_ome":
-        result = OMEUtils.parse_ometiff(args[0])
-        print(json.dumps(result))
-
+        convert_sequence_to_nd2_cli(args)
 
     elif program_name.lower() == "get_file_dimensions":
         if len(args) < 1:
             print("Usage: python -m limnd2 get_file_dimensions <file_path>")
             sys.exit(1)
         file_path = args[0]
-        image_source = open_lim_image_source(file_path)
-        try:
-            result = image_source.get_file_dimensions()
-            result["is_rgb"] = image_source.is_rgb
-            result["error"] = False
-            result["error_message"] = ""
-        except Exception as e:
-            result = {
-                "error": True,
-                "error_message": str(e),
-            }
-        print(json.dumps(result))
-
+        get_file_dimensions_as_json(file_path)
 
     elif program_name.lower() == "index":
         if len(args) < 1:
             args = ["--help"]
         limnd2_index(args)
-
 
     else:
         print(f"Unknown limnd2 utility name: {program_name}.")

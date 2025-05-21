@@ -1,4 +1,6 @@
 
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Lock
@@ -7,12 +9,15 @@ import numpy as np
 
 import limnd2
 from limnd2.experiment_factory import ExperimentFactory
-from limnd2.tools.conversion.LimImageSource import LimImageSource
-from limnd2.tools.conversion.tiff_to_NIS_argparser import PathParserArgs
-from limnd2.tools.conversion.tiff_to_NIS_utils import ProgressPrinter, logprint
+
+from limnd2.tools.conversion.LimConvertUtils import ConvertSequenceArgs, ProgressPrinter, logprint
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from limnd2.tools.conversion.LimImageSource import LimImageSource
 
 
-def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, parsed_args: PathParserArgs, dimensions: dict):
+def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, parsed_args: ConvertSequenceArgs, dimensions: dict):
     """Convert a list of LimImageSource to ND2 format."""
 
     sources, dimensions = sample_file.parse_additional_dimensions(sources, dimensions, parsed_args.unknown_dim)
@@ -41,8 +46,6 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
         parsed_args.metadata.addPlane(plane)
 
     nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount, is_rgb_fallback=sample_file.is_rgb)
-    if not nd2_metadata.valid:
-        raise ValueError("CREATE METADATA FAILED")
 
     # get image experiments
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
@@ -117,14 +120,14 @@ class LIMND2Utils:
                            attr: limnd2.ImageAttributes,
                            exp: limnd2.ExperimentLevel,
                            metadata: limnd2.PictureMetadata,
-                           multiprocessing: bool = True):
+                           multiprocessing: bool = True) -> bool:
 
         if nd2_path.is_file():
             try:
                 nd2_path.unlink()
             except PermissionError:
-                logprint(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.", type="error")
-                return False
+                #logprint(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.", type="error")
+                raise PermissionError(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.") from None
 
         with limnd2.Nd2Writer(nd2_path) as nd2:
             nd2.imageAttributes = attr
@@ -140,7 +143,6 @@ class LIMND2Utils:
                     for image_seq_index, frames in enumerate(grouped_files):
                         futures.append(executor.submit(LIMND2Utils.store_frame_or_frames, nd2, image_seq_index, frames, progress, nd2_file_lock))
 
-                logprint(f"Waiting for processes to finish.")
                 wait(futures)
 
             else:
@@ -152,7 +154,7 @@ class LIMND2Utils:
                         progress
                     )
 
-            logprint("Finalizing ND2 file.")
+        return True
 
 class ConvertUtils:
     @staticmethod

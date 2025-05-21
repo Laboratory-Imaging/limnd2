@@ -23,7 +23,9 @@ dependencies = [
 
 [project.scripts]
 limnd2-index = "limnd2.tools.index:main"
-
+limnd2-convert-file-to-nd2 = "limnd2.tools:convert_file_to_nd2_cli"
+limnd2-convert-sequence-to-nd2 = "limnd2.tools:convert_sequence_to_nd2_cli"
+limnd2-get-image-dimensions = "limnd2.tools:get_file_dimensions_as_json"
 
 [tool.setuptools]
 packages = ["limnd2", "limnd2.tools", "limnd2.tools.conversion"]

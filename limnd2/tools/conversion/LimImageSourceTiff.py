@@ -5,19 +5,18 @@ import math
 from pathlib import Path
 
 import numpy as np
-import ome_types
 import tifffile
 
 import limnd2
 from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
 from limnd2.metadata_factory import MetadataFactory, Plane
 from .LimImageSource import LimImageSource
-from .tiff_to_NIS_utils import logprint
+from .LimConvertUtils import ConversionSettings, ConvertSequenceArgs, logprint
 
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from limnd2.tools.conversion.tiff_to_NIS_argparser import PathParserArgs
+    import ome_types
 
 
 class LimImageSourceTiff(LimImageSource):
@@ -223,6 +222,7 @@ class LimImageSourceTiff(LimImageSource):
 
     @staticmethod
     def get_significant_bits_from_ome(path) -> int:
+        import ome_types
         try:
             return ome_types.from_tiff(path).images[0].pixels.significant_bits             # try to get significant bits from OME
         except:
@@ -270,7 +270,8 @@ class LimImageSourceTiff(LimImageSource):
             ePixelType = pixel_type
         )
 
-    def parse_additional_metadata(self, parsed_args: PathParserArgs):
+    def parse_additional_metadata(self, metadata_storage: ConvertSequenceArgs | ConversionSettings):
+        import ome_types
         try:
             ome = ome_types.from_tiff(self.filename)
         except Exception as e:
@@ -279,17 +280,17 @@ class LimImageSourceTiff(LimImageSource):
         if ome:
             ome_dims = self.get_file_dimensions()
             if "timeloop" in ome_dims:
-                parsed_args.time_step = OMEUtils.time_step_from_ome(ome)
+                metadata_storage.time_step = OMEUtils.time_step_from_ome(ome)
 
             if "zstep" in ome_dims:
-                parsed_args.z_step = OMEUtils.z_step_from_ome(ome)
+                metadata_storage.z_step = OMEUtils.z_step_from_ome(ome)
 
             if "channel" in ome_dims:
-                parsed_args.metadata, parsed_args.channels = OMEUtils.channels_from_ome(ome, parsed_args.metadata)
+                metadata_storage.metadata, metadata_storage.channels = OMEUtils.channels_from_ome(ome, metadata_storage.metadata)
 
 class OMEUtils:
     @staticmethod
-    def time_step_from_ome(ome: ome_types.model.OME):
+    def time_step_from_ome(ome: "ome_types.model.OME"):
         # returns estimated time step in OME model
         planes = ome.images[0].pixels.planes
         times = list(set([plane.delta_t for plane in planes]))
@@ -297,7 +298,7 @@ class OMEUtils:
         return ((times[-1] - times[0]) / (len(times) - 1))
 
     @staticmethod
-    def z_step_from_ome(ome: ome_types.model.OME):
+    def z_step_from_ome(ome: "ome_types.model.OME"):
         # returns estimated z step in OME model
         planes = ome.images[0].pixels.planes
         zpositions = list(set([plane.position_z for plane in planes]))
@@ -305,7 +306,7 @@ class OMEUtils:
         return ((zpositions[-1] - zpositions[0]) / (len(zpositions) - 1))
 
     @staticmethod
-    def channel_from_ome(channel: ome_types.model.Channel):
+    def channel_from_ome(channel: "ome_types.model.Channel"):
         # returns limnd2 Plane object from OME channel object
         acquisition = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.acquisition_mode.value)
         contrast = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.contrast_method.value)
@@ -319,9 +320,12 @@ class OMEUtils:
         return plane
 
     @staticmethod
-    def channels_from_ome(ome: ome_types.model.OME, metadata_factory: MetadataFactory):
+    def channels_from_ome(ome: "ome_types.model.OME", metadata_factory: MetadataFactory = None):
         # parses metadata from OME-TIFF file and returns a factory for such metadata and a dictionary of channels
-        provided_settings = metadata_factory._other_settings
+        if metadata_factory is not None:
+            provided_settings = metadata_factory._other_settings
+        else:
+            provided_settings = {}
         image = ome.images[0]
 
         objective_numerical_aperture = None
@@ -349,6 +353,10 @@ class OMEUtils:
         new_factory = MetadataFactory(pixel_calibration = metadata_factory.pixel_calibration if metadata_factory.pixel_calibration else pixel_calibration,
                                     immersion_refractive_index = provided_settings.get("immersion_refractive_index", immersion_refractive_index),
                                     objective_numerical_aperture = provided_settings.get("objective_numerical_aperture", objective_numerical_aperture))
+
+        for key, value in provided_settings.items():
+            if key not in new_factory._other_settings:
+                new_factory._other_settings[key] = value
 
         channels = {}
         for index, channel in enumerate(sorted(image.pixels.channels, key=lambda x: x.id)):

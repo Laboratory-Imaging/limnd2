@@ -3,8 +3,8 @@ from pathlib import Path
 
 
 from limnd2.attributes import ImageAttributesPixelType
-from .tiff_to_NIS_argparser import PathParserArgs
-from .tiff_reader import TiffReader
+from limnd2.tools.conversion.LimConvertUtils import ConvertSequenceArgs
+from limnd2.tools.conversion.LimImageSourceTiff import LimImageSourceTiff
 
 def get_attributes(sample_file: Path, experiments_count: dict[str, int]) -> dict:
     attributes_template = {
@@ -22,7 +22,7 @@ def get_attributes(sample_file: Path, experiments_count: dict[str, int]) -> dict
         "widthPx": 0
     }
 
-    file_attrs = TiffReader(sample_file).get_nd2_attributes()
+    file_attrs = LimImageSourceTiff(sample_file).get_nd2_attributes()
     attributes = attributes_template.copy()
 
     attributes["bitsPerComponentInMemory"] = file_attrs.uiBpcInMemory
@@ -52,7 +52,7 @@ def get_attributes(sample_file: Path, experiments_count: dict[str, int]) -> dict
 
     return attributes
 
-def get_metadata(arguments: PathParserArgs,
+def get_metadata(arguments: ConvertSequenceArgs,
                  experiments_count: dict[str, int]):
     channel_minimal = {
         "microscope": {
@@ -102,7 +102,7 @@ def convert_mx_my_to_m(files: dict[Path, list[int | float | str | tuple]],
     experiments_count["multipoint"] = x_count * y_count
 
 def get_experiments(files: dict[Path, list[int | float | str | tuple]],
-                    arguments: PathParserArgs,
+                    arguments: ConvertSequenceArgs,
                     experiments_count: dict[str, int]):
 
     timeloop_template = {
@@ -198,7 +198,7 @@ def get_experiments(files: dict[Path, list[int | float | str | tuple]],
     return experiments
 
 def get_frames(files: dict[Path, list[int | float | str | tuple]],
-               arguments: PathParserArgs,
+               arguments: ConvertSequenceArgs,
                exp_count: dict[str, int]):
     if "channel" not in exp_count:
         sorted_paths = [file.name for file in sorted(files, key=lambda k: files[k])]
@@ -229,7 +229,7 @@ def get_frames(files: dict[Path, list[int | float | str | tuple]],
             frames.append({"files" : group_files})
     return frames
 
-def tiff_to_json(files: dict[Path, list[int | float | str | tuple]], args: PathParserArgs, exp_count: dict[str, int]):
+def tiff_to_json(files: dict[Path, list[int | float | str | tuple]], args: ConvertSequenceArgs, exp_count: dict[str, int]):
     attrbs = get_attributes(list(files.keys())[0], exp_count)
     exps = get_experiments(files, args, exp_count)
     frames = get_frames(files, args, exp_count)

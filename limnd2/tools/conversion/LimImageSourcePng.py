@@ -1,10 +1,9 @@
 from pathlib import Path
 
 from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
-from limnd2.tools.conversion.tiff_to_NIS_utils import logprint
+from limnd2.tools.conversion.LimConvertUtils import logprint
 from .LimImageSource import LimImageSource
 
-from PIL import Image
 import numpy as np
 
 
@@ -16,6 +15,7 @@ class LimImageSourcePng(LimImageSource):
 
     def read(self) -> np.ndarray:
         """Read the image into numpy array writeable by limnd2 library."""
+        from PIL import Image
         with Image.open(self.filename) as img:
             if img.mode in ["L", "P"]:
                 return np.array(img, dtype=np.uint8)
@@ -42,6 +42,7 @@ class LimImageSourcePng(LimImageSource):
     @property
     def is_rgb(self) -> bool:
         """Check if the image is RGB."""
+        from PIL import Image
         if self._is_rgb is None:
             with Image.open(self.filename) as img:
                 if img.mode in ["L", "P", "I", "F"]:
@@ -58,6 +59,7 @@ class LimImageSourcePng(LimImageSource):
 
     def nd2_attributes(self, *, sequence_count=1):
         """Get the attributes of the image for ND2 file."""
+        from PIL import Image
         with Image.open(self.filename) as img:
             if img.mode == "L":
                 comps = 1

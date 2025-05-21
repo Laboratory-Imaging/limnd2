@@ -50,10 +50,13 @@ def open_lim_image_source(filename: str | Path) -> LimImageSource:
     image_source_class = READER_CLASS_MAP[image_format]
     return image_source_class(filename)
 
-def image_format_from_regexp(regexp_str: re.Pattern) -> ImageFormat | None:
+def image_format_from_regexp(regexp_str: re.Pattern | str) -> ImageFormat | None:
+    if isinstance(regexp_str, re.Pattern):
+        regexp_str = regexp_str.pattern
 
-    path = regexp_str.pattern.removesuffix(".*")           # remove the last .* from the regexp string
+    path = regexp_str.removesuffix(".*")           # remove the last .* from the regexp string
     _, ext = os.path.splitext(path)
+    ext = ext.lower()
     if ext in EXTENSION_TO_FORMAT:
         return EXTENSION_TO_FORMAT[ext]
     elif ext == "":
