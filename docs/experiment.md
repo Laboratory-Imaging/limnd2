@@ -2,6 +2,7 @@
 
 ::: limnd2.experiment
     options:
+      heading_level: 3
       members:
         - ExperimentLoopType
         - ExperimentLevel

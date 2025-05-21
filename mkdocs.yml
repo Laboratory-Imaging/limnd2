@@ -91,8 +91,16 @@ nav:
     - experiment_factory.py: experiment_factory.md
     - metadata.py: metadata.md
     - metadata_factory.py: metadata_factory.md
+
+    - Conversion tools:
+      - Convert image to ND2: convert_image.md
+      - Convert image sequence to ND2: convert_sequence.md
+      - LimImageSource.py: convert_image_source.md
+
   - Compatability:
     - nd2file.py: nd2file.md
 
-
-
+  - Command line tools:
+    - Index ND2 files: cli_index.md
+    - Convert image to ND2: cli_convert_image.md
+    - Convert image sequence to ND2: cli_convert_sequence.md

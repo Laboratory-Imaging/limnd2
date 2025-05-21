@@ -2,5 +2,6 @@
 
 ::: limnd2.nd2file
     options:
-        members:
-            - ND2File
+      heading_level: 3
+      members:
+        - ND2File

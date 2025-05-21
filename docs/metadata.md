@@ -2,6 +2,7 @@
 
 ::: limnd2.metadata
     options:
+        heading_level: 3
         members:
             # specify custom order
             # main ones
