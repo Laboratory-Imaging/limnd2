@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import sys
 from limnd2.attributes import ImageAttributes
 
 from typing import TYPE_CHECKING
