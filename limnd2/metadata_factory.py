@@ -666,7 +666,7 @@ class MetadataFactory:
                                 dRefractIndex1 = imm_refs,
                                 dZoom = zoo_mags,
                                 dTimeAbsolute = datetime_to_jdn(acq_time) if acq_time else 0.0,
-                                wsObjectiveName = f"{round(zoo_mags)}x" if zoo_mags != -1.0 else ""
+                                wsObjectiveName = f"{round(obj_mags)}x" if obj_mags != -1.0 else ""
         )
 
         if forceRGB:
@@ -675,5 +675,7 @@ class MetadataFactory:
             object.__setattr__(result.sPicturePlanes, "uiCompCount", 3)
             object.__setattr__(result.sPicturePlanes, "uiSampleCount", 1)
 
+        if not result.valid:
+            raise ValueError("Metadata factory created invalid metadata,")          # this ideally wont happen, createMetadata result should always be valid
 
         return result

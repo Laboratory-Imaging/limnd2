@@ -174,7 +174,6 @@ def _create_experiment(*args: _Exp) -> ExperimentLevel:
         list of simplified experiments to chain
     """
     if len(args) < 1:
-        print("WARNING: Creating experiment without any loops, returning None!")
         return None
 
     first = args[0]._create_experiment_level()
