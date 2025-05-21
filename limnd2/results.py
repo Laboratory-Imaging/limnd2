@@ -1,7 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
-import errno, enum, h5py, json, pandas
+import errno, enum, json
+
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    import h5py, pandas
 
 class PaneDataVersionTooLow(Exception):
     def __init__(self, version: int = 0):
@@ -9,13 +13,17 @@ class PaneDataVersionTooLow(Exception):
         self.message = f"Pane version too low: {self.version}"
         super().__init__(self.message)
 
+def __lazy_pandas():
+    import pandas as pd
+    return pd
+
 @dataclass(kw_only=True)
 class TableData:
     name: str = ""
     metadata: dict[str, any] = field(default_factory=dict)
     private_tables: dict[str, TableData] = field(default_factory=dict)
     column_metadata: dict[str, dict[str, any]] = field(default_factory=dict)
-    df: pandas.DataFrame = field(default_factory=pandas.DataFrame)
+    df: pandas.DataFrame = field(default_factory=lambda: __lazy_pandas().DataFrame())
 
     @property
     def column_lookup(self) -> dict[str, str]:
@@ -58,6 +66,7 @@ class ResultItem:
 
 
 def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
+    import h5py
     try:
         results: dict[str, any] = {}
         with h5py.File(h5_filename, 'r') as h5:
@@ -83,6 +92,7 @@ def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
         print(e)
 
 def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> TableData:
+    import h5py, pandas
     try:
         with h5py.File(h5_filename, 'r') as h5:
             tbl = h5[tbl_location]

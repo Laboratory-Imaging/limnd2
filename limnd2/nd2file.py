@@ -15,11 +15,12 @@ and for his invaluable input in helping us develop the `limnd2` library.
 
 # ORIGINAL TYPES FOR ND2
 
+from __future__ import annotations
+
 from functools import cached_property
 from typing import Callable, SupportsInt
 
 import numpy as np
-import ome_types
 
 from limnd2.experiment import ExperimentLoopType, ExperimentTimeLoop, ZStackType
 from .nd2file_types import *
@@ -27,6 +28,11 @@ from .nd2file_types import *
 # IMPORTS FOR LIMND2
 from limnd2.attributes import ImageAttributesCompression, ImageAttributesPixelType
 from limnd2.nd2 import Nd2Reader
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import ome_types
 
 class ND2File:
     limnd2: Nd2Reader
