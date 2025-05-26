@@ -29,3 +29,13 @@ limnd2-get-image-dimensions = "limnd2.tools:get_file_dimensions_as_json"
 
 [tool.setuptools]
 packages = ["limnd2", "limnd2.tools", "limnd2.tools.conversion"]
+
+[tool.mypy]
+exclude = '^(build|dist|\.venv)/'
+check_untyped_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = false
+warn_unused_ignores = true
+show_error_codes = true
+strict = true
+pretty = true
