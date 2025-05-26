@@ -58,7 +58,24 @@ python -m build
 twine upload -r local dist\*
 ```
 
-Command to preview documentation 
+Command to preview documentation
 ```
 mkdocs serve
 ```
+
+## Running MyPy static type checker
+
+> [!NOTE]
+> MyPy is not required for running the package, it is only used for static type checking.
+> You can install MyPy with `pip install mypy`.
+
+To run MyPy static type checker, run the following command in the root directory of the repository:
+
+```sh
+mypy .
+```
+
+MyPy is also run automatically with each commit, you can download latest MyPy report by navigating to [Workflow action for MyPy](https://github.com/Laboratory-Imaging/limnd2/actions/workflows/mypy_check.yml), selecting latest workflow run and by downloading the latest report from the "Artifacts" section at the bottom of the page.
+
+> [!NOTE]
+> Those reports are only available for 90 days since the workflow run.
