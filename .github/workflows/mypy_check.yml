@@ -1,4 +1,4 @@
-name: Mypy Report
+name: MyPy static type check report
 
 on:
   push:
