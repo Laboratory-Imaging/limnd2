@@ -6,6 +6,7 @@ from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .custom_data import CustomDescription, CustomDescriptionItemType, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
+from .export import _series_export
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
 from .results import create_table_data_from_h5, read_results_from_h5, TableData, ResultItem, ResultPane
@@ -319,6 +320,17 @@ class Nd2Reader(Nd2Base):
                     se_custom_data[item.name.lower()] = item.valueAsText
         return se_custom_data
 
+    def dimensionSizes(self, skipSpectralLoop=True) -> dict[str, int]:
+        """
+        Returns a dictionary with dimension names as keys and their sizes as values.
+        """
+        if self.experiment is None:
+            return {}
+
+        shape = self.experiment.shape(skipSpectralLoop=skipSpectralLoop)
+        names = self.experiment.dimnames(skipSpectralLoop=skipSpectralLoop)
+        return dict(zip(names, shape))
+
 
     def generateLoopIndexes(self, named: bool = False) -> list:
         """
@@ -525,6 +537,42 @@ class Nd2Reader(Nd2Base):
         the_pane.private_tables[table_name] = table_data
 
         return the_pane.private_tables[table_name]
+
+    def series_export(
+        self,
+        folder: str | Path | None = None,
+        prefix: str | None = None,
+        dimension_order: list[str] | None = None,
+        bits: int | None = None,
+        *,
+        progress_to_json: bool = False
+    ) -> None:
+        """
+        Exports the ND2 file content as a series of image files (e.g., TIFFs).
+
+        Parameters
+        ----------
+        folder : str | Path | None, optional
+            The directory where exported files will be saved.
+            If None, a subdirectory named after the ND2 file (e.g., "myfile_export")
+            will be created in the same directory as the ND2 file.
+        prefix : str | None, optional
+            The common file prefix for all exported files.
+            If None, the base name of the ND2 file (e.g., "myfile") will be used.
+        dimension_order : list[str] | None, optional
+            A list of strings specifying the order of dimensions for naming and
+            E.g., ['t', 'z', 'c']. Loop names can be found in self.experiment.dimnames().
+            If None, a default order will be used based on available dimensions.
+        bits : int | None, optional
+            The bit depth for exported images.
+
+            - `-1` or None: Use the original bit depth of the ND2 file.
+            - `8`: Export as 8-bit images.
+            - `16`: Export as 16-bit images.
+
+            Data will be scaled if necessary.
+        """
+        _series_export(self, folder=folder, prefix=prefix, dimension_order=dimension_order, bits=bits, progress_to_json=progress_to_json)
 
     def finalize(self) -> None:
         return self._chunker.finalize()

@@ -5,6 +5,7 @@
     "version": "0.2.0",
     "configurations": [
 
+
         {
             "name": "Conversion test: Auto",
             "type": "debugpy",
@@ -54,6 +55,35 @@
                 "--filter",
                 "Frames > 50 and 'T' in Experiment"
             ]
+        },
+        {
+            "name": "Export",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "./limnd2/tools/export.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            //"args": ["C:/Users/lukas.jirusek/Desktop/tst_data/md2.nd2", "--folder", "C:\\Users\\lukas.jirusek\\Desktop\\tst_data\\export", "--prefix", "md2", "--dimensionOrder", "Multipoint", "Timelapse", "Channel", "--bits", "-1"],            ,
+            //"args": ["C:/Users/lukas.jirusek/Desktop/tst_data/nd2_files/06_Translocation_v02.nd2", "--folder", "C:\\Users\\lukas.jirusek\\Desktop\\tst_data\\nd2_files\\export", "--prefix", "06_Translocation_v02", "--dimensionOrder", "Multipoint", "Channel", "--bits", "-1", "--progress-to-json"],
+
+            //"args": [ "C:/Users/lukas.jirusek/Desktop/tst_data/nd2_files/06_Translocation_v02.nd2", "--folder", "C:\\Users\\lukas.jirusek\\Desktop\\tst_data\\nd2_files\\export", "--prefix", "06_Translocation_v02", "--dimensionOrder", "Multipoint", "Channel", "--bits", "-1", "--progress-to-json" ],
+
+            "args": [
+                "C:/Users/lukas.jirusek/Desktop/tst_data/convallaria_FLIM.nd2",
+                "--folder",
+                "C:\\Users\\lukas.jirusek\\Desktop\\tst_data\\Newfolder4",
+                "--prefix",
+                "convallaria_FLIM",
+                "--dimensionOrder",
+                "Multipoint",
+                "Z-stack",
+                "Channel",
+                "--bits",
+                "-1"
+            ],
         },
     ]
 }

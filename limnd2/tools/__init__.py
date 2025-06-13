@@ -8,6 +8,7 @@ __all__ = [
     "convert_file_to_nd2",
     "convert_file_to_nd2_args",
     "LimImageSource",
+    "sequence_export_cli",
     "limnd2_index",
     "get_file_dimensions_as_json",
 ]
@@ -15,4 +16,5 @@ __all__ = [
 from .conversion.LimConvertSequence import convert_sequence_to_nd2_cli, convert_sequence_to_nd2, convert_sequence_to_nd2_args
 from .conversion.LimConvertFile import convert_file_to_nd2_cli, convert_file_to_nd2, convert_file_to_nd2_args
 from .conversion.LimImageSource import LimImageSource, get_file_dimensions_as_json
+from .export import sequence_export_cli
 from .index import main as limnd2_index

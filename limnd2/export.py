@@ -1,0 +1,318 @@
+from copy import deepcopy
+from fractions import Fraction
+import json
+from pathlib import Path
+from itertools import product
+
+from typing import TYPE_CHECKING
+
+import numpy as np
+import tifffile
+if TYPE_CHECKING:
+    from limnd2 import Nd2Reader
+
+DIM_MAPPING = {
+    "t": ["time", "timelapse", "timeloop", "t"],
+    "z": ["z", "zstack"],
+    "m": ["m", "multidimensional", "multipoint"],
+    "c": ["c", "channel", "color", "ch"],
+}
+
+REVERSE_DIM_MAPPING = {}
+for key, values in DIM_MAPPING.items():
+    for v in values:
+        REVERSE_DIM_MAPPING[v.lower()] = key
+
+def map_dim_name(name: str) -> str | None:
+    clean_name = ''.join(filter(str.isalpha, name)).lower()
+    return REVERSE_DIM_MAPPING.get(clean_name)
+
+def get_dim_sizes(nd2_reader: "Nd2Reader"):
+    """
+    Get the sizes of each dimension in the ND2 file.
+
+    Returns:
+        dict: Dimension names as keys and their sizes as values.
+    """
+    dims = nd2_reader.dimensionSizes()
+    if nd2_reader.imageAttributes.componentCount > 1 and not nd2_reader.isRgb:
+        dims['c'] = nd2_reader.imageAttributes.componentCount
+    return dims
+
+def delete_file(path: str | Path):
+    """
+    Delete a file at the specified path.
+    """
+    path = Path(path)
+    if path.exists() and path.is_file():
+        path.unlink()
+
+def save_float_tiff(
+    array: np.ndarray,
+    output_path: str,
+    *,
+    writer_arguments: dict | None = None
+):
+    """
+    Save a float array (e.g. float32) to a TIFF file without any bit-depth scaling.
+
+    Parameters:
+        array: np.ndarray
+            Float image data. Can be grayscale, RGB, or a stack.
+        output_path: str
+            Output filename.
+    """
+    if not np.issubdtype(array.dtype, np.floating):
+        raise ValueError("save_float_tiff expects float input")
+
+    if writer_arguments is None:
+        writer_arguments = {}
+
+    delete_file(output_path)
+    tifffile.imwrite(output_path, array, **writer_arguments)
+
+def save_uint_tiff(
+    array: np.ndarray,
+    output_path: str,
+    source_bit_depth: int,
+    target_bit_depth: int,
+    is_rgb: bool = False,
+    *,
+    writer_arguments: dict | None = None
+):
+    """
+    Save a uint array to a TIFF file with optional bit-depth conversion.
+
+    Parameters:
+        array: np.ndarray
+            Integer (or float, but assumed to be in [0, 2^source_bit_depth - 1]) array.
+        output_path: str
+            Path to the output TIFF file.
+        source_bit_depth: int
+            Logical bit depth of the data.
+        target_bit_depth: int
+            Desired output bit depth (e.g. 8, 16).
+        is_rgb: bool
+            If True, uses RGB photometric interpretation.
+    """
+    if np.issubdtype(array.dtype, np.floating):
+        raise ValueError("Use save_float_tiff for float data.")
+
+    if source_bit_depth != target_bit_depth:
+        scale = (2 ** target_bit_depth - 1) / (2 ** source_bit_depth - 1)
+        array = (array.astype(np.float32) * scale).round()
+
+    array = np.clip(array, 0, 2 ** target_bit_depth - 1)
+
+    if target_bit_depth <= 8:
+        dtype = np.uint8
+    elif target_bit_depth <= 16:
+        dtype = np.uint16
+    elif target_bit_depth <= 32:
+        dtype = np.uint32
+    else:
+        raise ValueError(f"Unsupported target bit depth: {target_bit_depth}")
+
+    array = array.astype(dtype)
+
+    photometric = 'rgb' if is_rgb else None
+
+    if is_rgb and array.ndim == 3 and array.shape[2] == 3:
+        array = array[..., ::-1]
+
+
+    if writer_arguments is None:
+        writer_arguments = {}
+
+    delete_file(output_path)
+    tifffile.imwrite(output_path, array, photometric=photometric, **writer_arguments)
+
+def generate_frame_list(
+    nd2_reader: "Nd2Reader",
+    dimension_order: list[str] | None = None
+) -> list[tuple[int, dict[str, int]]]:
+    """
+    Generate a list of (frame_index, coordinate_dict) for each frame in the ND2 series,
+    using the provided dimension order (or the file's order).
+
+    Returns:
+        List of tuples: [(frame_index, {{dim_name: coord, ...}}), ...]
+    """
+    canon_dims = list(nd2_reader.experiment.dimnames())
+    if nd2_reader.imageAttributes.componentCount > 1 and not nd2_reader.isRgb and 'c' not in canon_dims:
+        canon_dims.append('c')
+
+    if dimension_order is None:
+        dim_order = canon_dims
+    else:
+        mapped = [map_dim_name(d) for d in dimension_order]
+        if set(mapped) != set(canon_dims):
+            raise ValueError(f"Dimensions mismatch: provided {mapped} vs file dims {canon_dims}")
+        dim_order = mapped
+
+    dims_sizes = nd2_reader.dimensionSizes()
+    indices = nd2_reader.generateLoopIndexes(named=True)
+
+    if all(isinstance(item, dict) and 'w' in item and 'm' in item for item in indices):
+        transformed = []
+        for item in indices:
+            new_item = deepcopy(item)
+            new_item['m'] = new_item['w']
+            del new_item['w']
+            transformed.append(new_item)
+        indices = transformed
+
+    base_dims = [d for d in canon_dims if d != 'c']
+    lookup_map = {tuple(idx[d] for d in base_dims): i for i, idx in enumerate(indices)}
+
+    dim_order_sizes = {
+        d: (nd2_reader.imageAttributes.componentCount if d == 'c' else dims_sizes.get(d, 0))
+        for d in dim_order
+    }
+
+    frame_list: list[tuple[int, dict[str, int]]] = []
+    for combo in product(*(range(dim_order_sizes[d]) for d in dim_order)):
+        coords = dict(zip(dim_order, combo))
+        key = tuple(coords.get(d, 0) for d in base_dims)
+        frame_idx = lookup_map[key]
+        frame_list.append((frame_idx, coords))
+
+    return frame_list
+
+"""
+def _series_export(
+        nd2_reader: "Nd2Reader",
+        folder: str | Path | None = None,
+        prefix: str | None = None,
+        dimension_order: list[str] | None = None,
+        bits: int | None = None
+    ) -> None:
+
+    if nd2_reader.filename is None:
+        raise ValueError("Cannot export series: ND2 file path is not available.")
+
+    nd2_path = Path(nd2_reader.filename)
+
+    output_folder = Path(folder) if folder is not None else nd2_path.parent / (nd2_path.stem + "_export")
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    file_prefix = nd2_path.stem if prefix is None else prefix
+
+    isRgb = nd2_reader.isRgb
+    isFloat = nd2_reader.isFloat
+
+    dim_order = list(nd2_reader.experiment.dimnames())
+    if nd2_reader.imageAttributes.componentCount > 1 and not isRgb:
+        if 'c' not in dim_order:
+            dim_order.append('c')
+
+    if dimension_order is None:
+        dimension_order = dim_order
+    else:
+        dimension_order = [map_dim_name(name) for name in dimension_order]
+        if set(dimension_order) != set(dim_order):
+            raise ValueError(f"Dimensions mismatch: provided dimensions {dimension_order} do not match file dimensions {dim_order}.")
+
+    original_bits = nd2_reader.imageAttributes.uiBpcSignificant
+
+    target_bits = bits
+    if target_bits is None or target_bits == -1:
+        target_bits = original_bits
+
+    dims_sizes = nd2_reader.dimensionSizes()
+    indices = nd2_reader.generateLoopIndexes(named=True)
+
+    dim_order_sizes = {}
+    for dim in dimension_order:
+        if dim == 'c':
+            dim_order_sizes[dim] = nd2_reader.imageAttributes.componentCount
+            continue
+        if dim not in dims_sizes:
+            raise ValueError(f"Dimension '{dim}' not found in the ND2 file dimensions.")
+        dim_order_sizes[dim] = dims_sizes[dim]
+
+    print(dims_sizes, indices, dimension_order)
+
+    from itertools import product
+
+    keys = list(dim_order_sizes.keys())
+    ranges = [range(dim_order_sizes[k]) for k in keys]
+
+    for combo in product(*ranges):
+        values = dict(zip(keys, combo))
+
+        frame_lookup = values.copy()
+        if 'c' in frame_lookup:
+            frame_lookup.pop('c')
+        frame_index = indices.index(frame_lookup)
+        print(frame_index, values)  # e.g., {'t': 0, 'm': 0, 'c': 0}
+    pass
+"""
+
+def _series_export(
+        nd2_reader: "Nd2Reader",
+        folder: str | Path | None = None,
+        prefix: str | None = None,
+        dimension_order: list[str] | None = None,
+        bits: int | None = None,
+        *,
+        progress_to_json: bool = False
+    ) -> None:
+
+    if nd2_reader.filename is None:
+        raise ValueError("Cannot export series: ND2 file path is not available.")
+
+    nd2_path = Path(nd2_reader.filename)
+    output_folder = Path(folder) if folder is not None else nd2_path.parent / (nd2_path.stem + "_export")
+    output_folder.mkdir(parents=True, exist_ok=True)
+    file_prefix = nd2_path.stem if prefix is None else prefix
+
+    isRgb = nd2_reader.isRgb
+    isFloat = nd2_reader.isFloat
+
+    original_bits = nd2_reader.imageAttributes.uiBpcSignificant
+    target_bits = original_bits if bits is None or bits == -1 else bits
+
+    frames = generate_frame_list(nd2_reader, dimension_order)
+    sizes = get_dim_sizes(nd2_reader)
+
+    for i, (frame_index, coords) in enumerate(frames):
+
+        dim_str = ""
+        for dim, index in coords.items():
+            dim_str += f"_{dim}{index:0{len(str(sizes[dim]-1))}d}"
+
+        output_filename = output_folder / f"{file_prefix}{dim_str}.tiff"
+
+        array = nd2_reader.image(frame_index)
+        if "c" in coords:
+            c_index = coords["c"]
+            if not (array.ndim == 3 and array.shape[2] == sizes["c"]):
+                raise ValueError("Incorrect shape for given channel count.")
+            array = array[:,:, c_index]
+
+
+        writer_arguments = {}
+        if nd2_reader.pictureMetadata.bCalibrated:
+            res = 1 / nd2_reader.pictureMetadata.dCalibration
+            writer_arguments["resolution"] = (res, res)
+            #writer_arguments["resolutionunit"] = tifffile.RESUNIT.MICROMETER
+
+        if isFloat:
+            save_float_tiff(array, output_filename, writer_arguments=writer_arguments)
+        else:
+            save_uint_tiff(array, output_filename, original_bits, target_bits, is_rgb=isRgb, writer_arguments=writer_arguments)
+
+        if progress_to_json:
+            print(json.dumps({"progress": i + 1, "total": len(frames), "file": str(output_filename)}))
+        else:
+            print(f"Exporting frame {i + 1}/{len(frames)}\r", end="", flush=True)
+
+    if not progress_to_json:
+        print(f"\nExport completed. Files saved to: {output_folder}")
+
+
+
+
+
+

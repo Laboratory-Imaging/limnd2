@@ -26,6 +26,7 @@ limnd2-index = "limnd2.tools.index:main"
 limnd2-convert-file-to-nd2 = "limnd2.tools:convert_file_to_nd2_cli"
 limnd2-convert-sequence-to-nd2 = "limnd2.tools:convert_sequence_to_nd2_cli"
 limnd2-get-image-dimensions = "limnd2.tools:get_file_dimensions_as_json"
+limnd2-sequence-export = "limnd2.tools:sequence_export_cli"
 
 [tool.setuptools]
 packages = ["limnd2", "limnd2.tools", "limnd2.tools.conversion"]
@@ -39,3 +40,17 @@ warn_unused_ignores = true
 show_error_codes = true
 strict = true
 pretty = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=limnd2 --cov-report=term-missing"
+
+[tool.coverage.run]
+source = ["limnd2"]
+branch = true
+
+[tool.coverage.paths]
+source = ["limnd2"]
+
+[tool.coverage.report]
+show_missing = true
