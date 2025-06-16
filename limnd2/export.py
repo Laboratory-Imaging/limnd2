@@ -50,26 +50,26 @@ def delete_file(path: str | Path):
 def save_float_tiff(
     array: np.ndarray,
     output_path: str,
+    is_rgb: bool = False,
     *,
     writer_arguments: dict | None = None
 ):
-    """
-    Save a float array (e.g. float32) to a TIFF file without any bit-depth scaling.
-
-    Parameters:
-        array: np.ndarray
-            Float image data. Can be grayscale, RGB, or a stack.
-        output_path: str
-            Output filename.
-    """
     if not np.issubdtype(array.dtype, np.floating):
         raise ValueError("save_float_tiff expects float input")
 
-    if writer_arguments is None:
-        writer_arguments = {}
+    args = {} if writer_arguments is None else dict(writer_arguments)
+
+    if array.ndim >= 3:
+        if is_rgb:
+            args.setdefault('photometric', 'RGB')
+            args.setdefault('planarconfig', 'CONTIG')
+
+        else:
+            args.setdefault('photometric', 'MINISBLACK')
+            args.setdefault('planarconfig', 'CONTIG')
 
     delete_file(output_path)
-    tifffile.imwrite(output_path, array, **writer_arguments)
+    tifffile.imwrite(output_path, array, **args)
 
 def save_uint_tiff(
     array: np.ndarray,
@@ -80,21 +80,6 @@ def save_uint_tiff(
     *,
     writer_arguments: dict | None = None
 ):
-    """
-    Save a uint array to a TIFF file with optional bit-depth conversion.
-
-    Parameters:
-        array: np.ndarray
-            Integer (or float, but assumed to be in [0, 2^source_bit_depth - 1]) array.
-        output_path: str
-            Path to the output TIFF file.
-        source_bit_depth: int
-            Logical bit depth of the data.
-        target_bit_depth: int
-            Desired output bit depth (e.g. 8, 16).
-        is_rgb: bool
-            If True, uses RGB photometric interpretation.
-    """
     if np.issubdtype(array.dtype, np.floating):
         raise ValueError("Use save_float_tiff for float data.")
 
@@ -114,18 +99,32 @@ def save_uint_tiff(
         raise ValueError(f"Unsupported target bit depth: {target_bit_depth}")
 
     array = array.astype(dtype)
+    delete_file(output_path)
 
-    photometric = 'rgb' if is_rgb else None
+    args = {} if writer_arguments is None else dict(writer_arguments)
+    args["extratags"] = [(281, 'H', 1, (2**target_bit_depth) - 1, False)]
 
-    if is_rgb and array.ndim == 3 and array.shape[2] == 3:
+    if array.ndim == 2:
+        args.setdefault('photometric', 'minisblack')
+        tifffile.imwrite(output_path, array, **args)
+
+    elif array.ndim == 3:
+        h, w, c = array.shape
         array = array[..., ::-1]
 
+        if c == 3 and is_rgb:
+            args.setdefault('photometric', 'rgb')
+            args.setdefault('planarconfig', 'CONTIG')
+            tifffile.imwrite(output_path, array, **args)
 
-    if writer_arguments is None:
-        writer_arguments = {}
+        elif c > 1:
+            args.setdefault('photometric', 'minisblack')
+            args.setdefault('planarconfig', 'CONTIG')
 
-    delete_file(output_path)
-    tifffile.imwrite(output_path, array, photometric=photometric, **writer_arguments)
+
+            tifffile.imwrite(output_path, array, **args)
+        else:
+            tifffile.imwrite(output_path, array, **args)
 
 def generate_frame_list(
     nd2_reader: "Nd2Reader",
@@ -179,76 +178,6 @@ def generate_frame_list(
 
     return frame_list
 
-"""
-def _series_export(
-        nd2_reader: "Nd2Reader",
-        folder: str | Path | None = None,
-        prefix: str | None = None,
-        dimension_order: list[str] | None = None,
-        bits: int | None = None
-    ) -> None:
-
-    if nd2_reader.filename is None:
-        raise ValueError("Cannot export series: ND2 file path is not available.")
-
-    nd2_path = Path(nd2_reader.filename)
-
-    output_folder = Path(folder) if folder is not None else nd2_path.parent / (nd2_path.stem + "_export")
-    output_folder.mkdir(parents=True, exist_ok=True)
-
-    file_prefix = nd2_path.stem if prefix is None else prefix
-
-    isRgb = nd2_reader.isRgb
-    isFloat = nd2_reader.isFloat
-
-    dim_order = list(nd2_reader.experiment.dimnames())
-    if nd2_reader.imageAttributes.componentCount > 1 and not isRgb:
-        if 'c' not in dim_order:
-            dim_order.append('c')
-
-    if dimension_order is None:
-        dimension_order = dim_order
-    else:
-        dimension_order = [map_dim_name(name) for name in dimension_order]
-        if set(dimension_order) != set(dim_order):
-            raise ValueError(f"Dimensions mismatch: provided dimensions {dimension_order} do not match file dimensions {dim_order}.")
-
-    original_bits = nd2_reader.imageAttributes.uiBpcSignificant
-
-    target_bits = bits
-    if target_bits is None or target_bits == -1:
-        target_bits = original_bits
-
-    dims_sizes = nd2_reader.dimensionSizes()
-    indices = nd2_reader.generateLoopIndexes(named=True)
-
-    dim_order_sizes = {}
-    for dim in dimension_order:
-        if dim == 'c':
-            dim_order_sizes[dim] = nd2_reader.imageAttributes.componentCount
-            continue
-        if dim not in dims_sizes:
-            raise ValueError(f"Dimension '{dim}' not found in the ND2 file dimensions.")
-        dim_order_sizes[dim] = dims_sizes[dim]
-
-    print(dims_sizes, indices, dimension_order)
-
-    from itertools import product
-
-    keys = list(dim_order_sizes.keys())
-    ranges = [range(dim_order_sizes[k]) for k in keys]
-
-    for combo in product(*ranges):
-        values = dict(zip(keys, combo))
-
-        frame_lookup = values.copy()
-        if 'c' in frame_lookup:
-            frame_lookup.pop('c')
-        frame_index = indices.index(frame_lookup)
-        print(frame_index, values)  # e.g., {'t': 0, 'm': 0, 'c': 0}
-    pass
-"""
-
 def _series_export(
         nd2_reader: "Nd2Reader",
         folder: str | Path | None = None,
@@ -299,7 +228,7 @@ def _series_export(
             #writer_arguments["resolutionunit"] = tifffile.RESUNIT.MICROMETER
 
         if isFloat:
-            save_float_tiff(array, output_filename, writer_arguments=writer_arguments)
+            save_float_tiff(array, output_filename, is_rgb=isRgb, writer_arguments=writer_arguments)
         else:
             save_uint_tiff(array, output_filename, original_bits, target_bits, is_rgb=isRgb, writer_arguments=writer_arguments)
 
@@ -311,8 +240,35 @@ def _series_export(
     if not progress_to_json:
         print(f"\nExport completed. Files saved to: {output_folder}")
 
+def _frame_export(
+    nd2_reader: "Nd2Reader",
+    frame_index: int = 0,
+    output_path: str | Path | None = None,
+    target_bit_depth: int | None = None,
+    *,
+    progress_to_json: bool = False
+):
+    if nd2_reader.filename is None:
+        raise ValueError("Cannot export frame: ND2 file path is not available.")
 
+    if output_path is None:
+        output_path = Path(nd2_reader.filename).with_suffix('.tiff')
 
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    array = nd2_reader.image(frame_index)
 
+    if not nd2_reader.isFloat:
+        original_bits = nd2_reader.imageAttributes.uiBpcSignificant
+        if target_bit_depth is None or target_bit_depth == -1:
+            target_bit_depth = original_bits
+        save_uint_tiff(array, output_path, original_bits, target_bit_depth, is_rgb=nd2_reader.isRgb)
+    else:
+        save_float_tiff(array, output_path, is_rgb=nd2_reader.isRgb)
+
+    if progress_to_json:
+        print(json.dumps({"progress": 1, "total": 1, "file": str(output_path)}))
+    else:
+        print(f"Exported frame {frame_index} to {output_path}")
 

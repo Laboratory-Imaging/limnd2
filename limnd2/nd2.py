@@ -6,7 +6,7 @@ from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
 from .custom_data import CustomDescription, CustomDescriptionItemType, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
-from .export import _series_export
+from .export import _series_export, _frame_export
 from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
 from .results import create_table_data_from_h5, read_results_from_h5, TableData, ResultItem, ResultPane
@@ -573,6 +573,26 @@ class Nd2Reader(Nd2Base):
             Data will be scaled if necessary.
         """
         _series_export(self, folder=folder, prefix=prefix, dimension_order=dimension_order, bits=bits, progress_to_json=progress_to_json)
+
+    def frame_export(
+        self,
+        frame_index: int = 0,
+        output_path: str | Path | None = None,
+        target_bit_depth: int | None = None,
+        *,
+        progress_to_json: bool = False
+    ):
+        """
+        Export a single frame from the ND2 file to a TIFF file.
+        Parameters:
+            frame_index: int
+                The index of the frame to export.
+            output_path: str | Path
+                The path to save the exported TIFF file.
+            target_bit_depth: int | None
+                If specified, converts the image to this bit depth.
+        """
+        _frame_export(self, frame_index=frame_index, output_path=output_path, target_bit_depth=target_bit_depth, progress_to_json=progress_to_json)
 
     def finalize(self) -> None:
         return self._chunker.finalize()

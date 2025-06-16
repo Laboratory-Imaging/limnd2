@@ -22,5 +22,20 @@ def sequence_export_cli():
             progress_to_json=cli_args.progress_to_json
         )
 
-if __name__ == "__main__":
-    sequence_export_cli()
+def frame_export_cli():
+    parser = argparse.ArgumentParser(description="Export a single frame from an ND2 file to TIFF.")
+    parser.add_argument("nd2file", type=str, help="Path to the input .nd2 file.")
+    parser.add_argument("--frame-index", type=int, default=0, help="Index of the frame to export (default: 0).")
+    parser.add_argument("--output-path", type=str, default=None, help="Path to save the output TIFF file. If not provided, defaults to <nd2filename>.tiff.")
+    parser.add_argument("--target-bit-depth", type=int, default=None, help="Target bit depth for integer images (-1 or omit for original, 8, 16). Applied only to non-float images.")
+    parser.add_argument("--progress-to-json", action="store_true", help="Output progress information as JSON to stdout.")
+
+    args = parser.parse_args()
+
+    with Nd2Reader(args.nd2file) as reader:
+        reader.frame_export(
+            frame_index = args.frame_index,
+            output_path = args.output_path,
+            target_bit_depth = args.target_bit_depth,
+            progress_to_json = args.progress_to_json
+        )
