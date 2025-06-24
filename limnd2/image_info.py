@@ -121,6 +121,8 @@ def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, 
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value=setting.objectiveMagnification))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value=setting.objectiveNumericAperture))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value=setting.refractiveIndex))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Emission wavelength:", value=(plane.emissionWavelengthNm if plane.emissionWavelengthNm else 'N/A')))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Excitation wavelength:", value=(plane.excitationWavelengthNm if plane.excitationWavelengthNm else 'N/A')))
         else:
             camera = "Unknown camera"
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="OC name:", value='N/A'))
@@ -129,6 +131,8 @@ def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, 
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value='N/A'))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value='N/A'))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value='N/A'))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Emission wavelength:", value='N/A'))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Excitation wavelength:", value='N/A'))
     rows.sort(key=lambda row: row["camera"])
     groupedBy = ['camera', 'channel']
     d = dict(coldefs=col_defs, groups=_create_treeview_grouping(rows, groupedBy.copy()), rowdata=rows, groupedby=groupedBy)
