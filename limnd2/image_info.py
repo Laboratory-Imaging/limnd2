@@ -47,9 +47,9 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
     sort_keys = {}
     for grpcol in groupby:
         if ordering is not None and grpcol in ordering:
-            sort_keys[grpcol] = lambda row: ordering[grpcol][row[grpcol]]
+            sort_keys[grpcol] = lambda row, grpcol=grpcol: ordering[grpcol][row[grpcol]]
         else:
-            sort_keys[grpcol] = lambda row: row[grpcol]
+            sort_keys[grpcol] = lambda row, grpcol=grpcol: row[grpcol]
 
     def recursive_fn(parent: dict[str, any], hash: object, rows: list[dict[str, any]], groupby: list[str], depth: int):
         rcount = 0
@@ -58,8 +58,12 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
         grpcol = groupby.pop(0)
         for k, g in itertools.groupby(rows, key=lambda row: row[grpcol]):
             grouprows = list(g)
-            start = rows.index(grouprows[0])
+
+            parent_start = parent["rows"][0]
+            offset = rows.index(grouprows[0])
+            start = parent_start + offset
             end = start + len(grouprows)
+
             hh = hash.copy()
             hh.update(json.dumps(k).encode())
             group = dict(id=hh.hexdigest(), title=str(k), colid=grpcol, depth=depth, groupcount=0, rowcount=end-start, rows=(start, end))
@@ -67,7 +71,7 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
             rcount += end - start
             gcount += 1
             if len(groupby):
-                ret_group_list += recursive_fn(group, hh, rows, groupby, depth+1)
+                ret_group_list += recursive_fn(group, hh, grouprows, groupby, depth+1)
         parent["rowcount"] -= rcount
         parent["groupcount"] = gcount
         return ret_group_list
@@ -80,7 +84,7 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
     rowcount = len(rows)
     root = dict(id=h.hexdigest(), title="All", depth=0, groupcount=0, rowcount=rowcount, rows=(0, rowcount))
     ret = [ root ]
-    ret += recursive_fn(root, h, rows, groupby, 1)
+    ret += recursive_fn(root, h, rows, groupby.copy(), 1)
     return ret
 
 def _experiment_to_table(exp: ExperimentLevel) -> dict[str, any]:
