@@ -55,7 +55,8 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
         rcount = 0
         gcount = 0
         ret_group_list = []
-        grpcol = groupby.pop(0)
+        grpcol = groupby[0]
+        next_cols = groupby[1:]
         for k, g in itertools.groupby(rows, key=lambda row: row[grpcol]):
             grouprows = list(g)
 
@@ -70,8 +71,8 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
             ret_group_list.append(group)
             rcount += end - start
             gcount += 1
-            if len(groupby):
-                ret_group_list += recursive_fn(group, hh, grouprows, groupby, depth+1)
+            if next_cols:
+                ret_group_list += recursive_fn(group, hh, grouprows, next_cols, depth+1)
         parent["rowcount"] -= rcount
         parent["groupcount"] = gcount
         return ret_group_list
