@@ -301,6 +301,7 @@ def convert_sequence_parse(args: list[str] | None = None) -> LimConvertUtils.Con
     if extension is None:
         extensionType = image_format_from_regexp(parsed_args.regexp)
     else:
+        extension = extension.lower()
         if not extension.startswith("."):
             extension = "." + extension
         if extension in EXTENSION_TO_FORMAT:
