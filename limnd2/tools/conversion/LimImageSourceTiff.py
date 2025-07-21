@@ -2,6 +2,7 @@ from __future__ import annotations
 import copy
 import itertools
 import math
+from os import times
 from pathlib import Path
 
 import numpy as np
@@ -292,24 +293,32 @@ class OMEUtils:
     @staticmethod
     def time_step_from_ome(ome: "ome_types.model.OME"):
         # returns estimated time step in OME model
+        if not ome.images or not ome.images[0].pixels or not ome.images[0].pixels.planes:
+            return None
         planes = ome.images[0].pixels.planes
         times = list(set([plane.delta_t for plane in planes]))
+        if not times:
+            return None
         times.sort()
         return ((times[-1] - times[0]) / (len(times) - 1))
 
     @staticmethod
     def z_step_from_ome(ome: "ome_types.model.OME"):
         # returns estimated z step in OME model
+        if not ome.images or not ome.images[0].pixels or not ome.images[0].pixels.planes:
+            return None
         planes = ome.images[0].pixels.planes
         zpositions = list(set([plane.position_z for plane in planes]))
+        if not zpositions:
+            return None
         zpositions.sort()
         return ((zpositions[-1] - zpositions[0]) / (len(zpositions) - 1))
 
     @staticmethod
     def channel_from_ome(channel: "ome_types.model.Channel"):
         # returns limnd2 Plane object from OME channel object
-        acquisition = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.acquisition_mode.value)
-        contrast = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.contrast_method.value)
+        acquisition = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.acquisition_mode.value if channel.acquisition_mode else "unknown")
+        contrast = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.contrast_method.value if channel.contrast_method else "unknown")
 
         plane = Plane(name = channel.name,
                     modality = acquisition | contrast,
@@ -334,7 +343,7 @@ class OMEUtils:
 
         used_instrument = None
         used_objective = None
-        if len(ome.instruments):
+        if ome.instruments:
             for instrument in ome.instruments:
                 if instrument.id == image.instrument_ref.id:
                     used_instrument = instrument
@@ -347,7 +356,7 @@ class OMEUtils:
         if used_objective:
             objective_numerical_aperture = used_objective.lens_na
 
-        immersion_refractive_index = image.objective_settings.refractive_index
+        immersion_refractive_index = image.objective_settings.refractive_index if image.objective_settings else None
         pixel_calibration = image.pixels.physical_size_x
 
         new_factory = MetadataFactory(pixel_calibration = metadata_factory.pixel_calibration if metadata_factory.pixel_calibration else pixel_calibration,
@@ -361,6 +370,7 @@ class OMEUtils:
         channels = {}
         for index, channel in enumerate(sorted(image.pixels.channels, key=lambda x: x.id)):
             channels[index] = OMEUtils.channel_from_ome(channel)
+
 
         return new_factory, channels
 

@@ -347,12 +347,15 @@ class Plane:
         PicturePlaneModalityFlags
             PicturePlaneModalityFlags instance with modality.
         """
+
         if isinstance(self.modality, PicturePlaneModalityFlags):
             return self.modality
         elif isinstance(self.modality, PicturePlaneModality):
             return PicturePlaneModalityFlags.from_modality(self.modality)
         elif isinstance(self.modality, str):
             return PicturePlaneModalityFlags.from_modality_string(self.modality)
+        else:
+            return 0
 
     def _convert(self, index) -> tuple[PicturePlaneDesc, SampleSettings]:
 
