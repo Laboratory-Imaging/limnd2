@@ -255,11 +255,18 @@ class Nd2Reader(Nd2Base):
         if self.acqTimes is not None:
             strings = []
             for ms in self.acqTimes:
-                ss = int((ms/1_000)%60)
-                mm = int((ms/(60_000))%60)
-                hh = int(ms/(3_600_000))
-                ms -= (3_600_000)*hh + (60_000)*mm + 60*ss
-                strings.append("%d:%02d:%02d.%03d" % (hh, mm, ss, ms % 1000))
+                sign = '-' if ms < 0 else ''
+                total_ms = abs(ms)
+                hh = int(total_ms // 3_600_000)
+                total_ms -= hh * 3_600_000
+
+                mm = int(total_ms // 60_000)
+                total_ms -= mm * 60_000
+
+                ss = int(total_ms // 1_000)
+                total_ms -= ss * 1_000
+                rem_ms = int(total_ms)
+                strings.append(f"{sign}{hh}:{mm:02d}:{ss:02d}.{rem_ms:03d}")
             recData.append(RecordedDataItem(ID='ACQTIME', Desc='Time', Unit='h:m:s.ms', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
         data = self.chunk(b'CustomDataVar|CustomDataV2_0!')
         if data is not None:
