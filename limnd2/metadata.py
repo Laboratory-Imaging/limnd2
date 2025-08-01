@@ -209,6 +209,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
     """
     Enum for modality flags of given plane.
     """
+    modUnknown: typing.Final                          = 0x0000000000000000
     modFluorescence: typing.Final                     = 0x0000000000000001
     modBrightfield: typing.Final                      = 0x0000000000000002
     modDarkfield: typing.Final                        = 0x0000000000000004
@@ -369,7 +370,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
         modality_parsed = modality.lower().replace("-", "").replace(" ", "").replace(",", "")
 
         if modality_parsed in ("undefined", "unknown"):
-            return 0
+            return PicturePlaneModalityFlags.modUnknown
         if modality_parsed in modality_map_parsed:
             return modality_map_parsed[modality_parsed]
         ome_map = PicturePlaneModalityFlags.modality_OME_map()

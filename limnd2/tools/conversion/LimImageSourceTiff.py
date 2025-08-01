@@ -317,8 +317,14 @@ class OMEUtils:
     @staticmethod
     def channel_from_ome(channel: "ome_types.model.Channel"):
         # returns limnd2 Plane object from OME channel object
-        acquisition = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.acquisition_mode.value if channel.acquisition_mode else "unknown")
-        contrast = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.contrast_method.value if channel.contrast_method else "unknown")
+        try:
+            acquisition = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.acquisition_mode.value if channel.acquisition_mode else "unknown")
+        except ValueError:
+            acquisition = limnd2.metadata.PicturePlaneModalityFlags.modUnknown
+        try:
+            contrast = limnd2.metadata.PicturePlaneModalityFlags.from_modality_string(channel.contrast_method.value if channel.contrast_method else "unknown")
+        except ValueError:
+            contrast = limnd2.metadata.PicturePlaneModalityFlags.modUnknown
 
         plane = Plane(name = channel.name,
                     modality = acquisition | contrast,

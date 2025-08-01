@@ -353,9 +353,12 @@ class Plane:
         elif isinstance(self.modality, PicturePlaneModality):
             return PicturePlaneModalityFlags.from_modality(self.modality)
         elif isinstance(self.modality, str):
-            return PicturePlaneModalityFlags.from_modality_string(self.modality)
+            try:
+                return PicturePlaneModalityFlags.from_modality_string(self.modality)
+            except ValueError:
+                return PicturePlaneModalityFlags.modUnknown
         else:
-            return 0
+            return PicturePlaneModalityFlags.modUnknown
 
     def _convert(self, index) -> tuple[PicturePlaneDesc, SampleSettings]:
 
