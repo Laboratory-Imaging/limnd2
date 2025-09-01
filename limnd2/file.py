@@ -290,7 +290,7 @@ class LimBinaryIOChunker(BaseChunker):
         if type(name) == str:
             name = name.encode("ascii")
         if not BaseChunker._is_chunk_data(name):
-            raise UnexpectedCallError("setChunk", name)
+            raise UnexpectedCallError("chunk", name)
         try:
             pos = self._chunk_pos(name)
             return self._read_chunk(pos)

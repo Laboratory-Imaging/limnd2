@@ -62,9 +62,14 @@ def _node_name_value(node: Element) -> tuple[str, Any]:
                 cname = f"i{i:010}"
                 int_index_count += 1
             if cname in value:  # pragma: no cover
-                # don't see this in tests anymore. but just in case...
-                warnings.warn(f"Duplicate key {cname} in {name}", stacklevel=2)
-            value[cname] = cval
+                i = 1
+                uname = f'{cname}#{i}'
+                while uname in value:
+                    i += 1
+                    uname = f'{cname}#{i}'
+                value[uname] = cval
+            else:
+                value[cname] = cval
         if 0 < int_index_count and len(value) == int_index_count:
             value = [ value[k] for k in value.keys() ]
     return name, value
