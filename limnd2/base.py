@@ -24,6 +24,8 @@ ND2_FILEMAP_SIGNATURE:  typing.Final                    = b"ND2 FILEMAP SIGNATUR
 ND2_CHUNK_MAGIC:        typing.Final                    = 0x0ABECEDA
 JP2_MAGIC:              typing.Final                    = 0x0C000000
 
+ND2_CHUNK_NAME_AppInfo                                  = b'CustomDataVar|AppInfo_V1_0!'
+
 ND2_CHUNK_NAME_ImageAttributes                          = b'ImageAttributes!'
 ND2_CHUNK_NAME_ImageAttributesLV                        = b'ImageAttributesLV!'                         #basic attributes
 
@@ -42,9 +44,14 @@ ND2_CHUNK_NAME_AcqFramesCache                           = b'CustomData|AcqFrames
 ND2_CHUNK_NAME_TimeSourceCache                          = b'CustomData|TimeSourceCache!'
 ND2_CHUNK_NAME_FloatRangeCache                          = b'CustomData|FloatRangeCache!'
 ND2_CHUNK_FORMAT_FloatCompRangeCache_1p                 = b'CustomData|FloatCompRangeCache%u!'
+ND2_CHUNK_RE_FloatCompRangeCache_1p                     = re.compile(b'^CustomData\\|FloatCompRangeCache(\\d+)!$')
 
+ND2_CHUNK_NAME_CustomDescription                        = b'CustomData|CustomDescriptionV1_0!'
 ND2_CHUNK_NAME_CustomDataVar                            = b'CustomDataVar|CustomDataV2_0!'
 ND2_CHUNK_NAME_CustomDataVarLI                          = b'CustomDataVar|CustomDataV2_0LI!'
+
+ND2_CHUNK_NAME_WellPlateDesc                            = b'CustomData|WellPlateDesc_0!'
+ND2_CHUNK_NAME_WellPlateFrameInfo                       = b'CustomData|WellPlateFrameInfoZJSON!'
 
 ND2_CHUNK_FORMAT_ImageMetadataLV_1p                     = b'ImageMetadataSeqLV|%u!' # |seq_index!           #metadata
 ND2_CHUNK_RE_ImageMetadataLV_1p                         = re.compile(b'^ImageMetadataSeqLV\\|(\\d+)!$')

@@ -208,17 +208,20 @@ class Nd2Reader(Nd2Base):
 
     @functools.cached_property
     def wellplateDesc(self) -> WellplateDesc|None:
-        data = self.chunk(b'CustomData|WellPlateDesc_0!')
+        from .base import ND2_CHUNK_NAME_WellPlateDesc
+        data = self.chunk(ND2_CHUNK_NAME_WellPlateDesc)
         return WellplateDesc.from_lv(data) if data is not None else None
 
     @functools.cached_property
     def wellplateFrameInfo(self) -> WellplateFrameInfo|None:
-        data = self.chunk(b'CustomData|WellPlateFrameInfoZJSON!')
+        from .base import ND2_CHUNK_NAME_WellPlateFrameInfo
+        data = self.chunk(ND2_CHUNK_NAME_WellPlateFrameInfo)
         return WellplateFrameInfo.from_json(data) if data is not None else None
 
     @functools.cached_property
     def appInfo(self) -> AppInfo:
-        data = self.chunk(b'CustomDataVar|AppInfo_V1_0!')
+        from .base import ND2_CHUNK_NAME_AppInfo
+        data = self.chunk(ND2_CHUNK_NAME_AppInfo)
         return AppInfo.from_var(data)
 
     @property
@@ -251,6 +254,7 @@ class Nd2Reader(Nd2Base):
 
     @property
     def recordedData(self) -> RecordedData:
+        from .base import ND2_CHUNK_NAME_CustomDataVar
         recData = RecordedData()
         if self.acqTimes is not None:
             strings = []
@@ -268,7 +272,7 @@ class Nd2Reader(Nd2Base):
                 rem_ms = int(total_ms)
                 strings.append(f"{sign}{hh}:{mm:02d}:{ss:02d}.{rem_ms:03d}")
             recData.append(RecordedDataItem(ID='ACQTIME', Desc='Time', Unit='h:m:s.ms', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
-        data = self.chunk(b'CustomDataVar|CustomDataV2_0!')
+        data = self.chunk(ND2_CHUNK_NAME_CustomDataVar)
         if data is not None:
             decoded = decode_var(data)
             desc = decoded.get('CustomTagDescription_v1.0', {})
@@ -309,7 +313,8 @@ class Nd2Reader(Nd2Base):
 
     @functools.cached_property
     def customDescription(self) -> CustomDescription|None:
-        data = self.chunk(b'CustomData|CustomDescriptionV1_0!')
+        from .base import ND2_CHUNK_NAME_CustomDescription
+        data = self.chunk(ND2_CHUNK_NAME_CustomDescription)
         if data is None:
             return None
         return CustomDescription.from_lv(data)
@@ -749,8 +754,8 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
                 append = os.path.isfile(file)
             mode = "rb+" if append else "wb"
 
-        if mode == "rb+":
-            raise FileExistsError("This file already exists, can not open for writing.")
+        #if mode == "rb+":
+        #    raise FileExistsError("This file already exists, can not open for writing.")
 
         fh = open(file, mode)
         chunker_kwargs.update(dict(filename=file))
