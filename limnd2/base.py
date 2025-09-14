@@ -621,7 +621,7 @@ class BaseChunker(abc.ABC):
 
         data = self.chunk(ND2_CHUNK_FORMAT_DeepSIMRawChannel % (componentindex, seqindex))
         if not data:
-            raise NameNotInChunkmapError(f"DeepSIM chunk for sequnce index {seqindex} and component index {componentindex} not found.")
+            raise NameNotInChunkmapError(f"DeepSIM chunk for sequence index {seqindex} and component index {componentindex} not found.")
 
         # deepSim chunk data structure
 

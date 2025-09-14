@@ -3,5 +3,20 @@
         "Downsampled",
         "chunker",
         "limnd"
+    ],
+    "cSpell.words": [
+        "acqtime",
+        "asbytes",
+        "AUXIMAGE",
+        "binid",
+        "binimage",
+        "chunkmap",
+        "chunkname",
+        "downsample",
+        "FILEMAP",
+        "seqindex",
+        "textinfo",
+        "xtile",
+        "ytile"
     ]
 }
