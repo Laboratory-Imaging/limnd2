@@ -16,6 +16,7 @@
         "FILEMAP",
         "seqindex",
         "textinfo",
+        "Wellplate",
         "xtile",
         "ytile"
     ]
