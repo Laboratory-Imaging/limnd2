@@ -45,6 +45,9 @@ pretty = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=limnd2 --cov-report=term-missing"
+markers = [
+    "slow: tests that take too long and should only be run locally (not on CI)",
+]
 
 [tool.coverage.run]
 source = ["limnd2"]

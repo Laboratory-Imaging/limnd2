@@ -11,3 +11,4 @@ decoder_types.txt
 /docs_build
 /docs_sphinx
 /tst/_*
+.coverage
