@@ -55,3 +55,18 @@ source = ["limnd2"]
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.pyright]
+include = ["limnd2"]
+exclude = []
+defineConstant = { DEBUG = true }
+
+reportMissingImports = "error"
+reportMissingTypeStubs = false
+
+pythonVersion = "3.6"
+pythonPlatform = "Linux"
+
+executionEnvironments = [
+  { root = "limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
+]
