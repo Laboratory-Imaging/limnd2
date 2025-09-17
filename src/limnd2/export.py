@@ -49,7 +49,7 @@ def delete_file(path: str | Path):
 
 def save_float_tiff(
     array: np.ndarray,
-    output_path: str,
+    output_path: str | Path,
     is_rgb: bool = False,
     *,
     writer_arguments: dict | None = None
@@ -73,7 +73,7 @@ def save_float_tiff(
 
 def save_uint_tiff(
     array: np.ndarray,
-    output_path: str,
+    output_path: str | Path,
     source_bit_depth: int,
     target_bit_depth: int,
     is_rgb: bool = False,
@@ -222,7 +222,7 @@ def _series_export(
 
 
         writer_arguments = {}
-        if nd2_reader.pictureMetadata.bCalibrated:
+        if nd2_reader.pictureMetadata.bCalibrated and nd2_reader.pictureMetadata.dCalibration > 0:
             res = 1 / nd2_reader.pictureMetadata.dCalibration
             writer_arguments["resolution"] = (res, res)
             #writer_arguments["resolutionunit"] = tifffile.RESUNIT.MICROMETER

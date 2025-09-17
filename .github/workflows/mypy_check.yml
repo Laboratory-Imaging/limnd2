@@ -4,12 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'limnd2/**/*.py'
+      - 'src/limnd2/**/*.py'
       - 'pyproject.toml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'limnd2/**/*.py'
+      - 'src/limnd2/**/*.py'
       - 'pyproject.toml'
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
 
       - name: Run mypy on limnd2 only and capture output
         run: |
-          mypy limnd2 > mypy.log 2>&1 || true
+          mypy src/limnd2 > mypy.log 2>&1 || true
 
       - name: Upload mypy.log artifact
         uses: actions/upload-artifact@v4

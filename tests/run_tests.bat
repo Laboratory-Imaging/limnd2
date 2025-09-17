@@ -14,6 +14,9 @@ if errorlevel 1 (
   echo All required Python test dependencies are already installed.
 )
 
+REM Ensure src/ is importable (src layout)
+set PYTHONPATH=%CD%\..\src;%PYTHONPATH%
+
 echo Running tests and generating HTML report...
 pytest --html=report.html --self-contained-html || echo Tests completed with failures.
 

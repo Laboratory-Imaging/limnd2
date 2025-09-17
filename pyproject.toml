@@ -29,11 +29,15 @@ limnd2-get-image-dimensions = "limnd2.tools:get_file_dimensions_as_json"
 limnd2-sequence-export = "limnd2.tools:sequence_export_cli"
 limnd2-frame-export = "limnd2.tools:frame_export_cli"
 
-[tool.setuptools]
-packages = ["limnd2", "limnd2.tools", "limnd2.tools.conversion"]
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["limnd2", "limnd2.*"]
 
 [tool.mypy]
-exclude = '^(build|dist|\.venv)/'
+exclude = '^(build|dist|\\.venv)(/|\\\\)'
 check_untyped_defs = true
 disallow_untyped_defs = true
 ignore_missing_imports = false
@@ -50,26 +54,30 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["limnd2"]
+source = ["src/limnd2"]
 branch = true
 
 [tool.coverage.paths]
-source = ["limnd2"]
+source = [
+  "src/limnd2",
+  "*/site-packages/limnd2",
+  "*/Lib/site-packages/limnd2"
+]
 
 [tool.coverage.report]
 show_missing = true
 
 [tool.pyright]
-include = ["limnd2"]
+include = ["src"]
 exclude = []
 defineConstant = { DEBUG = true }
 
 reportMissingImports = "error"
 reportMissingTypeStubs = false
 
-pythonVersion = "3.6"
-pythonPlatform = "Linux"
+pythonVersion = "3.12"
+pythonPlatform = "Windows"
 
 executionEnvironments = [
-  { root = "limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
+  { root = "src/limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
 ]

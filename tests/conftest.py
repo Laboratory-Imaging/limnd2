@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 from pathlib import Path
+import sys
 import pytest
 
 
@@ -52,6 +53,12 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     Some test modules compute ND2 file lists at import time; copying here ensures
     `tests/test_files` exists before collection/import happens.
     """
+    # Ensure src/ is importable when using a src layout
+    repo_root = Path(__file__).resolve().parents[1]
+    src_path = repo_root / "src"
+    if src_path.exists():
+        sys.path.insert(0, str(src_path))
+
     remote_root = _get_remote_root(session.config)
     local_root = Path(__file__).parent / "test_files"
     try:
