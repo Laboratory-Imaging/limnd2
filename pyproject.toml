@@ -68,17 +68,17 @@ source = [
 show_missing = true
 
 
-# [tool.pyright]
-# include = ["src"]
-# exclude = []
-# defineConstant = { DEBUG = true }
+[tool.pyright]
+include = ["src"]
+exclude = []
+defineConstant = { DEBUG = true }
 
-# reportMissingImports = "error"
-# reportMissingTypeStubs = false
+reportMissingImports = "error"
+reportMissingTypeStubs = false
 
-# pythonVersion = "3.12"
-# pythonPlatform = "Windows"
+pythonVersion = "3.12"
+pythonPlatform = "Windows"
 
-# executionEnvironments = [
-#   { root = "src/limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
-# ]
+executionEnvironments = [
+  { root = "src/limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
+]
