@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import functools
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, Any
 
 from .attributes import ImageAttributes
 from .base import (
@@ -21,21 +22,27 @@ from .textinfo import ImageTextInfo, AppInfo
 class StorageInfoProtocol(Protocol):
     @property
     def filename(self) -> str | None:
+        """
+        Returns the filename of the file if available, otherwise `None`.
+        """
         ...
 
     @property
     def url(self) -> str | None:
+        """
+        Returns the URL of the file if available, otherwise `None`.
+        """
         ...
 
     @property
-    def sizeOnDisk(self) -> int:
+    def size_on_disk(self) -> int:
         """
         Returns the number of bytes the file takes on disk.
         """
         ...
 
     @property
-    def lastModified(self) -> datetime.datetime:
+    def last_modified(self) -> datetime.datetime:
         """
         Returns the modify time of the file on disk.
         """
@@ -43,11 +50,11 @@ class StorageInfoProtocol(Protocol):
 
 class ResultsProtocol(Protocol):
     @property
-    def storageInfo(self) -> StorageInfoProtocol:
+    def storage_info(self) -> StorageInfoProtocol:
         """
         Returns storage information.
 
-        See [`StorageInfoProtocol`](#limnd2.protocols.StorageInfoProtocol) for more information.
+        See [`StorageInfoProtocol`](protocols.md#limnd2.protocols.StorageInfoProtocol) for more information.
         """
         ...
 
@@ -62,7 +69,7 @@ class ResultsProtocol(Protocol):
 
 class Nd2ReaderProtocol(Protocol):
     """
-    Creates Nd2Read instance for reading `.nd2` files and its attributes, metadata, properties, image data and so on.
+    Protocol for Nd2Reader instance for reading `.nd2` files and its attributes, metadata, properties, image data and so on.
 
     Also see [Quickstart](index.md#reading-nd2-files) for an
     example of how to use this class and how to read individual chunks, attributes, metadata and so on.
@@ -73,10 +80,10 @@ class Nd2ReaderProtocol(Protocol):
         """
         Returns the version of the `.nd2` file as a tuple of two integers.
         """
-        ...    
+        ...
 
     @property
-    def storageInfo(self) -> StorageInfoProtocol:
+    def storage_info(self) -> StorageInfoProtocol:
         """
         Returns storage information.
 

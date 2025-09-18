@@ -102,7 +102,7 @@ def test_frame_export_and_series_export(sample_nd2_path: Path, tmp_path: Path, c
     with limnd2.Nd2Reader(sample_nd2_path) as r:
         # frame export
         out_single = tmp_path / "single.tiff"
-        export_mod._frame_export(r, frame_index=0, output_path=out_single, target_bit_depth=8, progress_to_json=True)
+        export_mod.frame_export(r, frame_index=0, output_path=out_single, target_bit_depth=8, progress_to_json=True)
         captured = capsys.readouterr().out.strip()
         # Should be a JSON line
         data = json.loads(captured)
@@ -112,7 +112,7 @@ def test_frame_export_and_series_export(sample_nd2_path: Path, tmp_path: Path, c
 
         # series export
         out_dir = tmp_path / "series_out"
-        export_mod._series_export(
+        export_mod.series_export(
             r,
             folder=out_dir,
             prefix="exp",

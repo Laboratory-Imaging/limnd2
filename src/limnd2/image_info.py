@@ -1,3 +1,5 @@
+import os
+from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject
 from .custom_data import RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel
@@ -5,6 +7,32 @@ from .metadata import PictureMetadataPicturePlanes
 from .nd2 import Nd2Reader
 
 import hashlib, itertools, json
+
+def generalImageInfo(reader: Nd2Reader) -> dict[str, any]:
+    """
+    Returns general information about the image as a dictionary.
+    """
+    ia = reader.imageAttributes
+    loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in reader.experiment if 0 < exp_level.count ]) if reader.experiment else ""
+    if reader.filename:
+        path, filename = os.path.split(reader.filename)
+    elif reader.url:
+        path, filename = os.path.split(reader.url.rstrip("/"))
+    path += os.sep
+
+    bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
+    frame_res = f"{ia.width} x {ia.height}"
+    dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
+    calibration = f"{reader.pictureMetadata.dCalibration:.3f} µm/px" if reader.pictureMetadata.bCalibrated else "Uncalibrated"
+
+    mtime = f"{reader.chunker.last_modified.strftime('%x %X')}"
+    app_created = reader.appInfo.software
+
+    sizes = format_general_info_sizes(reader.chunker.size_on_disk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*reader.experiment.dims.get('z', 0) if reader.experiment is not None else 0)
+
+    return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
+
+
 
 def imageInformationAsJSON(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> str:
     return json.dumps(gatherImageInformation(file_like, filename=filename, last_modified=last_modified))
@@ -358,3 +386,31 @@ def imageInformationAsXLSX(image_information: str|dict[str, any]) -> bytes:
     wb.save(result)
     result.seek(0)
     return result.read()
+
+def format_file_size(size: int) -> str:
+    kB = 1024
+    MB = kB*1024
+    GB = MB*1024
+    TB = GB*1024
+    if TB <= size:
+        return f"{size/TB:.0f}TB"
+    if GB <= size:
+        return f"{size/GB:.0f}GB"
+    if MB <= size:
+        return f"{size/MB:.0f}MB"
+    if kB <= size:
+        return f"{size/kB:.0f}kB"
+    return f"{size} B"
+
+
+def format_general_info_sizes(file_bytes: int, frame_bytes: int, volume_bytes: int) -> dict[str, any]:
+    ret = {
+        "file_bytes": file_bytes,
+        "frame_bytes": frame_bytes,
+        "volume_bytes": volume_bytes,
+        "file_size": format_file_size(file_bytes),
+        "frame_size": format_file_size(frame_bytes),
+        "volume_size": format_file_size(volume_bytes)
+    }
+    ret["sizes"] = f"{ret['file_size']} on disk, {ret['frame_size']} frame" + (f", {ret['volume_size']} volume" if volume_bytes else "")
+    return ret

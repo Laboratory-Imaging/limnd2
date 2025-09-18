@@ -67,6 +67,8 @@ plugins:
             #show_category_heading: true
             #show_symbol_type_heading: true           # doesnt work when deployed on GH pages
             #show_symbol_type_toc: true               # doesnt work when deployed on GH pages
+            extensions:
+              - griffe_inherited_docstrings
 
 markdown_extensions:
   - admonition
@@ -92,6 +94,7 @@ nav:
     - experiment_factory.py: experiment_factory.md
     - metadata.py: metadata.md
     - metadata_factory.py: metadata_factory.md
+    - protocols.py: protocols.md
 
     - Conversion tools:
       - Convert image to ND2: convert_image.md

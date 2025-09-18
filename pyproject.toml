@@ -67,17 +67,18 @@ source = [
 [tool.coverage.report]
 show_missing = true
 
-[tool.pyright]
-include = ["src"]
-exclude = []
-defineConstant = { DEBUG = true }
 
-reportMissingImports = "error"
-reportMissingTypeStubs = false
+# [tool.pyright]
+# include = ["src"]
+# exclude = []
+# defineConstant = { DEBUG = true }
 
-pythonVersion = "3.12"
-pythonPlatform = "Windows"
+# reportMissingImports = "error"
+# reportMissingTypeStubs = false
 
-executionEnvironments = [
-  { root = "src/limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
-]
+# pythonVersion = "3.12"
+# pythonPlatform = "Windows"
+
+# executionEnvironments = [
+#   { root = "src/limnd2", pythonVersion = "3.12", pythonPlatform = "Windows" }
+# ]
