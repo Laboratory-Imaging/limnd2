@@ -67,8 +67,6 @@ plugins:
             #show_category_heading: true
             #show_symbol_type_heading: true           # doesnt work when deployed on GH pages
             #show_symbol_type_toc: true               # doesnt work when deployed on GH pages
-            extensions:
-              - griffe_inherited_docstrings
 
 markdown_extensions:
   - admonition
