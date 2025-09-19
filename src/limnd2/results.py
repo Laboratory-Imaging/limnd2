@@ -5,7 +5,28 @@ import errno, enum, json
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    import h5py, pandas
+    import h5py
+    import pandas
+
+_RESULTS_EXTRA_INSTALL_HINT = '[results] extra not installed. Please install it with `pip install "limnd2[results]"`.'
+
+def _missing_results_dependency(package: str) -> ImportError:
+    msg = f'Missing optional dependency "{package}" required for limnd2 results support. {_RESULTS_EXTRA_INSTALL_HINT}'
+    return ImportError(msg)
+
+def _require_h5py():
+    try:
+        import h5py
+    except ImportError as exc:
+        raise _missing_results_dependency('h5py') from exc
+    return h5py
+
+def _require_pandas():
+    try:
+        import pandas
+    except ImportError as exc:
+        raise _missing_results_dependency('pandas') from exc
+    return pandas
 
 class PaneDataVersionTooLow(Exception):
     def __init__(self, version: int = 0):
@@ -14,8 +35,7 @@ class PaneDataVersionTooLow(Exception):
         super().__init__(self.message)
 
 def __lazy_pandas():
-    import pandas as pd
-    return pd
+    return _require_pandas()
 
 @dataclass(kw_only=True)
 class TableData:
@@ -66,7 +86,7 @@ class ResultItem:
 
 
 def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
-    import h5py
+    h5py = _require_h5py()
     try:
         results: dict[str, any] = {}
         with h5py.File(h5_filename, 'r') as h5:
@@ -92,7 +112,8 @@ def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
         print(e)
 
 def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> TableData:
-    import h5py, pandas
+    h5py = _require_h5py()
+    pandas = _require_pandas()
     try:
         with h5py.File(h5_filename, 'r') as h5:
             tbl = h5[tbl_location]

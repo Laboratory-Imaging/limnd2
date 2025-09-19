@@ -11,13 +11,35 @@ authors = [
 ]
 
 dependencies = [
-    "h5py==3.12.1",
     "numpy",
     "ome_types",
-    "pandas",
     "tifffile",
     "imagecodecs",
     "Pillow",
+]
+
+[project.optional-dependencies]
+results = [
+    "h5py==3.12.1",
+    "pandas",
+]
+dev = [
+    "build",
+    "coverage",
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+    "mypy",
+    "pyright",
+    "pytest",
+    "pytest-cov",
+    "pytest-html",
+    "setuptools<=69",
+    "twine",
+    "uv",
+    "wheel",
+
+    "limnd2[results]",
 ]
 
 [project.scripts]
