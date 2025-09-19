@@ -52,6 +52,12 @@ python -m build
 twine upload -r local dist\*
 ```
 
+Using `uv`:
+```sh
+uv build
+uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
+```
+
 ### Documentation Preview
 
 ``` sh
