@@ -51,7 +51,10 @@ ND2_CHUNK_NAME_CustomDataVar                            = b'CustomDataVar|Custom
 ND2_CHUNK_NAME_CustomDataVarLI                          = b'CustomDataVar|CustomDataV2_0LI!'
 
 ND2_CHUNK_NAME_WellPlateDesc                            = b'CustomData|WellPlateDesc_0!'
+ND2_CHUNK_NAME_WellPlateDescJson                        = b'CustomData|WellPlateDescJSON_0!'
+ND2_CHUNK_NAME_WellPlateInfo                            = b'CustomData|WellPlateInfoJSON_0!'
 ND2_CHUNK_NAME_WellPlateFrameInfo                       = b'CustomData|WellPlateFrameInfoZJSON!'
+ND2_CHUNK_NAME_WellPlateLabels                          = b'CCustomData|WellPlateLabelsZJSON_0!'
 
 ND2_CHUNK_FORMAT_ImageMetadataLV_1p                     = b'ImageMetadataSeqLV|%u!' # |seq_index!           #metadata
 ND2_CHUNK_RE_ImageMetadataLV_1p                         = re.compile(b'^ImageMetadataSeqLV\\|(\\d+)!$')
