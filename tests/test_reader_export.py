@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -15,15 +17,9 @@ from limnd2.export import (
 from limnd2 import export as export_mod
 
 
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-
 @pytest.fixture()
-def sample_nd2_path() -> Path:
-    if not ND2_FILES:
-        pytest.skip(f"No .nd2 files found under {ND2_BASE}")
-    return ND2_FILES[0]
+def sample_nd2_path(nd2_files: list[Path]) -> Path:
+    return nd2_files[0]
 
 
 def test_map_dim_name_basic():

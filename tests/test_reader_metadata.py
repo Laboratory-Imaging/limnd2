@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 import limnd2
@@ -9,15 +10,6 @@ from limnd2.metadata import (
     PicturePlaneModality,
     PicturePlaneModalityFlags,
     PictureMetadata,
-)
-
-
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-pytestmark = pytest.mark.skipif(
-    not ND2_FILES,
-    reason=f"No .nd2 files found under {ND2_BASE}",
 )
 
 
@@ -41,7 +33,6 @@ def test_calculate_color_and_modality_helpers():
     assert dic & PicturePlaneModalityFlags.modDIContrast
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_picture_metadata_roundtrip_and_properties(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         md: PictureMetadata = nd2.pictureMetadata

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-import shutil
 import datetime
+import shutil
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -17,16 +18,6 @@ from limnd2.base import (
 from limnd2.binary import BinaryRasterMetadataItem, BinaryRasterMetadata
 
 
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-pytestmark = pytest.mark.skipif(
-    not ND2_FILES,
-    reason=f"No .nd2 files found under {ND2_BASE}",
-)
-
-
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_chunker_properties_and_chunk_access(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         c = r.chunker
@@ -46,7 +37,6 @@ def test_chunker_properties_and_chunk_access(nd2_path: Path):
             _ = c.chunk(ND2_CHUNK_FORMAT_ImageDataSeq_1p % (0))
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_image_read_and_rect(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         c = r.chunker
@@ -66,7 +56,6 @@ def test_image_read_and_rect(nd2_path: Path):
         assert sub.shape == (rh, rw, a.shape[2])
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_downsample_flags_and_ranges(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         c = r.chunker
@@ -80,10 +69,10 @@ def test_downsample_flags_and_ranges(nd2_path: Path):
         assert np.all(cr[:, 0] <= cr[:, 1])
 
 
-def test_set_downsampled_image_write_and_read(tmp_path: Path):
+def test_set_downsampled_image_write_and_read(tmp_path: Path, nd2_base_dir: Path):
     # Use a specific ND2 file mirrored from the server
     target_name = "underwater_bmx_generated_by_NIS.nd2"
-    source = ND2_BASE / target_name
+    source = nd2_base_dir / target_name
     if not source.exists():
         pytest.skip(f"Target ND2 not mirrored: {source}")
 
@@ -108,10 +97,10 @@ def test_set_downsampled_image_write_and_read(tmp_path: Path):
         assert np.array_equal(rd, dimg)
 
 
-def test_downsampledImage_reads_chunk_and_fallback(tmp_path: Path):
+def test_downsampledImage_reads_chunk_and_fallback(tmp_path: Path, nd2_base_dir: Path):
     # Use the specific ND2 file; append a downsampled image and validate BaseChunker.downsampledImage
     target_name = "underwater_bmx_generated_by_NIS.nd2"
-    source = ND2_BASE / target_name
+    source = nd2_base_dir / target_name
     if not source.exists():
         pytest.skip(f"Target ND2 not mirrored: {source}")
 
@@ -238,23 +227,23 @@ def test_binary_raster_downsample_workflow(tmp_path: Path):
         assert rd.shape == fb.shape and rd.dtype == fb.dtype
 
 
-def test_rle_detection_and_version_on_existing_files():
-    # Probe mirrored ND2 files for RLE binary metadata and test detection/version if present
-    for nd2_path in ND2_FILES:
-        with limnd2.Nd2Reader(nd2_path) as r:
-            meta = r.chunker.binaryRleMetadata
-            if meta and len(meta) > 0:
-                regex_dict = meta.dataChunkNameRegexDict
-                matched = False
-                for name in r.chunker.chunk_names:
-                    res = BaseChunker.isBinaryRleDataChunk(regex_dict, name)
-                    if res is not None:
-                        binid, seq = res
-                        assert binid in meta.binIdList
-                        matched = True
-                        break
-                # version should be >= 0, and >0 if we matched
-                ver = r.chunker.rleBinaryVersion()
-                assert ver >= 0
-                return
-    pytest.skip("No ND2 with RLE binary metadata found")
+def test_rle_detection_and_version_on_existing_files(nd2_path: Path):
+    with limnd2.Nd2Reader(nd2_path) as r:
+        meta = r.chunker.binaryRleMetadata
+        if not meta or len(meta) == 0:
+            pytest.skip("No RLE binary metadata in this file")
+
+        regex_dict = meta.dataChunkNameRegexDict
+        matched = False
+        for name in r.chunker.chunk_names:
+            res = BaseChunker.isBinaryRleDataChunk(regex_dict, name)
+            if res is not None:
+                binid, seq = res
+                assert binid in meta.binIdList
+                matched = True
+                break
+        assert matched, "Expected to match at least one RLE binary data chunk"
+
+        # version should be >= 0, and >0 if we matched
+        ver = r.chunker.rleBinaryVersion()
+        assert ver >= 0

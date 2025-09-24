@@ -1,23 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-import pytest
+
 import numpy as np
+import pytest
 
 import limnd2
 
 
-# Discover ND2 files mirrored locally by tests/conftest.py
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-pytestmark = pytest.mark.skipif(
-    not ND2_FILES,
-    reason=f"No .nd2 files found under {ND2_BASE}",
-)
-
-
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_general_info_and_basic_open(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         # Basic open and properties
@@ -30,7 +20,6 @@ def test_general_info_and_basic_open(nd2_path: Path):
         assert "dimension" in gi
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_image_attributes_and_first_frame(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         a = nd2.imageAttributes
@@ -38,19 +27,20 @@ def test_image_attributes_and_first_frame(nd2_path: Path):
         assert a.componentCount >= 1
         assert 1 <= a.uiBpcSignificant <= 32
 
-        if a.frameCount > 0:
-            img0 = nd2.image(0)
-            assert isinstance(img0, np.ndarray)
-            assert img0.shape[0] == a.height and img0.shape[1] == a.width
-            # components may be 3 for RGB, else use componentCount
-            expected_comp = 3 if nd2.isRgb else a.componentCount
-            assert img0.shape[-1] == expected_comp
+        if a.frameCount <= 0:
+            pytest.skip("no frames")
+
+        img0 = nd2.image(0)
+        assert isinstance(img0, np.ndarray)
+        assert img0.shape[0] == a.height and img0.shape[1] == a.width
+        # components may be 3 for RGB, else use componentCount
+        expected_comp = 3 if nd2.isRgb else a.componentCount
+        assert img0.shape[-1] == expected_comp
 
 
 # Experiment-focused tests moved to tests/test_reader_experiment.py
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_text_info_and_app_info(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         # Image text info
@@ -64,7 +54,6 @@ def test_text_info_and_app_info(nd2_path: Path):
         _ = nd2.appInfo
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_metadata_channels_and_settings(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         md = nd2.pictureMetadata
@@ -72,7 +61,6 @@ def test_metadata_channels_and_settings(nd2_path: Path):
         channels = getattr(md, "channels", [])
         assert channels is not None
 
-        # Dive into channel descriptors if present
         for ch in channels:
             # These fields may be zero if unspecified; just ensure they exist and are numeric
             assert hasattr(ch, "emissionWavelengthNm")
@@ -86,7 +74,6 @@ def test_metadata_channels_and_settings(nd2_path: Path):
             assert hasattr(settings, "objectiveMagnification")
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_optional_structures_and_ranges(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         # Optional wellplate descriptors should not raise

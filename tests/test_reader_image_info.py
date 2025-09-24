@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
-import pytest
+from pathlib import Path
 
-import limnd2
+import pytest
 from limnd2.image_info import (
     gatherImageInformation,
     imageInformationAsJSON,
@@ -19,16 +18,6 @@ from limnd2.image_info import (
 )
 
 
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-pytestmark = pytest.mark.skipif(
-    not ND2_FILES,
-    reason=f"No .nd2 files found under {ND2_BASE}",
-)
-
-
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_gather_image_information_basics(nd2_path: Path):
     info = gatherImageInformation(nd2_path)
     assert isinstance(info, dict)
@@ -49,7 +38,6 @@ def test_gather_image_information_basics(nd2_path: Path):
     assert "acquisitionDetails" in info
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_json_and_txt_exports(nd2_path: Path):
     json_str = imageInformationAsJSON(nd2_path)
     assert isinstance(json_str, str)
@@ -63,7 +51,6 @@ def test_json_and_txt_exports(nd2_path: Path):
     assert len([ln for ln in txt.splitlines() if ln.strip()]) > 5
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_xlsx_export_when_available(nd2_path: Path):
     try:
         import openpyxl  # noqa: F401
@@ -77,7 +64,6 @@ def test_xlsx_export_when_available(nd2_path: Path):
     assert data[:2] == b"PK"
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_section_export_helpers(nd2_path: Path):
     info = gatherImageInformation(nd2_path)
 

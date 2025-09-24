@@ -125,15 +125,15 @@ SLOW_CASES = [
     ),
 ]
 
-@pytest.mark.parametrize(("test_name", "args_str"), FAST_CASES)
 @pytest.mark.parametrize("logs_to_json", [False])
 @pytest.mark.parametrize("multiprocessing", [False, True])
+@pytest.mark.parametrize(("test_name", "args_str"), FAST_CASES)
 def test_fast_conversions(test_name, args_str, logs_to_json, multiprocessing):
     _run_conversion(test_name, args_str, logs_to_json, multiprocessing)
 
 @pytest.mark.slow
-@pytest.mark.parametrize(("test_name", "args_str"), SLOW_CASES)
 @pytest.mark.parametrize("logs_to_json", [True])
 @pytest.mark.parametrize("multiprocessing", [False, True])
+@pytest.mark.parametrize(("test_name", "args_str"), SLOW_CASES)
 def test_slow_conversions(test_name, args_str, logs_to_json, multiprocessing):
     _run_conversion(test_name, args_str, logs_to_json, multiprocessing)

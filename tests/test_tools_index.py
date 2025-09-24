@@ -1,12 +1,11 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 
 import pytest
 
 from limnd2.tools import index
-
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
 
 
 @pytest.fixture(autouse=True)
@@ -16,10 +15,8 @@ def restore_plain_print(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture()
-def nd2_directory() -> Path:
-    if not ND2_FILES:
-        pytest.skip(f"No .nd2 files found under {ND2_BASE}")
-    return ND2_BASE
+def nd2_directory(nd2_base_dir: Path, nd2_files: list[Path]) -> Path:
+    return nd2_base_dir
 
 
 def test_index_main_json_output(nd2_directory: Path, capsys: pytest.CaptureFixture[str]):

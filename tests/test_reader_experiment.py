@@ -1,20 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-import math
+
 import pytest
 
 import limnd2
 from limnd2.experiment import ExperimentLoopType
-
-
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-pytestmark = pytest.mark.skipif(
-    not ND2_FILES,
-    reason=f"No .nd2 files found under {ND2_BASE}",
-)
 
 
 def _product(vals: list[int] | tuple[int, ...]) -> int:
@@ -27,7 +18,6 @@ def _product(vals: list[int] | tuple[int, ...]) -> int:
     return total
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_dimnames_shape_and_indices(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         exp = r.experiment
@@ -50,7 +40,6 @@ def test_dimnames_shape_and_indices(nd2_path: Path):
         assert len(idx) == expected
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_find_levels_and_params(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         exp = r.experiment
@@ -74,7 +63,6 @@ def test_find_levels_and_params(nd2_path: Path):
             assert isinstance(pts, list)
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_reader_helpers_match_loops(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         exp = r.experiment
@@ -82,7 +70,7 @@ def test_reader_helpers_match_loops(nd2_path: Path):
             # If helper exists, ensure it reflects no z-stack
             if hasattr(r, "hasZStack"):
                 assert r.hasZStack is False
-            return
+            pytest.skip("No experiment in file")
 
         has_z = exp.findLevel(ExperimentLoopType.eEtZStackLoop) is not None
         if hasattr(r, "hasZStack"):

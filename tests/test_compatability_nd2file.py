@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
 import limnd2
@@ -9,16 +10,6 @@ from limnd2.attributes import ImageAttributesCompression, ImageAttributesPixelTy
 from limnd2.experiment import ExperimentLoopType
 
 
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
-pytestmark = pytest.mark.skipif(
-    not ND2_FILES,
-    reason=f"No .nd2 files found under {ND2_BASE}",
-)
-
-
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_basic_properties(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         f = ND2File(nd2_path)
@@ -27,7 +18,6 @@ def test_basic_properties(nd2_path: Path):
         assert f.is_legacy is False
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_attributes_mapping(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         f = ND2File(nd2_path)
@@ -65,7 +55,6 @@ def test_attributes_mapping(nd2_path: Path):
         assert tuple(f.attributes) == expected
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES[:1], ids=lambda p: p.name)
 def test_not_implemented_interfaces_raise(nd2_path: Path):
     f = ND2File(nd2_path)
     with pytest.raises(NotImplementedError):
@@ -100,7 +89,6 @@ def test_not_implemented_interfaces_raise(nd2_path: Path):
         f.read_frame(0)
 
 
-@pytest.mark.parametrize("nd2_path", ND2_FILES, ids=lambda p: p.name)
 def test_experiment_mapping_if_present(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         if r.experiment is None:
@@ -123,7 +111,7 @@ def test_experiment_mapping_if_present(nd2_path: Path):
         # Lengths may differ if only spectral/custom loops exist
         if not expected_types:
             assert mapped == []
-            return
+            pytest.skip("No compatible experiment loops in file")
 
         assert len(mapped) == len(expected_types)
         for m, et, exp in zip(mapped, expected_types, r.experiment):

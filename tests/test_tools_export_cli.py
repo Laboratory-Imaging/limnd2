@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
@@ -6,15 +8,10 @@ import pytest
 
 from limnd2.tools.export import frame_export_cli, sequence_export_cli
 
-ND2_BASE = Path(__file__).parent / "test_files" / "nd2_files"
-ND2_FILES = sorted(ND2_BASE.rglob("*.nd2")) if ND2_BASE.exists() else []
-
 
 @pytest.fixture()
-def sample_nd2_path() -> Path:
-    if not ND2_FILES:
-        pytest.skip(f"No .nd2 files found under {ND2_BASE}")
-    return ND2_FILES[0]
+def sample_nd2_path(nd2_files: list[Path]) -> Path:
+    return nd2_files[0]
 
 
 def test_frame_export_cli(tmp_path: Path, sample_nd2_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
