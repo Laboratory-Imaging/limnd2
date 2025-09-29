@@ -54,13 +54,13 @@ def calculateColor(color: str | tuple[int, int, int]) -> int:
             "Yellow": "#ffff00",
             "Cyan": "#00ffff",
             "Magenta": "#ff00ff",
-            "Black": "#000000",
-            "White": "#ffffff",
-            "Gray": "#808080",
             "Orange": "#ffa500",
             "Pink": "#ffc0cb",
             "Purple": "#800080",
             "Brown": "#a52a2a",
+            "Gray": "#808080",
+            "Black": "#000000",
+            "White": "#ffffff",
         }
 
         if isinstance(color, str):

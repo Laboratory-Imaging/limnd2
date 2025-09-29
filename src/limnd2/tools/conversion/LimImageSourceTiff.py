@@ -2,7 +2,6 @@ from __future__ import annotations
 import copy
 import itertools
 import math
-from os import times
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +10,7 @@ import tifffile
 import limnd2
 from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
 from limnd2.metadata_factory import MetadataFactory, Plane
-from .LimImageSource import LimImageSource
+from .LimImageSource import LimImageSource, merge_four_fields
 from .LimConvertUtils import ConversionSettings, ConvertSequenceArgs, logprint
 
 
@@ -164,8 +163,8 @@ class LimImageSourceTiff(LimImageSource):
             return sources, original_dimensions
 
         ranges = [range(r) for r in new_dimension.values()]
-        indices = list(itertools.product(*ranges))
-        index_to_idf = [(indices, idf) for idf, indices in enumerate(indices)]
+        index_tuples = list(itertools.product(*ranges))
+        index_to_idf = [(idx_tuple, idf) for idf, idx_tuple in enumerate(index_tuples)]
 
         for file, dims in sources.items():
             for ome_dims, idf in index_to_idf:
@@ -273,46 +272,303 @@ class LimImageSourceTiff(LimImageSource):
 
     def parse_additional_metadata(self, metadata_storage: ConvertSequenceArgs | ConversionSettings):
         import ome_types
+
         try:
             ome = ome_types.from_tiff(self.filename)
-        except Exception as e:
+        except Exception:
+            return
+        if not ome:
             return
 
-        if ome:
-            ome_dims = self.get_file_dimensions()
-            if "timeloop" in ome_dims:
-                metadata_storage.time_step = OMEUtils.time_step_from_ome(ome)
+        ome_dims = self.get_file_dimensions()
 
-            if "zstep" in ome_dims:
-                metadata_storage.z_step = OMEUtils.z_step_from_ome(ome)
+        # Use ConvertSequenceArgs as a "sparse" partial B
+        b = ConvertSequenceArgs()
 
-            if "channel" in ome_dims:
-                metadata_storage.metadata, metadata_storage.channels = OMEUtils.channels_from_ome(ome, metadata_storage.metadata)
+        if "timeloop" in ome_dims:
+            b.time_step = OMEUtils.time_step_from_ome(ome)
+
+        if "zstack" in ome_dims:
+            b.z_step = OMEUtils.z_step_from_ome(ome)
+
+        if "channel" in ome_dims:
+            # Pass through existing metadata to preserve your current extraction behavior
+            meta_from_ome, chans_from_ome = OMEUtils.channels_from_ome(ome, metadata_storage.metadata)
+            b.metadata = meta_from_ome
+            b.channels = chans_from_ome
+
+        # Merge into A (only fills None/missing fields in A)
+        merge_four_fields(metadata_storage, b)
+
+
+    def metadata_as_pattern_settings(self) -> dict:
+        """
+        Return metadata in the exact shape your QML dialog expects for patternSettings.
+
+        Keys:
+        - tstep, zstep, pixel_calibration, pinhole_diameter, objective_magnification,
+            objective_numerical_aperture, immersion_refractive_index, zoom_magnification : strings
+        - channels: list of [nameFromFile, customName, modalityString, ex, em, colorName]
+
+        Any missing value is returned as an empty string "".
+        """
+
+        # Helper maps to your QML lists
+        MODALITIES = [
+            "Undefined", "Wide-field", "Brightfield", "Phase", "DIC", "DarkField",
+            "MC", "TIRF", "Confocal, Fluo", "Confocal, Trans", "Multi-Photon",
+            "SFC pinhole", "SFC slit", "Spinning Disc", "DSD", "NSIM", "iSim",
+            "RCM", "CSU W1-SoRa", "NSPARC"
+        ]
+        COLOR_NAMES = [
+            "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta",
+            "Orange", "Pink", "Purple", "Brown", "Gray",
+            "Black", "White"
+        ]
+
+        def _color_name_from_rgb(rgb):
+            if not rgb or len(rgb) < 3:
+                return ""
+            r, g, b = rgb[:3]
+
+            # --- Strict checks for vivid colors ---
+            if r > 200 and g < 80 and b < 80:
+                return "Red"
+            if g > 200 and r < 80 and b < 80:
+                return "Green"
+            if b > 200 and r < 80 and g < 80:
+                return "Blue"
+
+            # Orange: strong red + moderate green, low blue
+            if r > 200 and 100 < g < 180 and b < 80:
+                return "Orange"
+
+            # Pink: strong red + moderate blue, low green
+            if r > 200 and g < 150 and b > 150:
+                return "Pink"
+
+            # Purple/Violet: red + blue both strong, green low
+            if r > 120 and b > 120 and g < 100:
+                return "Purple"
+
+            # Yellow: high red + green, low blue
+            if r > 200 and g > 200 and b < 100:
+                return "Yellow"
+
+            # Cyan: high green + blue, low red
+            if g > 200 and b > 200 and r < 100:
+                return "Cyan"
+
+            # Magenta: high red + blue, low green
+            if r > 200 and b > 200 and g < 100:
+                return "Magenta"
+
+            # Brown: moderate red + green, very low blue
+            if r > 120 and g > 80 and b < 60:
+                return "Brown"
+
+            # Gray: all channels balanced, mid intensity
+            if abs(r - g) < 20 and abs(g - b) < 20 and 50 < r < 200:
+                return "Gray"
+
+            # Black/White extremes
+            if r < 40 and g < 40 and b < 40:
+                return "Black"
+            if r > 220 and g > 220 and b > 220:
+                return "White"
+
+            # --- Fallback heuristic: max component ---
+            mx = max((r, "Red"), (g, "Green"), (b, "Blue"), key=lambda x: x[0])[1]
+            return mx
+
+        def _modality_from(acq_mode, contrast_method):
+            # Normalize to strings
+            am = (acq_mode or "").lower()
+            cm = (contrast_method or "").lower()
+
+            # Fluorescence vs transmitted confocal guess (very rough)
+            if "confocal" in am or "laser" in am:
+                if "fluor" in cm or cm == "" or "emission" in cm:
+                    return "Confocal, Fluo"
+                return "Confocal, Trans"
+
+            if "spinning" in am or "disk" in am or "spinning" in cm:
+                return "Spinning Disc"
+            if "wide" in am or "widefield" in am or "wide field" in am:
+                return "Wide-field"
+            if "bright" in cm:
+                return "Brightfield"
+            if "phase" in cm:
+                return "Phase"
+            if "dic" in cm:
+                return "DIC"
+            if "dark" in cm:
+                return "DarkField"
+
+            # As a safe default
+            return "Undefined"
+
+        # Defaults for the final shape
+        result = {
+            "tstep": "",
+            "zstep": "",
+            "pixel_calibration": "",
+            "pinhole_diameter": "",
+            "objective_magnification": "",
+            "objective_numerical_aperture": "",
+            "immersion_refractive_index": "",
+            "zoom_magnification": "",
+            "channels": []
+        }
+
+        # --- Read OME ---
+        try:
+            import ome_types
+            ome = ome_types.from_tiff(self.filename)
+        except Exception:
+            return {}
+
+        if not ome or not getattr(ome, "images", None):
+            return {}
+
+        image = ome.images[0]
+
+        # --- tstep / zstep ---
+        # If you already have OMEUtils, you can keep using it; otherwise compute roughly
+        try:
+            tstep_s = OMEUtils.time_step_from_ome(ome)  # seconds or None
+            zstep_um = OMEUtils.z_step_from_ome(ome)    # micrometers or None
+        except Exception:
+            tstep_s = None
+            zstep_um = None
+
+        if tstep_s is not None:
+            t_ms = tstep_s * 1000.0
+            result["tstep"] = f"{t_ms:.3f}"
+
+        if zstep_um is not None:
+            result["zstep"] = f"{zstep_um:.3f}"
+
+        # --- pixel size / NA / RI ---
+        objective_na = None
+        refractive_index = None
+        pixel_size_x = None
+
+        used_instrument = None
+        used_objective = None
+
+        if getattr(ome, "instruments", None) and getattr(image, "instrument_ref", None):
+            for instrument in ome.instruments:
+                if instrument.id == image.instrument_ref.id:
+                    used_instrument = instrument
+                    break
+
+        if used_instrument and getattr(used_instrument, "objectives", None) and getattr(image, "objective_settings", None):
+            for objective in used_instrument.objectives:
+                if objective.id == image.objective_settings.id:
+                    used_objective = objective
+                    break
+
+        if used_objective:
+            objective_na = getattr(used_objective, "lens_na", None)
+
+        if getattr(image, "objective_settings", None):
+            refractive_index = getattr(image.objective_settings, "refractive_index", None)
+
+        if getattr(image, "pixels", None):
+            pixel_size_x = getattr(image.pixels, "physical_size_x", None)
+
+        if pixel_size_x is not None:
+            # Keep as float string; QML uses DoubleValidator here
+            result["pixel_calibration"] = f"{float(pixel_size_x)}"
+        if objective_na is not None:
+            result["objective_numerical_aperture"] = f"{float(objective_na)}"
+        if refractive_index is not None:
+            result["immersion_refractive_index"] = f"{float(refractive_index)}"
+
+        # --- Channels ---
+        channels = []
+        if getattr(image, "pixels", None) and getattr(image.pixels, "channels", None):
+            # Sort by channel.id (same as your earlier logic)
+            chs = sorted(image.pixels.channels, key=lambda x: x.id)
+            for idx, ch in enumerate(chs):
+                name_from_file = ch.name or f"Channel_{idx}"
+                custom_name = name_from_file  # default custom = same as file name
+
+                # modality
+                acq_mode = getattr(ch, "acquisition_mode", None)
+                contrast = getattr(ch, "contrast_method", None)
+                modality = _modality_from(
+                    acq_mode.value if acq_mode else None,
+                    contrast.value if contrast else None
+                )
+                if modality not in MODALITIES:
+                    modality = "Undefined"
+
+                # wavelengths -> strings; default "0" to match your UI behavior
+                ex = getattr(ch, "excitation_wavelength", None)
+                em = getattr(ch, "emission_wavelength", None)
+                ex_str = str(int(round(ex))) if ex is not None else "0"
+                em_str = str(int(round(em))) if em is not None else "0"
+
+                # color -> closest UI color name
+                rgb = ch.color.as_rgb_tuple(alpha=False) if getattr(ch, "color", None) else None
+                color_name = _color_name_from_rgb(rgb)
+                if color_name not in COLOR_NAMES:
+                    color_name = "Red"  # stable fallback
+
+                channels.append([name_from_file, custom_name, modality, ex_str, em_str, color_name])
+
+        result["channels"] = channels
+        return result
+
+
+        """ example output:
+        {
+            "tstep": "422",
+            "zstep": "0",
+            "pixel_calibration": "0.103174604",
+            "pinhole_diameter": "",
+            "objective_magnification": "",
+            "objective_numerical_aperture": "1.4",
+            "immersion_refractive_index": "1.518",
+            "zoom_magnification": "",
+            "channels": [
+                ["DAPI",  "DAPI",  "Wide-field", "353", "465", "Cyan"],
+                ["AF488", "AF488", "Wide-field", "493", "517", "Green"],
+                ["AF555", "AF555", "Wide-field", "553", "568", "Red"],
+                ["AF647", "AF647", "Wide-field", "653", "668", "Magenta"]
+            ]
+        }
+        """
 
 class OMEUtils:
     @staticmethod
-    def time_step_from_ome(ome: "ome_types.model.OME"):
-        # returns estimated time step in OME model
+    def time_step_from_ome(ome: "ome_types.model.OME") -> float | None:
         if not ome.images or not ome.images[0].pixels or not ome.images[0].pixels.planes:
             return None
         planes = ome.images[0].pixels.planes
-        times = list(set([plane.delta_t for plane in planes]))
-        if not times:
+        times = [plane.delta_t for plane in planes if plane.delta_t is not None]
+        if len(times) < 2:
             return None
-        times.sort()
-        return ((times[-1] - times[0]) / (len(times) - 1))
+        times = sorted(set(times))
+        return (times[-1] - times[0]) / (len(times) - 1)
+
 
     @staticmethod
-    def z_step_from_ome(ome: "ome_types.model.OME"):
+    def z_step_from_ome(ome: "ome_types.model.OME") -> float | None:
         # returns estimated z step in OME model
         if not ome.images or not ome.images[0].pixels or not ome.images[0].pixels.planes:
             return None
+
         planes = ome.images[0].pixels.planes
-        zpositions = list(set([plane.position_z for plane in planes]))
-        if not zpositions:
+        zpositions = [plane.position_z for plane in planes if plane.position_z is not None]
+        if len(zpositions) < 2:
             return None
-        zpositions.sort()
-        return ((zpositions[-1] - zpositions[0]) / (len(zpositions) - 1))
+
+        zpositions = sorted(set(zpositions))
+        return (zpositions[-1] - zpositions[0]) / (len(zpositions) - 1)
+
 
     @staticmethod
     def channel_from_ome(channel: "ome_types.model.Channel"):

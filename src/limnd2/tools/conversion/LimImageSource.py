@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 import copy
 import json
 from pathlib import Path
+from copy import deepcopy
+from dataclasses import is_dataclass, asdict
 
 import numpy as np
 import sys
@@ -131,6 +133,12 @@ class LimImageSource(ABC):
         # In other file formats this will do nothing.
         return
 
+    def metadata_as_pattern_settings(self) -> dict:
+        """
+        Return metadata as a dictionary for internal usage in QML.
+        """
+        return {}
+
     @staticmethod
     def open(filename: str | Path) -> LimImageSource:
         """
@@ -143,18 +151,122 @@ class LimImageSource(ABC):
         return open_lim_image_source(filename)
 
 
-def get_file_dimensions_as_json(file_path: Path = None):
+
+def get_file_dimensions_as_json(file_path: Path | None = None):
     if file_path is None:
-        file_path = sys.argv[1]
+        file_path = Path(sys.argv[1])
+
     image_source = LimImageSource.open(file_path)
+
     try:
-        result = image_source.get_file_dimensions()
-        result["is_rgb"] = image_source.is_rgb
+        dims: dict[str, int] = image_source.get_file_dimensions() or {}
+        result: dict[str, int | bool | str | dict | list] = dict(dims)
+
+        result["is_rgb"] = bool(getattr(image_source, "is_rgb", False))
+        result["has_file_info"] = bool(dims)
+
+        if hasattr(image_source, "metadata_as_pattern_settings"):
+            try:
+                result["qml_settings"] = image_source.metadata_as_pattern_settings() or {}
+            except Exception:
+                result["qml_settings"] = {}
+        else:
+            result["qml_settings"] = {}
+
+        result["has_qml_settings"] = bool(result["qml_settings"])
+
         result["error"] = False
         result["error_message"] = ""
+
     except Exception as e:
         result = {
             "error": True,
             "error_message": str(e),
         }
-    print(json.dumps(result))
+
+    print(json.dumps(result, indent=2))
+
+_UNSET_CALIB = -1.0
+
+def _coalesce_number(a_val, b_val):
+    return a_val if a_val is not None else b_val
+
+def _plane_name(plane):
+    return getattr(plane, "name", "") or ""
+
+def _merge_metadata_factory(a_meta, b_meta):
+    """
+    Conservative merge for MetadataFactory:
+      - If A.metadata is None → take B.metadata
+      - Else (both exist):
+          * pixel_calibration: fill from B if A is unset (-1.0/None) and B has a real value
+          * planes: if A has none → copy all from B
+                    else append only planes from B whose names don't exist in A
+    """
+    if a_meta is None:
+        return deepcopy(b_meta) if b_meta is not None else None
+    if b_meta is None:
+        return a_meta
+
+    # pixel_calibration
+    if getattr(a_meta, "pixel_calibration", _UNSET_CALIB) in (None, _UNSET_CALIB):
+        b_cal = getattr(b_meta, "pixel_calibration", _UNSET_CALIB)
+        if b_cal not in (None, _UNSET_CALIB):
+            a_meta.pixel_calibration = b_cal
+
+    # planes
+    a_planes = getattr(a_meta, "planes", None)
+    b_planes = getattr(b_meta, "planes", None)
+
+    if not a_planes and b_planes:
+        a_meta.planes = deepcopy(b_planes)
+    elif a_planes and b_planes:
+        existing = {_plane_name(p) for p in a_planes}
+        for p in b_planes:
+            if _plane_name(p) not in existing:
+                a_planes.append(deepcopy(p))
+
+    return a_meta
+
+def merge_four_fields(a, b):
+    """
+    Merge only: time_step, z_step, channels, metadata.
+    Rules:
+      - Keep A as source of truth.
+      - For numbers: fill A.<field> from B only if A.<field> is None.
+      - For channels: if A.channels already has anything (non-empty), LEAVE IT AS-IS.
+                      Only if A.channels is None/empty, copy B.channels.
+      - For metadata: if A.metadata is None, take B.metadata; otherwise fill unset
+                      pixel_calibration and append planes missing by name.
+    Mutates and returns 'a'.
+    """
+    if b is None:
+        return a
+
+    # ---- numbers ----
+    if hasattr(a, "time_step") or hasattr(b, "time_step"):
+        a.time_step = _coalesce_number(getattr(a, "time_step", None), getattr(b, "time_step", None))
+
+    if hasattr(a, "z_step") or hasattr(b, "z_step"):
+        a.z_step = _coalesce_number(getattr(a, "z_step", None), getattr(b, "z_step", None))
+
+    # ---- channels (replace ONLY if A has none) ----
+    if hasattr(a, "channels"):
+        a_channels = getattr(a, "channels", None)
+        b_channels = getattr(b, "channels", None)
+
+        a_has_channels = bool(a_channels) and isinstance(a_channels, dict) and len(a_channels) > 0
+        b_has_channels = bool(b_channels) and isinstance(b_channels, dict) and len(b_channels) > 0
+
+        if not a_has_channels and b_has_channels:
+            # Replace entirely (copy) only when A omitted channels
+            a.channels = deepcopy(b_channels)
+        # else: keep A.channels exactly as-is (do nothing)
+
+    # ---- metadata (safe merge) ----
+    if hasattr(a, "metadata"):
+        a_meta = getattr(a, "metadata", None)
+        b_meta = getattr(b, "metadata", None)
+        a.metadata = _merge_metadata_factory(a_meta, b_meta)
+
+    return a
