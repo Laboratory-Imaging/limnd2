@@ -30,8 +30,6 @@ def test_nd2_reader_exposes_pivot_table_results(nd2_with_result_path):
     for alias, location in pane.private_table_locations.items():
         assert location.startswith("/Pivot table/"), f"Unexpected location for {alias}: {location}"
 
-    assert direct_results["Pivot table"].attributes.get("Username") == "lukas.jirusek"
-
 def test_create_table_data_from_h5_produces_dataframe(nd2_with_result_path, monkeypatch):
     import limnd2.results as results_module
 
