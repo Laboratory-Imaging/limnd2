@@ -18,8 +18,9 @@ class LimImageSourceJpeg(LimImageSource):
 
     def read(self) -> np.ndarray:
         """Read the image into numpy array writeable by limnd2 library."""
-        from PIL import Image
+        from PIL import Image, ImageOps
         with Image.open(self.filename) as img:
+            img = ImageOps.exif_transpose(img)
             if img.mode in ["L", "P"]:
                 return np.array(img, dtype=np.uint8)
 
@@ -46,9 +47,10 @@ class LimImageSourceJpeg(LimImageSource):
     @property
     def is_rgb(self) -> bool:
         """Check if the image is RGB."""
-        from PIL import Image
+        from PIL import Image, ImageOps
         if self._is_rgb is None:
             with Image.open(self.filename) as img:
+                img = ImageOps.exif_transpose(img)
                 if img.mode in ["L", "P", "I", "F"]:
                     self._is_rgb = False
 
@@ -63,8 +65,9 @@ class LimImageSourceJpeg(LimImageSource):
 
     def nd2_attributes(self, *, sequence_count=1):
         """Get the attributes of the image for ND2 file."""
-        from PIL import Image
+        from PIL import Image, ImageOps
         with Image.open(self.filename) as img:
+            img = ImageOps.exif_transpose(img)
             if img.mode == "L":
                 comps = 1
                 bpc = 8
@@ -116,4 +119,39 @@ class LimImageSourceJpeg(LimImageSource):
             uiVirtualComponents = comps,
             ePixelType = pixel_type
         )
+
+    def supposed_orientation(self) -> tuple[int, str]:
+        """
+        Return the EXIF orientation (1-8) and a human-readable description
+        such as 'Rotated 90° CW'.
+        """
+        ORIENTATION_TAG = 274  # EXIF Orientation
+
+        orientation_map = {
+            1: "Normal",
+            2: "Mirrored horizontally",
+            3: "Rotated 180°",
+            4: "Mirrored vertically",
+            5: "Rotated 90° CW and mirrored horizontally",
+            6: "Rotated 90° CW",
+            7: "Rotated 90° CCW and mirrored horizontally",
+            8: "Rotated 90° CCW",
+        }
+
+        from PIL import Image
+        with Image.open(self.filename) as img:
+            w, h = img.size
+            orientation = 1
+
+            try:
+                exif = img.getexif()
+                if exif:
+                    orientation = int(exif.get(ORIENTATION_TAG, 1))
+            except Exception:
+                pass
+
+        exif_desc = orientation_map.get(orientation, "Unknown")
+        description = f"{exif_desc}"
+
+        return orientation, description
 
