@@ -20,9 +20,11 @@
         "pyright",
         "seqindex",
         "textinfo",
+        "timeloop",
         "Wellplate",
         "xtile",
-        "ytile"
+        "ytile",
+        "zstack"
     ],
     "python.testing.pytestArgs": [
         "tests"

@@ -24,13 +24,13 @@ from .variant import decode_var
 
 class ExperimentLoopType(enum.IntEnum):
     """
-    Enum specifiying which experiment type was used in [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel)
+    Enum specifying which experiment type was used in [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel)
     Attributes
     ----------
     eEtTimeLoop : int
         Timeloop experiment (see [`ExperimentTimeLoop`](experiment.md#limnd2.experiment.ExperimentTimeLoop))
     eEtNETimeLoop : int
-        Nonequidistant timeloop experiment (see [`ExperimentNETimeLoop`](experiment.md#limnd2.experiment.ExperimentNETimeLoop))
+        Non-equidistant timeloop experiment (see [`ExperimentNETimeLoop`](experiment.md#limnd2.experiment.ExperimentNETimeLoop))
     eEtXYPosLoop : int
         Multipoint experiment (see [`ExperimentXYPosLoop`](experiment.md#limnd2.experiment.ExperimentXYPosLoop))
     eEtZStackLoop : int
@@ -113,6 +113,14 @@ class ExperimentLoop(LVSerializable):
         else:
             raise NotImplementedError(f'Loop type {eType} not implemented yet')
 
+    @property
+    def step(self) -> float|None:
+        return None
+
+    @property
+    def stepUnit(self) -> str|None:
+        return None
+
 @dataclass(frozen=True, kw_only=True)
 class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
     """
@@ -185,6 +193,14 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
         Returns formatted duration of the experiment.
         """
         return _format_time(self.dDuration) if 0.0 < self.dDuration else 'Continuous'
+
+    @property
+    def step(self) -> float|None:
+        return self.dAvgPeriodDiff if 0 <= self.dAvgPeriodDiff else self.dPeriod
+
+    @property
+    def stepUnit(self) -> str|None:
+        return "ms"
 
     @property
     def info(self) -> list[dict[str, any]]:
@@ -358,7 +374,7 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
             return (self.uiCount - 1) // 2
 
     @property
-    def step(self):
+    def step(self) -> float|None:
         """
         Returns step size between Z positions in the experiment in micrometers.
         """
@@ -390,6 +406,10 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
             return self.dZLow - self.dZHome
         else:
             return -self.dZHigh + self.dReferencePosition if self.bZInverted else self.dZLow + self.dReferencePosition
+
+    @property
+    def stepUnit(self) -> str|None:
+        return "µm"
 
     @property
     def info(self) -> list[dict[str, any]]:

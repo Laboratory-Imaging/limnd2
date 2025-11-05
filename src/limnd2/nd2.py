@@ -350,6 +350,10 @@ class Nd2Reader():
         else:
             return self._chunker.binaryRasterMetadata
 
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return (self.experiment.shape(skipSpectralLoop=True) if self.experiment else tuple()) + self.imageAttributes.shape
+
     def dimensionSizes(self, skipSpectralLoop=True) -> dict[str, int]:
         if self.experiment is None:
             return {}
