@@ -14,7 +14,7 @@ For creating experiments, you should use [`ExperimentFactory`](experiment_factor
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from .experiment import ExperimentLevel, ExperimentTimeLoop, ExperimentNETimeLoop, ExperimentXYPosLoop, ExperimentXYPosLoopPoint, ExperimentZStackLoop, ExperimentLoopType, ZStackType
-from typing import Any
+from typing import Any, Optional
 
 @dataclass
 class _Exp(ABC):
@@ -95,29 +95,40 @@ class _ZExp(_Exp):
     """
     count: int = 0
     step: float = 0.0
-    start: float = None
-    end: float = None
+    start: float | None = None
+    end: float | None = None
 
     def _create_experiment_level(self) -> ExperimentLevel:
-        if self.start is None and self.end is None:
-            self.start = 0.0
-            self.end = float(self.step * (self.count - 1))
-        elif self.start is None:
-            self.start = self.end - float(self.step * (self.count - 1))
-        elif self.end is None:
-            self.end = self.start + float(self.step * (self.count - 1))
+        # Work on locals so the type checker can narrow
+        start: Optional[float] = self.start
+        end: Optional[float] = self.end
+        step = float(self.step)
+        count = int(self.count)
 
+        if start is None and end is None:
+            start = 0.0
+            end = step * (count - 1)
+        elif start is None and end is not None:
+            start = float(end) - step * (count - 1)
+        elif end is None and start is not None:
+            end = float(start) + step * (count - 1)
 
-        loop = ExperimentZStackLoop(uiCount = self.count,
-                                    dZStep = float(self.step),
-                                    dZLow = float(self.start),
-                                    dZHigh = float(self.end),
-                                    bAbsolute = True,
-                                    dZHome = float(self.start + (self.end - self.start) / 2)
-                                    )
+        if start is None or end is None:
+            raise ValueError("start/end could not be determined")
 
+        self.start, self.end = start, end
 
-        return ExperimentLevel(eType = ExperimentLoopType.eEtZStackLoop, uLoopPars=loop)
+        mid = start + (end - start) / 2.0
+
+        loop = ExperimentZStackLoop(
+            uiCount=count,
+            dZStep=step,
+            dZLow=start,
+            dZHigh=end,
+            bAbsolute=True,
+            dZHome=mid,
+        )
+        return ExperimentLevel(eType=ExperimentLoopType.eEtZStackLoop, uLoopPars=loop)
 
     def __str__(self) -> str:
         return f"_Z{self.count}"
@@ -159,7 +170,7 @@ class _MExp(_Exp):
     def __str__(self) -> str:
         return f"_M{self.count}"
 
-def _create_experiment(*args: _Exp) -> ExperimentLevel:
+def _create_experiment(*args: _Exp) -> ExperimentLevel | None:
     """
     This function chains and nests several simplified experiments into single ExperimentLevel instance.
 
@@ -314,7 +325,7 @@ class ExperimentFactory:
         elif isinstance(z, dict):
             self.z = _ZExp(**z)
 
-    def createExperiment(self) -> ExperimentLevel:
+    def createExperiment(self) -> ExperimentLevel | None:
         """
         Create `ExperimentLevel` instance using specified settings.
         """
@@ -327,7 +338,7 @@ class ExperimentFactory:
             exps.append(self.z)
         return _create_experiment(*exps)
 
-    def __call__(self) -> ExperimentLevel:
+    def __call__(self) -> ExperimentLevel | None:
         """
         Create `ExperimentLevel` instance using specified settings.
         """

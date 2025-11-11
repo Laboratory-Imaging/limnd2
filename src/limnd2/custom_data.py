@@ -18,7 +18,7 @@ class RecordedDataItem:
     Type: RecordedDataType = RecordedDataType.eUnknown
     Group: int = 0
     Size: int = 0
-    Data: np.ndarray|None = None
+    Data: np.ndarray | None = None
 
     @staticmethod
     def from_desc_and_data(desc: dict, data: bytes) -> RecordedDataItem:
@@ -42,9 +42,12 @@ class RecordedDataItem:
                     shape=(size, ),
                     strides=(8, ),
                     ))
+        return RecordedDataItem()
 
     @property
     def data(self) -> np.ndarray:
+        if self.Data is None:
+            return np.array([])
         return self.Data.astype(object) if self.Type == RecordedDataType.eInt else self.Data
 
 class RecordedData(collections.UserList):
@@ -61,7 +64,7 @@ class RecordedData(collections.UserList):
     def rowCount(self) -> int:
         return max(col.Size for col in self.data)
 
-    def sort(self) -> None:
+    def sort(self) -> None:     # pyright: ignore[reportIncompatibleMethodOverride] custom sort
         order = ['INDEX', 'ACQTIME', 'X', 'Y', 'Z', 'Z1', 'Z2', 'PFS_OFFSET', 'PFS_STATUS']
         for id in reversed(order):
             if 0 < (index := self.findById(id)):
@@ -104,6 +107,8 @@ class CustomDescriptionItem:
         if "CLxText" in kwargs:
             kwargs = kwargs.get("CLxText")
             CLxItem = kwargs.get("CLxItem")
+        if kwargs is None:
+            kwargs = {}
         object.__setattr__(self, 'type', CustomDescriptionItemType(CLxItem.get('eType', 0)))
         object.__setattr__(self, 'id', CLxItem.get('iID', 0))
         object.__setattr__(self, 'name', CLxItem.get('sName', ''))
@@ -131,7 +136,7 @@ class CustomDescriptionItem:
             object.__setattr__(self, 'format', kwargs.get('eDateFormat', 0)) # 0 - date time sec, 1 - date time, 2 - date only
 
     @property
-    def valueAsText(self) -> str:
+    def valueAsText(self) -> str | None:
         if self.type == CustomDescriptionItemType.Check:
             return "ON" if self.checked else "OFF"
         elif self.type == CustomDescriptionItemType.Number:
@@ -140,11 +145,16 @@ class CustomDescriptionItem:
         elif self.type == CustomDescriptionItemType.Text:
             return self.text
         elif self.type == CustomDescriptionItemType.Selection:
-            return self.labels[self.selected] if type(self.labels) == list and 0 <= self.selected and self.selected < len(self.labels) else ""
+            labels = list(self.labels or [])
+            idx = self.selected if isinstance(self.selected, int) else -1
+            return labels[idx] if 0 <= idx < len(labels) else ""
         elif self.type == CustomDescriptionItemType.LongText:
             return self.text
         elif self.type == CustomDescriptionItemType.Date:
-            return self.date.strftime('%x %X') if self.format in (0, 1) else self.date.strftime('%x')
+            date = self.date
+            if date is None:
+                return None
+            return date.strftime('%x %X') if self.format in (0, 1) else date.strftime('%x')
 
 class CustomDescription(collections.UserList):
     def __init__(self, content: dict):

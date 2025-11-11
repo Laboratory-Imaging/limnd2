@@ -1,6 +1,9 @@
+from __future__ import annotations
+
+import enum
 import io, struct, zlib, abc, logging
-from typing import Any, Callable, Final, cast, Union, Self, ClassVar
-from dataclasses import MISSING, field, fields, asdict
+from typing import Any, Callable, Final, cast, Union, Self, ClassVar, overload
+from dataclasses import MISSING, Field, field, fields, asdict, is_dataclass
 from collections.abc import Mapping
 
 logger = logging.getLogger("limnd2")
@@ -88,24 +91,24 @@ def _encode_string(value: str, writer: io.BytesIO):
 def _encode_bytes(value: bytes, writer: io.BytesIO):
     writer.write(strctQ.pack(len(value)) + value)
 
-class ELxLiteVariantType:
-    DO_NOT_ENCODE: Final = -2                   # encoding of this object by the encoder is not done on purpose
+class ELxLiteVariantType(enum.IntEnum):
+    DO_NOT_ENCODE = -2                   # encoding of this object by the encoder is not done on purpose
                                                 # either it is omitted or set somewhere else
-    ENCODING_NOT_IMPLEMENTED: Final = -1        # encoding of those objects requires more thought, either it needs to be rewritten to nested dataclass or
-    UNKNOWN: Final = 0                          # type is not known yet, but shouldnt be problematic to set it
+    ENCODING_NOT_IMPLEMENTED = -1        # encoding of those objects requires more thought, either it needs to be rewritten to nested dataclass or
+    UNKNOWN = 0                          # type is not known yet, but shouldnt be problematic to set it
 
-    BOOL: Final = 1
-    INT32: Final = 2
-    UINT32: Final = 3
-    INT64: Final = 4
-    UINT64: Final = 5
-    DOUBLE: Final = 6
-    VOIDPOINTER: Final = 7
-    STRING: Final = 8
-    BYTEARRAY: Final = 9
-    DEPRECATED: Final = 10
-    LEVEL: Final = 11
-    COMPRESS: Final = 76  # 'L'
+    BOOL = 1
+    INT32 = 2
+    UINT32 = 3
+    INT64 = 4
+    UINT64 = 5
+    DOUBLE = 6
+    VOIDPOINTER = 7
+    STRING = 8
+    BYTEARRAY = 9
+    DEPRECATED = 10
+    LEVEL = 11
+    COMPRESS = 76  # 'L'
 
     @staticmethod
     def get_name(number: int):
@@ -114,11 +117,12 @@ class ELxLiteVariantType:
                 return key
         return "NOT ELxLiteVariantType TYPE"
 
-def LV_field(default_or_default_factory: Any, variant_type: ELxLiteVariantType):
+def LV_field( default_or_default_factory: Any, variant_type: Union[ELxLiteVariantType, int]) -> Any:
+    meta = {"LVType": int(variant_type)}
     if callable(default_or_default_factory):
-        return field(default_factory=default_or_default_factory, metadata={"LVType": variant_type})
+        return field(default_factory=default_or_default_factory, metadata=meta)
     else:
-        return field(default=default_or_default_factory,         metadata={"LVType": variant_type})
+        return field(default=default_or_default_factory, metadata=meta)
 
 
 _PARSERS: dict[int, Callable[[io.BytesIO], Any]] = {
@@ -221,8 +225,12 @@ def _decode_lv(data: bytes|memoryview|io.BytesIO, _count: int) -> dict[str, Any]
             output[name] = value
     return output
 
+@overload
+def _encode_lv(data: dict[str, Any], parent_name: None = ...) -> bytes: ...
+@overload
+def _encode_lv(data: dict[str, Any], parent_name: bytes) -> tuple[bytes, dict[str, int]]: ...
 
-def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
+def _encode_lv(data: dict[str, Any], parent_name: bytes | None = None):
     def header_encode(attribute: str, LVType: ELxLiteVariantType, writer: io.BytesIO) -> None:
         writer.write(strctBB.pack(LVType, len(attribute) + 1))
         writer.write(attribute.encode("utf-16-le") + b"\x00\x00")
@@ -232,8 +240,7 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
         _ENCODERS[LVType](value, writer)
 
     writer = io.BytesIO()
-    if parent_name != None:
-        offsets = {}
+    offsets = {}
 
     for attribute, candidate in data.items():
 
@@ -275,15 +282,9 @@ def _encode_lv(data: dict[str, Any],  parent_name: bytes = None) -> bytes:
         return writer.getvalue(), offsets
     return writer.getvalue()
 
-def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
+
+def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]:
     return _decode_lv(data, 1)
-
-
-
-def decode_lv(data: bytes|memoryview|io.BytesIO) -> dict[str, Any]|None:
-    return _decode_lv(data, 1)
-
-
 
 def encode_lv(data: dict[str, Union[dict, tuple[Any, ELxLiteVariantType]]]) -> bytes:
     return _encode_lv(data)
@@ -313,7 +314,7 @@ class LVSerializable(abc.ABC, Mapping):
     """
     _unknown_fields: dict[str, Any]
 
-    NOT_ENCODED_TYPES: ClassVar[tuple[ELxLiteVariantType]] = (
+    NOT_ENCODED_TYPES: ClassVar[tuple[ELxLiteVariantType, ELxLiteVariantType, ELxLiteVariantType]] = (
         ELxLiteVariantType.UNKNOWN,
         ELxLiteVariantType.ENCODING_NOT_IMPLEMENTED,
         ELxLiteVariantType.DO_NOT_ENCODE
@@ -321,11 +322,20 @@ class LVSerializable(abc.ABC, Mapping):
 
 
     def __init__(self, **kwargs):
+        if not is_dataclass(self):
+            raise TypeError("LVSerializable subclasses must be @dataclass classes")
         object.__setattr__(self, "_unknown_fields", {})
         known = set()
         for field in fields(self):
             known.add(field.name)
-            default = field.default if field.default is not MISSING else field.default_factory()
+            if field.default is not MISSING:
+                default = field.default
+            else:
+                df = getattr(field, "default_factory", MISSING)
+                if df is not MISSING:
+                    default = cast(Callable[[], Any], df)()
+                else:
+                    continue
             object.__setattr__(self, field.name, default)
 
         for name, value in kwargs.items():
@@ -348,11 +358,10 @@ class LVSerializable(abc.ABC, Mapping):
         pass
 
     @staticmethod
-    def _to_serializable_dict(obj: dict | Self, parent_path: str = "") -> dict:
-        obj : dict | LVSerializable
-        types: dict = {}
+    def _to_serializable_dict( obj: Mapping[Any, Any] | "LVSerializable", parent_path: str = "") -> dict:
+        types = {}
 
-        if isinstance(obj, LVSerializable):
+        if isinstance(obj, LVSerializable) and is_dataclass(obj):
             types = {f.name: f.metadata["LVType"] for f in fields(obj)}
             obj = {f.name: getattr(obj, f.name) for f in fields(obj) if f.name in obj.__dict__}
 
@@ -381,10 +390,16 @@ class LVSerializable(abc.ABC, Mapping):
         return self._to_serializable_dict(self, parent_path=parent_path)
 
     def __iter__(self):
+        if not is_dataclass(self):
+            raise TypeError("LVSerializable subclasses must be @dataclass classes")
         return iter(asdict(self))
 
     def __getitem__(self, key):
+        if not is_dataclass(self):
+            raise TypeError("LVSerializable subclasses must be @dataclass classes")
         return asdict(self)[key]
 
     def __len__(self):
+        if not is_dataclass(self):
+            raise TypeError("LVSerializable subclasses must be @dataclass classes")
         return len(asdict(self))

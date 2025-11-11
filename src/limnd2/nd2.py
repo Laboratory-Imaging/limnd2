@@ -1,4 +1,5 @@
 import datetime, functools, numpy as np, os
+from typing import Any
 import warnings
 import limnd2
 from pathlib import Path
@@ -132,7 +133,10 @@ class Nd2Reader():
             DeprecationWarning,
             stacklevel=2
         )
-        return Path(self.chunker.filename).absolute().as_uri()
+        filename = self.chunker.filename
+        if filename is None:
+            return None
+        return Path(filename).absolute().as_uri()
 
     @property
     def size_on_disk(self) -> int:
@@ -189,7 +193,7 @@ class Nd2Reader():
         limnd2.frame_export(self, frame_index=frame_index, output_path=output_path, target_bit_depth=target_bit_depth, progress_to_json=progress_to_json)
 
     @functools.cached_property
-    def generalImageInfo(self) -> dict[str, any]:
+    def generalImageInfo(self) -> dict[str, Any]:
         warnings.warn(
             "Nd2Reader.generalImageInfo is deprecated and will be removed in future versions. Use limnd2.generalImageInfo() function instead.",
             DeprecationWarning,
@@ -256,7 +260,7 @@ class Nd2Reader():
         return self._chunker.experiment
 
     @property
-    def imageTextInfo(self) -> ImageTextInfo:
+    def imageTextInfo(self) -> ImageTextInfo | None:
         return self._chunker.imageTextInfo
 
     @functools.cached_property
@@ -275,6 +279,8 @@ class Nd2Reader():
     def appInfo(self) -> AppInfo:
         from .base import ND2_CHUNK_NAME_AppInfo
         data = self.chunk(ND2_CHUNK_NAME_AppInfo)
+        if data is None:
+            return AppInfo()
         return AppInfo.from_var(data)
 
     @property
@@ -282,7 +288,7 @@ class Nd2Reader():
         return self.appInfo.software
 
     @property
-    def acqFrames(self) -> NumpyArrayLike:
+    def acqFrames(self) -> NumpyArrayLike | None:
         return self._chunker.acqFrames
 
     @property
@@ -333,6 +339,10 @@ class Nd2Reader():
                 itemDesc = desc.get(f"Tag{i}", None)
                 if itemDesc is not None:
                     colData = self.chunk(b'CustomData|%s!' % (itemDesc.get('ID').encode('utf-8')))
+                    if colData is None:
+                        continue
+                    if isinstance(colData, memoryview):
+                        colData = colData.tobytes()
                     recData.append(RecordedDataItem.from_desc_and_data(itemDesc, colData))
         if 0 < len(recData):
             recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
@@ -344,7 +354,9 @@ class Nd2Reader():
         return self._chunker.binaryRleMetadata
 
     @property
-    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata | None:
+        if self._chunker.binaryRasterMetadata is None:
+            return None
         if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(self._chunker.binaryRleMetadata):
             return self._chunker.binaryRleMetadata.makeRasterMetadata(self.imageAttributes.width, self.imageAttributes.height)
         else:
@@ -368,14 +380,14 @@ class Nd2Reader():
             return []
         wp_desc = self.wellplateDesc
         wp_frameinfo = self.wellplateFrameInfo
-        names, shape = self.experiment.dimnames(skipSpectralLoop=True), self.experiment.shape(skipSpectralLoop=True)
+        names, shape = exp.dimnames(skipSpectralLoop=True), exp.shape(skipSpectralLoop=True)
         if isinstance(wp_desc, WellplateDesc) and isinstance(wp_frameinfo, WellplateFrameInfo) and 'm' in names and len(wp_frameinfo):
             ret = []
             i = names.index('m')
             names = ('w', ) + names
             mp_size, wp_size = shape[i], wp_frameinfo.nwells
             true_mp_size = mp_size // wp_size
-            for indexes in self.experiment.generateLoopIndexes(named=False):
+            for indexes in exp.generateLoopIndexes(named=False):
                 lst = list(indexes)
                 windex, lst[i] = lst[i] // true_mp_size, lst[i] % true_mp_size
                 lst = [windex] + lst
@@ -383,7 +395,7 @@ class Nd2Reader():
             return ret
 
         else:
-            return self.experiment.generateLoopIndexes(named=named)
+            return exp.generateLoopIndexes(named=named)
 
 
 
@@ -411,7 +423,10 @@ class Nd2Reader():
 
         Each result potentially contains tabular results (tables, graphs, ...) and binary layers.
         """
-        return read_results_from_h5(self.filename.replace(".nd2", ".h5"))
+        filename = self.storage_info.filename
+        if filename is None:
+            return {}
+        return read_results_from_h5(filename.replace(".nd2", ".h5"))
 
     # ADDITIONAL PROPERTIES AND METHODS NOT IN THE PROTOCOL SPECIFIC TO ND2Reader, THOSE SHOULD BE DOCUMENTED HERE
 
@@ -424,7 +439,7 @@ class Nd2Reader():
         return CustomDescription.from_lv(data)
 
     @functools.cached_property
-    def smart_experiment_description(self) -> dict[str, any]|None:
+    def smart_experiment_description(self) -> dict[str, Any]|None:
         if self.customDescription is None or self.customDescription.name != "onepush":
             return None
         se_custom_data = {}
@@ -440,7 +455,7 @@ class Nd2Reader():
     def chunk_size(self) -> tuple[int,int]|None:
         return None
 
-    def crestDeepSimRawData(self, seqindex: int, component_index: int) -> NumpyArrayLike:
+    def crestDeepSimRawData(self, seqindex: int, component_index: int) -> tuple[NumpyArrayLike, str, str, tuple[float, float], tuple[int, int], tuple[int, int]]:
         """
         This method retrieves deepSIM data for a specific sequence index and component.
 
@@ -540,9 +555,10 @@ class Nd2Reader():
 
     def result_binary_data(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
+        return np.array([])
 
     def result_private_table(self, result_name: str, pane: str, table_name: str) -> TableData:
-        the_pane: ResultPane = None
+        the_pane: ResultPane | None = None
         try:
             the_pane = self.results[result_name].result_panes[pane]
         except KeyError:
@@ -558,7 +574,11 @@ class Nd2Reader():
         except KeyError:
             raise KeyError(f"Table name {table_name} not found in H5 {result_name}/{pane} .")
 
-        table_data: TableData = create_table_data_from_h5(self.filename.replace(".nd2", ".h5"), loc)
+        filename = self.storage_info.filename
+        if filename is None:
+            raise ValueError("Cannot read private table data, ND2 filename is None.")
+
+        table_data: TableData = create_table_data_from_h5(filename.replace(".nd2", ".h5"), loc)
         the_pane.private_tables[table_name] = table_data
 
         return the_pane.private_tables[table_name]
@@ -607,7 +627,7 @@ class Nd2Writer():
             self._chunker.imageAttributes = val
 
     @property
-    def experiment(self) -> ExperimentLevel:
+    def experiment(self) -> ExperimentLevel | None:
         return self._chunker.experiment
 
     @experiment.setter

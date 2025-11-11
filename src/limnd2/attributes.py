@@ -8,7 +8,10 @@ from dataclasses import dataclass
 from .lite_variant import decode_lv, encode_lv, LVSerializable, ELxLiteVariantType as LVType, LV_field
 from .variant import decode_var
 
-NumpyDTypeLike: typing.TypeAlias = np._typing.DTypeLike
+try:
+    from numpy.typing import DTypeLike as NumpyDTypeLike
+except Exception:
+    NumpyDTypeLike = typing.Any
 NumpyArrayLike: typing.TypeAlias = np.ndarray
 
 ND2_MIN_DOWNSAMPLED_SIZE = 512
@@ -20,6 +23,7 @@ def _full_res_base_pow2(*shape) -> int:
     for i in range(1, int(target)):
         if (2 ** i >= target):
             return i
+    return 0
 
 def full_res_size(*shape) -> int:
     return 2 ** _full_res_base_pow2(shape)

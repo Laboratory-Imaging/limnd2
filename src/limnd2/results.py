@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import errno, enum, json
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import h5py
     import pandas
@@ -40,9 +40,9 @@ def __lazy_pandas():
 @dataclass(kw_only=True)
 class TableData:
     name: str = ""
-    metadata: dict[str, any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     private_tables: dict[str, TableData] = field(default_factory=dict)
-    column_metadata: dict[str, dict[str, any]] = field(default_factory=dict)
+    column_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     df: pandas.DataFrame = field(default_factory=lambda: __lazy_pandas().DataFrame())
 
     @property
@@ -60,7 +60,7 @@ class BinaryResultItem:
 
 @dataclass(kw_only=True)
 class ResultPane:
-    state: dict[str, any]
+    state: dict[str, Any]
     private_tables: dict[str, TableData] = field(default_factory=dict)
     private_table_locations: dict[str, str]
 
@@ -73,7 +73,7 @@ class ResultPanesConfiguration(enum.StrEnum):
 class ResultItem:
     name: str
     load_error: str|None = None
-    attributes: dict[str, any] = field(default_factory=dict)
+    attributes: dict[str, Any] = field(default_factory=dict)
     binaries: list[BinaryResultItem] = field(default_factory=list)
     result_panes: dict[str, ResultPane] = field(default_factory=dict)
     result_panes_configuration: ResultPanesConfiguration = ResultPanesConfiguration.none
@@ -88,7 +88,7 @@ class ResultItem:
 def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
     h5py = _require_h5py()
     try:
-        results: dict[str, any] = {}
+        results: dict[str, Any] = {}
         with h5py.File(h5_filename, 'r') as h5:
             for result_name in h5.keys():
                 result = h5[result_name]
@@ -110,6 +110,7 @@ def read_results_from_h5(h5_filename: str|Path) -> dict[str, ResultItem]:
             raise e
     except Exception as e:
         print(e)
+    return {}
 
 def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> TableData:
     h5py = _require_h5py()
@@ -252,7 +253,7 @@ def _generate_result_pane(table_group: h5py.Group) -> ResultPane:
         state = _read_runtime_state_from_group(table_group)
         )
 
-def _generate_fake_result_pane(table_meta: list[tuple[h5py.Group, dict[str, any]]]) -> ResultPane:
+def _generate_fake_result_pane(table_meta: list[tuple[h5py.Group, dict[str, Any]]]) -> ResultPane:
     tabs = []
     private_tables = {}
     curr_name_ord = ord("a")

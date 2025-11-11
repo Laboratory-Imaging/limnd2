@@ -64,6 +64,7 @@ def test_picture_metadata_roundtrip_and_properties(nd2_path: Path):
             # spectral ints are numbers or 0
             assert isinstance(plane.emissionWavelengthNm, (int, float))
             assert isinstance(plane.excitationWavelengthNm, (int, float))
+            assert isinstance(plane.pFilterPath.meanEmissionWavelength(), (int, float))
 
         # to_lv / from_lv roundtrip
         blob = md.to_lv()

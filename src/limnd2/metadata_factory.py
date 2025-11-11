@@ -7,7 +7,7 @@ Those instances should be used with `Nd2Writer` instance for altering / creating
 
 For creating metadata, you should use [`MetadataFactory`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory) class.
 """
-
+from typing import Optional
 from .metadata import *
 from dataclasses import dataclass, asdict
 
@@ -258,7 +258,7 @@ def _update(updated: dict, values: dict):
     return updated
 
 def datetime_to_jdn(datetime: datetime.datetime) -> int:
-    return datetime.timestamp() / 86400 + 2440587.5
+    return int(round(datetime.timestamp() / 86400 + 2440587.5))
 
 @dataclass(kw_only=True)
 class Plane:
@@ -295,22 +295,22 @@ class Plane:
     acquisition_time : datetime.datetime
         Acquistion time of the plane.
     """
-    name: str = None
-    modality: str | PicturePlaneModality | PicturePlaneModalityFlags = None
-    excitation_wavelength: int = None
-    emission_wavelength: int = None
-    color: str = None
+    name: Optional[str] = None
+    modality: Optional[str | PicturePlaneModality | PicturePlaneModalityFlags] = None
+    excitation_wavelength: Optional[int] = None
+    emission_wavelength: Optional[int] = None
+    color: Optional[str] = None
 
-    objective_magnification: float = None
-    objective_numerical_aperture: float = None
-    zoom_magnification: float = None
-    immersion_refractive_index: float = None
-    pinhole_diameter: float = None
-    camera_name: str = None
-    microscope_name: str = None
+    objective_magnification: Optional[float] = None
+    objective_numerical_aperture: Optional[float] = None
+    zoom_magnification: Optional[float] = None
+    immersion_refractive_index: Optional[float] = None
+    pinhole_diameter: Optional[float] = None
+    camera_name: Optional[str] = None
+    microscope_name: Optional[str] = None
 
-    filter_name: str = None
-    acquisition_time: datetime.datetime = None
+    filter_name: Optional[str] = None
+    acquisition_time: Optional[datetime.datetime] = None
 
     def _getPlaneWithDefaults(self) -> "Plane":
         plane_defaults = {
@@ -406,10 +406,10 @@ class Plane:
                                  pFilterPath = filter_path,
                                  uiColor = color)
 
-        obj_setting = ObjectiveSetting(dObjectiveMag = plane_fixed.objective_magnification,
-                                       dObjectiveNA = plane_fixed.objective_numerical_aperture,
-                                       dRefractIndex = plane_fixed.immersion_refractive_index,
-                                       wsObjectiveName = f"{round(plane_fixed.zoom_magnification)}x" if plane_fixed.zoom_magnification != -1.0 else "")
+        obj_setting = ObjectiveSetting(dObjectiveMag = plane_fixed.objective_magnification or 0.0,
+                                       dObjectiveNA = plane_fixed.objective_numerical_aperture or 0.0,
+                                       dRefractIndex = plane_fixed.immersion_refractive_index or 0.0,
+                                       wsObjectiveName = f"{round(plane_fixed.zoom_magnification)}x" if (plane_fixed.zoom_magnification is not None and plane_fixed.zoom_magnification != -1.0) else "")
 
         camera = CameraSetting(CameraUniqueName = plane_fixed.camera_name,
                                CameraUserName = plane_fixed.camera_name,
@@ -546,7 +546,7 @@ class MetadataFactory:
     def __str__(self):
         return str(self.__dict__)
 
-    def getChannel(self, key: int | str) -> Plane:
+    def getChannel(self, key: int | str) -> Plane | None:
         if isinstance(key, str):
             for plane in self.planes:
                 if plane.name == key:
@@ -563,7 +563,7 @@ class MetadataFactory:
         """
         return self.createMetadata()
 
-    def addPlane(self, plane: Plane | dict[str, Any] = None, **kwargs) -> Plane:
+    def addPlane(self, plane: Plane | dict[str, Any] | None = None, **kwargs) -> Plane:
         """
         Adds a new channel to the factory, see examples on how to use this method and
         [`Plane`](metadata_factory.md#limnd2.metadata_factory.Plane) dataclass to see what settings can be applied.

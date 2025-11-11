@@ -19,7 +19,6 @@ ListOfDicts: TypeAlias = list[dict[str, Any]]
 DictOfLists: TypeAlias = Mapping[str, Sequence[Any]]
 DictOfDicts: TypeAlias = Mapping[str, dict[int, Any]]
 
-FileOrBinaryIO: TypeAlias = Union[StrOrPath | BinaryIO]
 AxisInterpretation: TypeAlias = Literal["distance", "time"]
 
 

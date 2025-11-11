@@ -15,8 +15,9 @@ you can get instance of this class by getting [`experiment`](nd2.md#limnd2.nd2.N
 
 from __future__ import annotations
 
+from typing import Any, Literal, Sequence, cast, overload
 import collections, enum, itertools, json, math, zlib
-from dataclasses import MISSING, dataclass, fields
+from dataclasses import MISSING, asdict, dataclass, fields
 
 from .metadata import PictureMetadataPicturePlanes, PicturePlaneDesc
 from .lite_variant import decode_lv, encode_lv, LVSerializable, ELxLiteVariantType as LVType, LV_field
@@ -72,10 +73,10 @@ class ExperimentLoopType(enum.IntEnum):
         return names[eType]
 
 class ExperimentType(enum.IntFlag):
-    eEtDefault              = 0,
-    eEtStimulation          = 1,
-    eEtBleaching            = 2,
-    eEtIncubation           = 2048,
+    eEtDefault              = 0
+    eEtStimulation          = 1
+    eEtBleaching            = 2
+    eEtIncubation           = 2048
     eEtLiquidHandling       = 4096
 
 def _format_time(ms) -> str:
@@ -120,6 +121,11 @@ class ExperimentLoop(LVSerializable):
     @property
     def stepUnit(self) -> str|None:
         return None
+
+    @property
+    def info(self) -> list[dict[str, Any]]:
+        #override in child classes
+        return []
 
 @dataclass(frozen=True, kw_only=True)
 class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
@@ -203,7 +209,7 @@ class ExperimentTimeLoop(ExperimentLoop, LVSerializable):
         return "ms"
 
     @property
-    def info(self) -> list[dict[str, any]]:
+    def info(self) -> list[dict[str, Any]]:
         """
         Returns information about timeloop experiment.
         """
@@ -252,7 +258,7 @@ class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
             object.__setattr__(self, 'pPeriod', periods)
 
     @property
-    def info(self) -> list[dict[str, any]]:
+    def info(self) -> list[dict[str, Any]]:
         """
         Returns information about nonequidistant time loop experiment.
         """
@@ -412,7 +418,7 @@ class ExperimentZStackLoop(ExperimentLoop, LVSerializable):
         return "µm"
 
     @property
-    def info(self) -> list[dict[str, any]]:
+    def info(self) -> list[dict[str, Any]]:
         """
         Returns information about zstack experiment.
         """
@@ -488,7 +494,7 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
 
 
     @property
-    def info(self) -> list[dict[str, any]]:
+    def info(self) -> list[dict[str, Any]]:
         """
         Returns information about spectral loop experiment.
         """
@@ -533,6 +539,7 @@ class ExperimentXYPosLoopPoint(LVSerializable):
             points_list.append(ExperimentXYPosLoopPoint(**point))
         return points_list
 
+    @staticmethod
     def create_points_XML(xdict: dict[str, float],
                           ydict: dict[str, float],
                           zdict: dict[str, float],
@@ -628,7 +635,7 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
 
     @property
-    def info(self) -> list[dict[str, any]]:
+    def info(self) -> list[dict[str, Any]]:
         """
         Returns information about multipoint experiment.
         """
@@ -847,7 +854,7 @@ class ExperimentLevel(LVSerializable):
         if "pLargeImageEx" in self._unknown_fields:
             self._unknown_fields.pop("pLargeImageEx")
 
-    def __iter__(self):
+    def __iter__(self):                     # type: ignore[override]        error ignored by design, this class implements Mapping type, which should iterate over keys, but we want to iterate over experiments
         return ExperimentIterator(self._allLevels())
 
     @property
@@ -903,7 +910,7 @@ class ExperimentLevel(LVSerializable):
         """
         return ExperimentLoopType.toName(self.eType)
 
-    def loopTypes(self, *, skipSpectralLoop: bool = True) -> tuple[ExperimentLoopType]:
+    def loopTypes(self, *, skipSpectralLoop: bool = True) -> tuple[ExperimentLoopType, ...]:
         """
         Returns tuple with `ExperimentLoopType` instances of all experiments in the image.
         """
@@ -939,7 +946,7 @@ class ExperimentLevel(LVSerializable):
             ret += nl[0].ndim(skipSpectralLoop=skipSpectralLoop)
         return ret
 
-    def shape(self, *, skipSpectralLoop: bool = True) -> tuple[int]:
+    def shape(self, *, skipSpectralLoop: bool = True) -> tuple[int, ...]:
         """
         Returns shape of the experiment. (number of frames in each experiment)
         """
@@ -948,7 +955,7 @@ class ExperimentLevel(LVSerializable):
             ret += nl[0].shape(skipSpectralLoop=skipSpectralLoop)
         return ret
 
-    def dimnames(self, *, skipSpectralLoop: bool = True) -> tuple[str]:
+    def dimnames(self, *, skipSpectralLoop: bool = True) -> tuple[str, ...]:
         """
         Returns names of nested dimensions.
         """
@@ -957,7 +964,14 @@ class ExperimentLevel(LVSerializable):
             ret += nl[0].dimnames(skipSpectralLoop=skipSpectralLoop)
         return tuple(ret)
 
-    def generateLoopIndexes(self, *, named: bool = False) -> list[tuple]:
+    @overload
+    def generateLoopIndexes(self, *, named: Literal[True]) -> list[dict[str, int]]: ...
+    @overload
+    def generateLoopIndexes(self, *, named: Literal[False] = ...) -> list[tuple[int, ...]]: ...
+    @overload
+    def generateLoopIndexes(self, *, named: bool) -> list[tuple[int, ...]] | list[dict[str, int]]: ...
+
+    def generateLoopIndexes(self, *, named: bool = False) -> list[tuple[int, ...]] | list[dict[str, int]]:
         """
         Generate list of indexes for all experiments in the image.
         """
@@ -970,7 +984,7 @@ class ExperimentLevel(LVSerializable):
             return list(loopindexes)
 
     def _allLevels(self) -> list[ExperimentLevel]:
-        ret = [ self ]
+        ret: list[ExperimentLevel] = [cast(ExperimentLevel, self)]
         if 0 < len(nl := self._nextLevels()):
             ret += nl[0]._allLevels()
         return ret
@@ -978,6 +992,7 @@ class ExperimentLevel(LVSerializable):
     def _nextLevels(self) -> list[ExperimentLevel]:
         ret = []
         if (self.eType == ExperimentLoopType.eEtNETimeLoop
+            and isinstance(self.uLoopPars, ExperimentNETimeLoop)
             and self.uLoopPars.pSubLoops is not None
             and self.uLoopPars.uiPeriodCount == len(self.uLoopPars.pSubLoops)):
             for i in range(self.uLoopPars.uiPeriodCount):

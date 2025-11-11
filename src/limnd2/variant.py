@@ -5,7 +5,7 @@ from typing import Any
 
 try:
       # faster if it's available
-    from lxml.etree import XML, Element, XMLParser
+    from lxml.etree import XML, Element, XMLParser      # type: ignore[reportMissingImports]
 except ImportError:
     from xml.etree.ElementTree import XML, Element, XMLParser
 
@@ -76,7 +76,7 @@ def _node_name_value(node: Element) -> tuple[str, Any]:
 
 
 
-def decode_var(bxml: bytes|memoryview) -> dict[str, Any]|None:
+def decode_var(bxml: bytes|memoryview) -> dict[str, Any]:
     if type(bxml) == memoryview:
         bxml = bxml.tobytes()
 

@@ -19,10 +19,10 @@ All data about planes and their settings are stored in [`PictureMetadata`](metad
 from __future__ import annotations
 
 import datetime, enum, numpy as np, operator
-import typing
 from functools import cached_property
 from typing import Any
 from dataclasses import MISSING, dataclass, field, fields
+from math import inf
 
 from .lite_variant import decode_lv, ELxLiteVariantType as LVType, LV_field, LVSerializable, encode_lv
 from .variant import decode_var
@@ -86,19 +86,19 @@ def calculateColor(color: str | tuple[int, int, int]) -> int:
 
 
 class PictureMetadataTimeSourceType(enum.IntEnum):
-    etsSW: typing.Final    = 0
-    etsNIDAQ: typing.Final = 1
+    etsSW                        = 0
+    etsNIDAQ                     = 1
 
 class PictureMetadataAxisDescription(enum.IntEnum):
-    eaxdX: typing.Final         = 0
-    eaxdY: typing.Final         = 1
-    eaxdT: typing.Final         = 2
-    eaxdZ: typing.Final         = 3
-    eaxdPoint : typing.Final    = 4 # confocal point scan has both ePictureXAxis and ePictureYAxis set to this value
+    eaxdX                       = 0
+    eaxdY                       = 1
+    eaxdT                       = 2
+    eaxdZ                       = 3
+    eaxdPoint                   = 4 # confocal point scan has both ePictureXAxis and ePictureYAxis set to this value
 
 class PictureMetadataPicturePlanesRepresentation(enum.IntEnum):
-    eRepDefault: typing.Final   = 0
-    eRepHDR: typing.Final       = 2
+    eRepDefault                 = 0
+    eRepHDR                     = 2
 
 class OpticalFilterPlacement(enum.IntEnum):
     """
@@ -121,13 +121,13 @@ class OpticalFilterPlacement(enum.IntEnum):
     eOfpUserOverride : int
         User-defined emission wavelength position, allowing customization of the filter setup.
     """
-    eOfpNoFilter: typing.Final          = 0
-    eOfpExcitation: typing.Final        = 1         # excitation filter (position by a lamp)
-    eOfpEmission: typing.Final          = 2         # emission filter (position by a camera)
-    eOfpFilterTurret: typing.Final      = 3         # filter block (mainly fluorescence)
-    eOfpLamp: typing.Final              = 4         # spectrum of a lamp
-    eOfnCameraChip: typing.Final        = 5         # camera chip sensitivity
-    eOfpUserOverride: typing.Final      = 6         # user defined emission wavelength
+    eOfpNoFilter                        = 0
+    eOfpExcitation                      = 1         # excitation filter (position by a lamp)
+    eOfpEmission                        = 2         # emission filter (position by a camera)
+    eOfpFilterTurret                    = 3         # filter block (mainly fluorescence)
+    eOfpLamp                            = 4         # spectrum of a lamp
+    eOfnCameraChip                      = 5         # camera chip sensitivity
+    eOfpUserOverride                    = 6         # user defined emission wavelength
 
 class OpticalFilterNature(enum.IntFlag):
     """
@@ -147,11 +147,11 @@ class OpticalFilterNature(enum.IntFlag):
         A filter that passes the blue part of the spectrum.
     """
 
-    eOfnGeneric: typing.Final           = 0x0000    # wide-band or unspecified spectra
-    eOfnRGB: typing.Final               = 0x0001    # triple-band filter suitable for RGB cameras (or naked eye)
-    eOfnRed: typing.Final 	            = 0x0002
-    eOfnGreen: typing.Final             = 0x0004
-    eOfnBlue: typing.Final              = 0x0008
+    eOfnGeneric                         = 0x0000    # wide-band or unspecified spectra
+    eOfnRGB                             = 0x0001    # triple-band filter suitable for RGB cameras (or naked eye)
+    eOfnRed               	            = 0x0002
+    eOfnGreen                           = 0x0004
+    eOfnBlue                            = 0x0008
 
 class OpticalFilterSpectType(enum.IntEnum):
     """
@@ -176,14 +176,14 @@ class OpticalFilterSpectType(enum.IntEnum):
     eOftEmpty : int
         The empty position in a filterwheel, where no filter is present.
     """
-    eOftBandpass: typing.Final          = 1         # specified by lower (raising edge) and higher (falling) wavelength
-    eOftNarrowBandpass: typing.Final    = 2         # specified by one wavelength (peak)
-    eOftLowpass: typing.Final           = 3         # specified by one wavelength (falling edge)
-    eOftHighpass: typing.Final          = 4         # specified by one wavelength (raising edge)
-    eOftBarrier: typing.Final           = 5         # specified by lower (falling edge) and higher (raising) wavelength
-    eOftMultiplepass: typing.Final      = 6         # specified by a few edges
-    eOftFull: typing.Final              = 7         # full position of a filterwheel
-    eOftEmpty: typing.Final             = 8         # empty position of a filterwheel
+    eOftBandpass                        = 1         # specified by lower (raising edge) and higher (falling) wavelength
+    eOftNarrowBandpass                  = 2         # specified by one wavelength (peak)
+    eOftLowpass                         = 3         # specified by one wavelength (falling edge)
+    eOftHighpass                        = 4         # specified by one wavelength (raising edge)
+    eOftBarrier                         = 5         # specified by lower (falling edge) and higher (raising) wavelength
+    eOftMultiplepass                    = 6         # specified by a few edges
+    eOftFull                            = 7         # full position of a filterwheel
+    eOftEmpty                           = 8         # empty position of a filterwheel
 
 class PicturePlaneModality(enum.IntEnum):
     """
@@ -191,69 +191,69 @@ class PicturePlaneModality(enum.IntEnum):
     !!! warning
         In modern .nd2 files this modality enum should be converted to [PicturePlaneModalityFlags](metadata.md#limnd2.metadata.PicturePlaneModalityFlags) instance using [from_modality()](metadata.md#limnd2.metadata.PicturePlaneModalityFlags.from_modality) function.
     """
-    eModWidefieldFluo: typing.Final       = 0
-    eModBrightfield: typing.Final         = 1
-    eModLaserScanConfocal: typing.Final   = 2
-    eModSpinDiskConfocal: typing.Final    = 3
-    eModSweptFieldConfocal: typing.Final  = 4
-    eModMultiPhotonFluo: typing.Final     = 5
-    eModPhaseContrast: typing.Final       = 6
-    eModDIContrast: typing.Final          = 7
-    eModSpectralConfocal: typing.Final    = 8
-    eModVAASConfocal: typing.Final        = 9
-    eModVAASConfocalIF: typing.Final      = 10
-    eModVAASConfocalNF: typing.Final      = 11
-    eModDSDConfocal: typing.Final         = 12
+    eModWidefieldFluo                     = 0
+    eModBrightfield                       = 1
+    eModLaserScanConfocal                 = 2
+    eModSpinDiskConfocal                  = 3
+    eModSweptFieldConfocal                = 4
+    eModMultiPhotonFluo                   = 5
+    eModPhaseContrast                     = 6
+    eModDIContrast                        = 7
+    eModSpectralConfocal                  = 8
+    eModVAASConfocal                      = 9
+    eModVAASConfocalIF                    = 10
+    eModVAASConfocalNF                    = 11
+    eModDSDConfocal                       = 12
 
 class PicturePlaneModalityFlags(enum.IntFlag):
     """
     Enum for modality flags of given plane.
     """
-    modUnknown: typing.Final                          = 0x0000000000000000
-    modFluorescence: typing.Final                     = 0x0000000000000001
-    modBrightfield: typing.Final                      = 0x0000000000000002
-    modDarkfield: typing.Final                        = 0x0000000000000004
-    modMaskLight: typing.Final                        = (modFluorescence | modBrightfield | modDarkfield)
-    modPhaseContrast: typing.Final                    = 0x0000000000000010
-    modDIContrast: typing.Final                       = 0x0000000000000020
-    modNAMC: typing.Final                             = 0x0000000000000008
-    modMaskContrast: typing.Final                     = (modPhaseContrast | modDIContrast | modNAMC)
-    modCamera: typing.Final                           = 0x0000000000000100
-    modLaserScanConfocal: typing.Final                = 0x0000000000000200
-    modSpinDiskConfocal: typing.Final                 = 0x0000000000000400
-    modSweptFieldConfocalSlit: typing.Final           = 0x0000000000000800
-    modSweptFieldConfocalPinholes: typing.Final       = 0x0000000000001000
-    modDSDConfocal: typing.Final                      = 0x0000000000002000
-    modSIM: typing.Final                              = 0x0000000000004000
-    modISIM: typing.Final                             = 0x0000000000008000
-    modRCM: typing.Final                              = 0x0000000000000040
-    modSora: typing.Final                             = 0x0000000040000000
-    modLiveSR: typing.Final                           = 0x0000000000040000
-    modLightSheet: typing.Final                       = 0x0000000000080000
-    modDeepSIM: typing.Final                          = 0x0000002000000000
-    modMaskAcqHWType: typing.Final                    = (modCamera | modLaserScanConfocal | modSpinDiskConfocal | modSweptFieldConfocalSlit | modSweptFieldConfocalPinholes | modDSDConfocal | modRCM | modDeepSIM | modISIM | modSora | modLiveSR | modLightSheet)
-    modMultiPhotonFluo: typing.Final                  = 0x0000000000010000
-    modTIRF: typing.Final                             = 0x0000000000020000
-    modPMT: typing.Final                              = 0x0000000000100000
-    modSpectral: typing.Final                         = 0x0000000000200000
-    modVAAS_IF: typing.Final                          = 0x0000000000400000
-    modVAAS_NF: typing.Final                          = 0x0000000000800000
-    modTransmitDetector: typing.Final                 = 0x0000000001000000
-    modNonDescannedDetector: typing.Final             = 0x0000000002000000
-    modVirtualFilter: typing.Final                    = 0x0000000004000000
-    modGaAsP: typing.Final                            = 0x0000000008000000
-    modRemainder: typing.Final                        = 0x0000000010000000
-    modAUX: typing.Final                              = 0x0000000020000000
-    modCustomDescChannel: typing.Final                = 0x0000000080000000
-    modSTED: typing.Final                             = 0x0000000100000000
-    modGalvano: typing.Final                          = 0x0000000200000000
-    modResonant: typing.Final                         = 0x0000000400000000
-    modAX: typing.Final                               = 0x0000000800000000
-    modStorm: typing.Final                            = 0x0000001000000000
-    modNSPARCDetector: typing.Final                   = 0x0000004000000000
-    modPMT_IRGaAsP: typing.Final                      = 0x0000008000000000
-    modPMT_GaAs: typing.Final                         = 0x0000010000000000
-    modMaskDetector: typing.Final                     = (modSpectral | modVAAS_IF | modVAAS_NF | modTransmitDetector | modNonDescannedDetector | modVirtualFilter | modAUX | modNSPARCDetector)
+    modUnknown                                        = 0x0000000000000000
+    modFluorescence                                   = 0x0000000000000001
+    modBrightfield                                    = 0x0000000000000002
+    modDarkfield                                      = 0x0000000000000004
+    modMaskLight                                      = (modFluorescence | modBrightfield | modDarkfield)
+    modPhaseContrast                                  = 0x0000000000000010
+    modDIContrast                                     = 0x0000000000000020
+    modNAMC                                           = 0x0000000000000008
+    modMaskContrast                                   = (modPhaseContrast | modDIContrast | modNAMC)
+    modCamera                                         = 0x0000000000000100
+    modLaserScanConfocal                              = 0x0000000000000200
+    modSpinDiskConfocal                               = 0x0000000000000400
+    modSweptFieldConfocalSlit                         = 0x0000000000000800
+    modSweptFieldConfocalPinholes                     = 0x0000000000001000
+    modDSDConfocal                                    = 0x0000000000002000
+    modSIM                                            = 0x0000000000004000
+    modISIM                                           = 0x0000000000008000
+    modRCM                                            = 0x0000000000000040
+    modSora                                           = 0x0000000040000000
+    modLiveSR                                         = 0x0000000000040000
+    modLightSheet                                     = 0x0000000000080000
+    modDeepSIM                                        = 0x0000002000000000
+    modMaskAcqHWType                                  = (modCamera | modLaserScanConfocal | modSpinDiskConfocal | modSweptFieldConfocalSlit | modSweptFieldConfocalPinholes | modDSDConfocal | modRCM | modDeepSIM | modISIM | modSora | modLiveSR | modLightSheet)
+    modMultiPhotonFluo                                = 0x0000000000010000
+    modTIRF                                           = 0x0000000000020000
+    modPMT                                            = 0x0000000000100000
+    modSpectral                                       = 0x0000000000200000
+    modVAAS_IF                                        = 0x0000000000400000
+    modVAAS_NF                                        = 0x0000000000800000
+    modTransmitDetector                               = 0x0000000001000000
+    modNonDescannedDetector                           = 0x0000000002000000
+    modVirtualFilter                                  = 0x0000000004000000
+    modGaAsP                                          = 0x0000000008000000
+    modRemainder                                      = 0x0000000010000000
+    modAUX                                            = 0x0000000020000000
+    modCustomDescChannel                              = 0x0000000080000000
+    modSTED                                           = 0x0000000100000000
+    modGalvano                                        = 0x0000000200000000
+    modResonant                                       = 0x0000000400000000
+    modAX                                             = 0x0000000800000000
+    modStorm                                          = 0x0000001000000000
+    modNSPARCDetector                                 = 0x0000004000000000
+    modPMT_IRGaAsP                                    = 0x0000008000000000
+    modPMT_GaAs                                       = 0x0000010000000000
+    modMaskDetector                                   = (modSpectral | modVAAS_IF | modVAAS_NF | modTransmitDetector | modNonDescannedDetector | modVirtualFilter | modAUX | modNSPARCDetector)
 
     @staticmethod
     def from_modality(mod: PicturePlaneModality) -> PicturePlaneModalityFlags:
@@ -292,7 +292,7 @@ class PicturePlaneModalityFlags(enum.IntFlag):
         Returns mapping of known modality strings ("Wide-field", "Brightfield", ...) to `PicturePlaneModalityFlags`.
         """
         return {
-            "Undefined": 0,
+            "Undefined":            PicturePlaneModalityFlags.modUnknown,
             "Wide-field":           PicturePlaneModalityFlags.modFluorescence | PicturePlaneModalityFlags.modCamera,
             "Brightfield":          PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modCamera,
             "Phase":                PicturePlaneModalityFlags.modBrightfield  | PicturePlaneModalityFlags.modCamera | PicturePlaneModalityFlags.modPhaseContrast,
@@ -497,12 +497,12 @@ class OpticalSpectrumPointType(enum.IntEnum):
     eSptRange
         Represents a range or span of spectrum points.
     """
-    eSptInvalid: typing.Final         = 0
-    eSptPoint: typing.Final           = 1
-    eSptRaisingEdge: typing.Final     = 2
-    eSptFallingEdge: typing.Final     = 3
-    eSptPeak: typing.Final            = 4
-    eSptRange: typing.Final           = 5
+    eSptInvalid                       = 0
+    eSptPoint                         = 1
+    eSptRaisingEdge                   = 2
+    eSptFallingEdge                   = 3
+    eSptPeak                          = 4
+    eSptRange                         = 5
 
 
 @dataclass(frozen=True, kw_only=True, init=False)
@@ -552,7 +552,7 @@ class OpticalSpectrum(LVSerializable):
 
     def __post_init__(self):
         if isinstance(self.pPoint, dict):
-            object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**self.pPoint[k]) for k in sorted(self.pPoint)])
+            object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**self.pPoint[k]) for k in sorted(self.pPoint.keys(), key=str)])
         if isinstance(self.pPoint, list):
             object.__setattr__(self, "pPoint", [OpticalSpectrumPoint(**p) for p in self.pPoint])
 
@@ -644,10 +644,14 @@ class OpticalSpectrum(LVSerializable):
         return dWlMin, dWlMax
 
     @staticmethod
-    def combine(a: OpticalSpectrum, b: OpticalSpectrum) -> OpticalSpectrum:
+    def combine(a: OpticalSpectrum | None, b: OpticalSpectrum | None) -> OpticalSpectrum | None:
         """
         Combines two optical spectra into a single spectrum.
         """
+        if a is None:
+            return b
+        if b is None:
+            return a
         ret, tol = OpticalSpectrum._combine_low(a, b, 0)
         if 0 < tol:
             ret, _ = OpticalSpectrum._combine_low(a, b, tol)
@@ -689,7 +693,7 @@ class OpticalSpectrum(LVSerializable):
             idx = ia if doa else ib
             spect = a if doa else b
             point: OpticalSpectrumPoint = a[ia] if doa else b[ib]
-            point.dWavelength = awl[ia] if doa else bwl[ib]
+            object.__setattr__(point, "dWavelength", awl[ia] if doa else bwl[ib])
             def set_transposethis(x):
                 nonlocal transpa, transpb
                 if doa:
@@ -720,7 +724,8 @@ class OpticalSpectrum(LVSerializable):
                 ia += 1
             else:
                 ib += 1
-        return OpticalSpectrum(bPoints=a.bPoints, pPoint=result)
+        tol_out = 0.0 if mindiff is inf else mindiff
+        return OpticalSpectrum(bPoints=a.bPoints, pPoint=result), tol_out
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -846,6 +851,7 @@ class OpticalFilterPath(LVSerializable):
                 return (s.pPoint[0].dWavelength + s.pPoint[1].dWavelength) / 2
             elif s.pPoint[0].eType == OpticalSpectrumPointType.eSptPeak and s.pPoint[1].eType == OpticalSpectrumPointType.eSptRange:
                 return s.pPoint[0].dWavelength
+            return -1.0
 
         for flt in self.m_pFilter:
             if OpticalFilterPlacement.eOfpUserOverride == flt.m_ePlacement and 1 == flt.m_EmissionSpectrum.count:
@@ -865,19 +871,25 @@ class OpticalFilterPath(LVSerializable):
             if OpticalFilterPlacement.eOfpFilterTurret == flt.m_ePlacement and 2 == flt.m_EmissionSpectrum.count:
                 return em2pt(flt.m_EmissionSpectrum)
 
-        exSpectrum: OpticalSpectrum = None
+        exSpectrum: OpticalSpectrum | None = None
         for flt in self.m_pFilter:
             if 0 < flt.m_ExcitationSpectrum.count:
                 exSpectrum = OpticalSpectrum.combine(exSpectrum, flt.m_ExcitationSpectrum)
-        emSpectrum: OpticalSpectrum = None
+
+        emSpectrum: OpticalSpectrum | None = None
         for flt in self.m_pFilter:
             dMin, dMax = flt.m_EmissionSpectrum.wavelengthRange()
             if 0 < flt.m_EmissionSpectrum.count and 0 < (dMin + dMax) / 2:
                 emSpectrum = OpticalSpectrum.combine(emSpectrum, flt.m_EmissionSpectrum)
+
+        if emSpectrum is None or emSpectrum.count == 0:
+            return 0.0
+
         ex = None
-        for pt in exSpectrum.pPoint:
-            if pt.eType in (OpticalSpectrumPointType.eSptPeak, OpticalSpectrumPointType.eSptFallingEdge):
-                ex = pt
+        if exSpectrum is not None:
+            for pt in exSpectrum.pPoint:
+                if pt.eType in (OpticalSpectrumPointType.eSptPeak, OpticalSpectrumPointType.eSptFallingEdge):
+                    ex = pt
         if ex is not None:
             for j, pt in enumerate(emSpectrum.pPoint):
                 if pt.eType in (OpticalSpectrumPointType.eSptPeak, OpticalSpectrumPointType.eSptRaisingEdge) and ex.dWavelength < pt.dWavelength:
@@ -918,6 +930,8 @@ class OpticalFilterPath(LVSerializable):
                             d += abs(d-emission)
                             if d < dist:
                                 closestWL, dist = pt.dWavelength, d
+        if closestWL is None:
+            return 0.0
         return closestWL
 
 @dataclass(frozen=True, init=False, kw_only=True)
@@ -1074,28 +1088,28 @@ class PicturePlaneDesc(LVSerializable):
         """
         Returns whether the picture plane is a brightfield image.
         """
-        return (self.uiModalityMask & PicturePlaneModalityFlags.modBrightfield)
+        return (self.uiModalityMask & PicturePlaneModalityFlags.modBrightfield) != 0
 
     @property
     def isDarkfield(self) -> bool:
         """
         Returns whether the picture plane is a darkfield image.
         """
-        return (self.uiModalityMask & PicturePlaneModalityFlags.modDarkfield)
+        return (self.uiModalityMask & PicturePlaneModalityFlags.modDarkfield) != 0
 
     @property
     def isFluorescence(self) -> bool:
         """
         Returns whether the picture plane is a fluorescence image.
         """
-        return (self.uiModalityMask & PicturePlaneModalityFlags.modFluorescence)
+        return (self.uiModalityMask & PicturePlaneModalityFlags.modFluorescence) != 0
 
     @property
     def isContrast(self) -> bool:
         """
         Returns whether the picture plane is a contrast image.
         """
-        return (self.uiModalityMask & PicturePlaneModalityFlags.modMaskContrast)
+        return (self.uiModalityMask & PicturePlaneModalityFlags.modMaskContrast) != 0
 
     @property
     def modalityList(self) -> list[str]:
@@ -1394,7 +1408,7 @@ class PictureMetadataPicturePlanes(LVSerializable):
 
         if self.sPlaneNew and isinstance(self.sPlaneNew, dict):
             planes = []
-            for key in sorted(self.sPlaneNew):
+            for key in sorted(self.sPlaneNew.keys(), key=str):
                 planes.append(PicturePlaneDesc(**self.sPlaneNew[key]))
             object.__setattr__(self, "sPlaneNew", planes)
 
@@ -1736,7 +1750,10 @@ class PictureMetadata(LVSerializable):
         Returns camera name using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
         """
         try:
-            return self.sampleSettings(plane).cameraName
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return ""
+            return sample.cameraName
         except (AttributeError, IndexError) as _:
             return ""
 
@@ -1745,7 +1762,10 @@ class PictureMetadata(LVSerializable):
         Returns microscope name using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
         """
         try:
-            return self.sampleSettings(plane).microscopeName
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return ""
+            return sample.microscopeName
         except (AttributeError, IndexError):
             return ""
 
@@ -1754,7 +1774,10 @@ class PictureMetadata(LVSerializable):
         Returns refractive index using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
         """
         try:
-            return self.sampleSettings(plane).refractiveIndex
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return -1.0
+            return sample.refractiveIndex
         except (AttributeError, IndexError):
             return -1.0
 
@@ -1763,7 +1786,10 @@ class PictureMetadata(LVSerializable):
         Returns name of objective using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
         """
         try:
-            return self.sampleSettings(plane).objectiveName
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return ""
+            return sample.objectiveName
         except (AttributeError, IndexError):
             return ""
 
@@ -1772,7 +1798,10 @@ class PictureMetadata(LVSerializable):
         Returns objective magnification using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
         """
         try:
-            return self.sampleSettings(plane).objectiveMagnification
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return -1.0
+            return sample.objectiveMagnification
         except (AttributeError, IndexError):
             return -1.0
 
@@ -1781,7 +1810,10 @@ class PictureMetadata(LVSerializable):
         Returns objective numeric aperture using either [`PicturePlaneDesc`](metadata.md#limnd2.metadata.PicturePlaneDesc) instance or an index of channel.
         """
         try:
-            return self.sampleSettings(plane).objectiveNumericAperture
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return -1.0
+            return sample.objectiveNumericAperture
         except (AttributeError, IndexError):
             return -1.0
 
@@ -1790,7 +1822,10 @@ class PictureMetadata(LVSerializable):
         Returns list of optical configurations.
         """
         try:
-            return self.sampleSettings(plane).opticalConfigurations
+            sample = self.sampleSettings(plane)
+            if sample is None:
+                return []
+            return sample.opticalConfigurations
         except (AttributeError, IndexError):
             return []
 

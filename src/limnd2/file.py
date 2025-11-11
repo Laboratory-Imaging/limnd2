@@ -40,10 +40,10 @@ class LimBinaryIOChunker(BaseChunker):
         super().__init__(with_image_attributes=with_image_attributes, with_binary_raster_metadata=with_binary_raster_metadata)
         self._filename: str|None = filename
         self._last_modified: datetime.datetime|None = datetime.datetime.fromisoformat(last_modified) if isinstance(last_modified, str) else last_modified
-        self._fh: typing.BinaryIO = None if isinstance(fh_or_memory, memoryview) else fh_or_memory
+        self._fh: typing.BinaryIO|None = None if isinstance(fh_or_memory, memoryview) else fh_or_memory
         self._mmap: mmap.mmap|None = None
-        self._memory: mmap.mmap|memoryview|None = None
-        self._version: tuple[int, int] = None
+        self._memory: memoryview|None = None
+        self._version: tuple[int, int]
         self._chunkmap: collections.OrderedDict|None = None
         self._chunkmap_is_dirty: bool = False
         self._original_chunkmap_offset: int = 0
@@ -53,7 +53,7 @@ class LimBinaryIOChunker(BaseChunker):
                 logger.info(f"Opening {self._filename} Chunker for READING.")
             # 1. check if it is memoryview
             if self._fh is None:
-                self._memory = fh_or_memory
+                self._memory = typing.cast(memoryview, fh_or_memory)
             # 2. try mmap the file for faster access
             elif not nommap:
                 try:
@@ -62,9 +62,10 @@ class LimBinaryIOChunker(BaseChunker):
                     print(f"Debug: could not mmap file {e}")
                     self._mmap = None
             # 3. check the header and version
-            self._version = self.read_file_header()
-            if self._version is None:
+            ver = self.read_file_header()
+            if ver is None:
                 raise RuntimeError("Not a valid ND2 file format")
+            self._version = ver
             # 3. read the chunk map
             self._chunkmap = self._read_chunkmap()
         else:
@@ -72,9 +73,10 @@ class LimBinaryIOChunker(BaseChunker):
                 if Nd2LoggerEnabled:
                     logger.info(f"Opening {self._filename} Chunker for APPENDING.")
                 # 1. check the header and version
-                self._version = self.read_file_header()
-                if self._version is None:
+                ver = self.read_file_header()
+                if ver is None:
                     raise NotNd2Format()
+                self._version = ver
                 # 2. read the chunk map
                 self._chunkmap = self._read_chunkmap()
                 # 3. keep the file position at the end of the map as in NIS
@@ -124,28 +126,36 @@ class LimBinaryIOChunker(BaseChunker):
     def is_appending(self):
         return (self._fh is not None) and ("rb+" == self._fh.mode)
 
-    def _file_size(self):
-        if self._mmap:
+    def _file_size(self) -> int:
+        if self._mmap is not None:
             return self._mmap.size()
-        elif self._memory:
+        elif self._memory is not None:
             return self._memory.nbytes
-        else:
+        elif self._fh is not None:
             curr = self._fh.tell()
             size = self._fh.seek(0, os.SEEK_END)
             self._fh.seek(curr)
             return size
+        raise RuntimeError("No valid data source available")
 
     def _currpos(self) -> int:
-        return self._fh.tell()
+        if self._mmap is not None:
+            return self._mmap.tell()
+        elif self._memory is not None:
+            return 0
+        elif self._fh is not None:
+            return self._fh.tell()
+        raise RuntimeError("No valid data source available")
 
-    def _get_buffer_and_offset(self, start : int, len : int) -> tuple[bytes, int]:
+    def _get_buffer_and_offset(self, start : int, len : int) -> tuple[typing.Union[bytes, mmap.mmap], int]:
         if self._mmap:
             return self._mmap, start
         elif self._memory:
             return self._memory[start:start+len].tobytes(), 0
-        else:
+        elif self._fh:
             self._fh.seek(start)
             return self._fh.read(len), 0
+        raise RuntimeError("No valid data source available")
 
 
     def _read_struct_at(self, s : struct.Struct, pos : int) -> bytes:
@@ -153,9 +163,10 @@ class LimBinaryIOChunker(BaseChunker):
             return self._mmap[pos:pos+s.size]
         elif self._memory:
             return self._memory[pos:pos+s.size].tobytes()
-        else:
+        elif self._fh:
             self._fh.seek(pos)
             return self._fh.read(s.size)
+        raise RuntimeError("No valid data source available")
 
     def _read_chunk(self, pos: int) -> bytes:
         magic, name_length, data_length = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, pos))
@@ -164,13 +175,15 @@ class LimBinaryIOChunker(BaseChunker):
         buffer, offset = self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
         return buffer[offset:offset+data_length]
 
-    def _get_chunk_buffer_and_offset(self, pos: int) -> tuple[bytes, int]:
+    def _get_chunk_buffer_and_offset(self, pos: int) -> tuple[bytes | mmap.mmap, int]:
         magic, name_length, data_length = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, pos))
         if magic != ND2_CHUNK_MAGIC:
             raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
         return self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
 
-    def _write_chunk(self, pos: int, name: bytes, data1: bytes|None, data2: bytes|None = None) -> tuple[int, int]:
+    def _write_chunk(self, pos: int, name: bytes, data1: bytes|bytearray|None, data2: bytes|bytearray|None = None) -> tuple[int, int]:
+        if self._fh is None:
+            raise PermissionError("Writable file handle required for _write_chunk (not mmap/memory).")
         name_len = len(name)
         data1_len = len(data1) if data1 is not None else 0
         data2_len = len(data2) if data2 is not None else 0
@@ -187,13 +200,13 @@ class LimBinaryIOChunker(BaseChunker):
         if 0 < data1_len and 0 < blank_len:
             data_written_len += self._fh.write(b'\0' * blank_len)
         if 0 < data1_len:
-            data_written_len += self._fh.write(data1)
+            data_written_len += self._fh.write(typing.cast(bytes, data1))
         data_written_4k_len = _ceil_align(data_written_len, ND2_CHUNK_ALIGNMENT)
         if data_written_len < data_written_4k_len:
             self._fh.write(b'\0' * (data_written_4k_len - data_written_len))
         # writing 2nd part: data
         if data2_len:
-            self._fh.write(data2)
+            self._fh.write(typing.cast(bytes, data2))
             data2_4k_len = _ceil_align(data2_len, ND2_CHUNK_ALIGNMENT)
             if data2_len < data2_4k_len:
                 self._fh.write(b'\0' * (data2_4k_len - data2_len))
@@ -210,11 +223,13 @@ class LimBinaryIOChunker(BaseChunker):
                 return (1, 0)  # legacy JP2 files are version 1.0
             return None
         if name_length != 32 or data_length != 64 or name != ND2_FILE_SIGNATURE:
-            raise None
+            raise NotNd2Format()
         # data will now be something like Ver2.0, Ver3.0, etc.
         return (int(chr(data[3])), int(chr(data[5])))
 
     def write_file_header(self, version: tuple[int, int]) -> None:
+        if self._fh is None:
+            raise PermissionError("Writable file handle required for _write_chunk (not mmap/memory).")
         self._fh.seek(0)
         data = f'Ver{version[0]}.{version[1]}'.encode('ascii')
         chunk_data = STRUCT_FILE_HEADER.pack(ND2_CHUNK_MAGIC, 32, 64, ND2_FILE_SIGNATURE, data + (b'\0' * (64 - len(data))))
@@ -274,20 +289,26 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def chunk_names(self) -> list[bytes]:
+        if self._chunkmap is None:
+            return []
         return list(self._chunkmap.keys())
 
     def _update_chunkmap(self, name: bytes, item: tuple) -> None:
+        if self._chunkmap is None:
+            return
         self._chunkmap[name] = item
         self._chunkmap_is_dirty = True
 
     def _chunk_pos(self, name: bytes) -> int:
+        if self._chunkmap is None:
+            raise NameNotInChunkmapError(name)
         try:
             return self._chunkmap[name][0]
         except KeyError:
             raise NameNotInChunkmapError(name)
 
     def chunk(self, name: bytes|str) -> bytes|memoryview|None:
-        if type(name) == str:
+        if isinstance(name, str):
             name = name.encode("ascii")
         if not BaseChunker._is_chunk_data(name):
             raise UnexpectedCallError("chunk", name)
@@ -298,10 +319,12 @@ class LimBinaryIOChunker(BaseChunker):
             return None
 
     def setChunk(self, name: bytes|str, data: bytes|memoryview) -> None:
-        if type(name) == str:
+        if isinstance(name, str):
             name = name.encode("ascii")
         if not BaseChunker._is_chunk_data(name):
             raise UnexpectedCallError("setChunk", name)
+        if isinstance(data, memoryview):
+            data = data.tobytes()
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
         self._set_metadata(name, data)
 
@@ -421,6 +444,8 @@ class LimBinaryIOChunker(BaseChunker):
         return (np.zeros(shape=(y1-y0, x1-x0), dtype=np.uint32), dict())
 
     def readBinaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        if self.binaryRasterMetadata is None:
+            raise BinaryIdNotFountError(binid)
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
@@ -472,6 +497,8 @@ class LimBinaryIOChunker(BaseChunker):
 
 
     def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
+        if self.binaryRasterMetadata is None:
+            raise BinaryIdNotFountError(binid)
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
@@ -492,6 +519,8 @@ class LimBinaryIOChunker(BaseChunker):
                 self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
 
     def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        if self.binaryRasterMetadata is None:
+            raise BinaryIdNotFountError(binid)
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
@@ -527,6 +556,8 @@ class LimBinaryIOChunker(BaseChunker):
         return ret
 
     def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
+        if self.binaryRasterMetadata is None:
+            raise BinaryIdNotFountError(binid)
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
@@ -551,7 +582,7 @@ class LimBinaryIOChunker(BaseChunker):
     def finalize(self) -> None:
         if Nd2LoggerEnabled:
             logger.info(f"Finalizing {self._filename}")
-        if not self.is_readonly and self._chunkmap_is_dirty:
+        if not self.is_readonly and self._chunkmap_is_dirty and self._chunkmap is not None and self._fh is not None:
             pos = self._currpos()
             data = self._write_chunkmap(pos, self._chunkmap)
             self._write_chunk(pos, ND2_FILEMAP_SIGNATURE, data)
@@ -567,7 +598,7 @@ class LimBinaryIOChunker(BaseChunker):
     def rollback(self) -> None:
         if Nd2LoggerEnabled:
             logger.info(f"Rolling back {self._filename}")
-        if self.is_readonly:
+        if self.is_readonly or self._fh is None:
             return
         if 0 == self._original_chunkmap_offset:
             fname = self._fh.name

@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import abc, datetime, io, itertools, re, struct, typing, zlib
 import numpy as np
+from typing import Any
 from .attributes import ImageAttributes, NumpyArrayLike
 from .binary import BinaryRleMetadata, BinaryRasterMetadata
-from .experiment import ExperimentLevel, ExperimentLoopType
+from .experiment import ExperimentLevel, ExperimentLoopType, ExperimentSpectralLoop
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo
 
@@ -88,14 +89,14 @@ class NotNd2Format(Exception):
 
 class NameNotInChunkmapError(Exception):
     def __init__(self, name: bytes|str):
-        self.chunk_name = name if type(name) == str else name.decode('ascii')
+        self.chunk_name = name if isinstance(name, str) else name.decode('ascii')
         self.message = f"Name not in Chunk Map: {self.chunk_name}"
         super().__init__(self.message)
 
 class UnsupportedChunkmapError(Exception):
     def __init__(self, version : tuple, name: bytes|str):
         self.file_version = version
-        self.chunk_name = name if type(name) == str else name.decode('ascii')
+        self.chunk_name = name if isinstance(name, str) else name.decode('ascii')
         self.message = f"File version {self.file_version} with unsupported Chunk Map signature: {self.chunk_name}"
         super().__init__(self.message)
 
@@ -108,7 +109,7 @@ class BinaryIdNotFountError(Exception):
 class UnexpectedCallError(Exception):
     def __init__(self, function_name: str, name: bytes|str):
         self.function_name = function_name
-        self.chunk_name = name if type(name) == str else name.decode('ascii')
+        self.chunk_name = name if isinstance(name, str) else name.decode('ascii')
         self.message = f"Unexpected call ({self.function_name}): {self.chunk_name}"
         super().__init__(self.message)
 
@@ -169,7 +170,7 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def chunk(self, name: bytes|str, asbytes: bool|None = None) -> bytes|memoryview|None:
+    def chunk(self, name: bytes|str) -> bytes|memoryview|None:
         pass
 
     @abc.abstractmethod
@@ -268,7 +269,7 @@ class BaseChunker(abc.ABC):
             else:
                 return None
             spectralLoop = self._experiment.findLevel(ExperimentLoopType.eEtSpectLoop)
-            if spectralLoop is not None and self.pictureMetadata is not None:
+            if spectralLoop is not None and self.pictureMetadata is not None and isinstance(spectralLoop.uLoopPars, ExperimentSpectralLoop):
                 spectralLoop.uLoopPars.replacePlanes(self.pictureMetadata.sPicturePlanes)
         return self._experiment
 
@@ -282,7 +283,7 @@ class BaseChunker(abc.ABC):
 
 
     @property
-    def imageTextInfo(self) -> ImageTextInfo:
+    def imageTextInfo(self) -> ImageTextInfo | None:
         if self._image_text_info is None:
             if (data := self.chunk(ND2_CHUNK_NAME_ImageTextInfoLV)) is not None:
                 self._image_text_info = ImageTextInfo.from_lv(data)
@@ -302,7 +303,7 @@ class BaseChunker(abc.ABC):
         return self._binary_rle_metadata
 
     @property
-    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata | None:
         if self._binary_tiled_raster_metadata is None:
             if (data := self.chunk(ND2_CHUNK_NAME_BinaryMetadata_v2)) is not None:
                 self._binary_tiled_raster_metadata = BinaryRasterMetadata.from_json(data)
@@ -439,7 +440,7 @@ class BaseChunker(abc.ABC):
         return self._acq_times
 
     @property
-    def acqTimes2(self) -> np.ndarray:
+    def acqTimes2(self) -> np.ndarray | None:
         if self._acq_times is None:
             if (data := self.chunk(ND2_CHUNK_NAME_AcqTimes2Cache)) is not None:
                 self._acq_times = np.ndarray(
@@ -451,7 +452,8 @@ class BaseChunker(abc.ABC):
 
 
     @property
-    def acqFrames(self) -> np.ndarray:
+    def acqFrames(self) -> np.ndarray | None:
+        # TODO: shouldnt this be _acq_frames?
         if self._acq_times is None:
             if (data := self.chunk(ND2_CHUNK_NAME_AcqFramesCache)) is not None:
                 self._acq_times = np.ndarray(
@@ -500,6 +502,7 @@ class BaseChunker(abc.ABC):
     def isSkipChunk(chunkname: bytes) -> bool:
         return chunkname in (ND2_FILE_SIGNATURE, ND2_CHUNKMAP_SIGNATURE, ND2_FILEMAP_SIGNATURE)
 
+    @staticmethod
     def isBinaryRleMetadata(chunkname: bytes) -> bool:
         return ND2_CHUNK_NAME_BinaryMetadata_v1 == chunkname
 
@@ -542,6 +545,8 @@ class BaseChunker(abc.ABC):
         attrs = self.imageAttributes
         for meta in self.binaryRleMetadata:
             data = self.chunk(meta.dataChunkName(0))
+            if data is None:
+                continue
             if 4 <= len(data):
                 version_struct = struct.Struct("<I")
                 version_struct_size = version_struct.size
@@ -566,7 +571,7 @@ class BaseChunker(abc.ABC):
         rle_header = struct.Struct("<IIIIIII")
         (version, width, height, obj_count, _nbytes, _last_object_offset, _custom_data_size) = _unpack(stream, rle_header)
 
-        ver_rle_obj_struct: dict[int, dict[str, any]] = { 2: struct.Struct("<IIIIIIIIIII"), 3: struct.Struct("<IIIIIIIII") }
+        ver_rle_obj_struct: dict[int, struct.Struct] = { 2: struct.Struct("<IIIIIIIIIII"), 3: struct.Struct("<IIIIIIIII") }
 
         if version == 1:
             raise NotImplementedError()
@@ -586,7 +591,10 @@ class BaseChunker(abc.ABC):
                         stream.seek(nbytes-rle_object.size, 1)
                         continue
                 if not no_obj_info:
-                    obj_info = dict(bb=(left, top, right, bottom), status=obj_status)
+                    pxls = 0
+                    xx = 0
+                    yy = 0
+                    obj_info: dict[str, Any] = dict(bb=(left, top, right, bottom), status=obj_status)
                     ret_obj_info_dict[obj_id] = obj_info
                     for j in range(nrows):
                         (y, nsegments) = _unpack(stream, rle_row)
@@ -625,6 +633,8 @@ class BaseChunker(abc.ABC):
         data = self.chunk(ND2_CHUNK_FORMAT_DeepSIMRawChannel % (componentindex, seqindex))
         if not data:
             raise NameNotInChunkmapError(f"DeepSIM chunk for sequence index {seqindex} and component index {componentindex} not found.")
+        if isinstance(data, memoryview):
+            data = data.tobytes()
 
         # deepSim chunk data structure
 

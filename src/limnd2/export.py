@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from itertools import product
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import tifffile
@@ -145,10 +145,12 @@ def generate_frame_list(
     if dimension_order is None:
         dim_order = canon_dims
     else:
-        mapped = [map_dim_name(d) for d in dimension_order]
-        if set(mapped) != set(canon_dims):
-            raise ValueError(f"Dimensions mismatch: provided {mapped} vs file dims {canon_dims}")
-        dim_order = mapped
+        mapped_opt = [map_dim_name(d) for d in dimension_order]  # list[str | None]
+        if any(m is None for m in mapped_opt):
+            raise ValueError(f"Invalid dimension name in {dimension_order!r}")
+        dim_order = cast(list[str], mapped_opt)
+        if set(dim_order) != set(canon_dims):
+            raise ValueError(f"Dimensions mismatch: provided {dim_order} vs file dims {canon_dims}")
 
     dims_sizes = nd2_reader.dimensionSizes()
     indices = nd2_reader.generateLoopIndexes(named=True)

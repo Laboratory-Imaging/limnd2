@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections, enum, json, re
+from typing_extensions import Literal
 import numpy as np
 from dataclasses import dataclass, asdict
 from .attributes import full_res_size
@@ -34,31 +35,31 @@ class BinaryItemColorMode(enum.IntEnum):
 class BinaryRleMetadataItem:
     uiBinLayerID: int = 0
     strUuid: str = ""
-    uiState: BinaryItemStateFlags = 0
+    uiState: BinaryItemStateFlags | Literal[0] = 0
     uiColor: int = 0
     strName: str = ""
     strCompName: str = ""
     uiCompOrder: int = 0
     strFileTag: str = ""
-    uiColorMode: BinaryItemColorMode = 0
+    uiColorMode: BinaryItemColorMode = BinaryItemColorMode.eBaseBinObjColors
 
     def dataChunkName(self, seq_index: int) -> bytes:
         return f"CustomDataSeq|{self.strFileTag}|{seq_index}!".encode("ascii")
-    
+
     @property
     def id(self) -> int:
         return self.uiBinLayerID
-    
+
     @property
     def dataChunkNameRegex(self) -> re.Pattern:
         return re.compile(f'^CustomDataSeq\\|{self.strFileTag}\\|(\\d+)!$'.encode("ascii"))
-    
+
     def makeRasterMetadata(self, width: int, height: int, tilesize: int = 1024, bitdepth: int = 32) -> BinaryRasterMetadataItem:
         return BinaryRasterMetadataItem(binWidth=width, binHeight=height,
             binTileWidth=tilesize, binTileHeight=tilesize,
             binCompressionId="zlib", binCompressionLevel=6,
             binBitdepth=bitdepth, binLayerId=self.uiBinLayerID,
-            binName=self.strName, binUuid=self.strUuid, 
+            binName=self.strName, binUuid=self.strUuid,
             binComp=self.strCompName, binCompOrder=self.uiCompOrder,
             binState=self.uiState, binColor=self.uiColor,
             binColorMode=self.uiColorMode)
@@ -72,15 +73,15 @@ class BinaryRleMetadata(collections.UserList):
             if item.uiBinLayerID == id:
                 return item
         return None
-    
+
     @property
     def dataChunkNameRegexDict(self) -> dict[int, re.Pattern]:
         return { item.uiBinLayerID: item.dataChunkNameRegex for item in self.data}
-    
+
     @property
     def binIdList(self) -> list[int]:
         return [item.uiBinLayerID for item in self.data]
-    
+
     def makeRasterMetadata(self, width: int, height: int, tilesize: int = 1024, bitdepth: int = 32) -> BinaryRasterMetadata:
         return BinaryRasterMetadata([item.makeRasterMetadata(width, height, tilesize, bitdepth) for item in self.data])
 
@@ -88,8 +89,8 @@ class BinaryRleMetadata(collections.UserList):
     def from_var(data: bytes|memoryview) -> BinaryRleMetadata:
         decoded = decode_var(data)
         return BinaryRleMetadata(decoded.get('BinaryMetadata_v1', []))
-    
-@dataclass(frozen=True, kw_only=True)    
+
+@dataclass(frozen=True, kw_only=True)
 class BinaryRasterMetadataItem:
     binWidth: int = 0
     binHeight: int = 0
@@ -103,20 +104,20 @@ class BinaryRasterMetadataItem:
     binUuid: str
     binComp: str
     binCompOrder: int = 0
-    binState: BinaryItemStateFlags = 0
+    binState: BinaryItemStateFlags | Literal[0] = 0
     binColor: int = 0
-    binColorMode: BinaryItemColorMode = 0
+    binColorMode: BinaryItemColorMode = BinaryItemColorMode.eBaseBinObjColors
 
     @property
     def id(self) -> int:
         return self.binLayerId
-    
+
     @property
     def name(self) -> str:
-        return self.binName    
-    
+        return self.binName
+
     @property
-    def color(self) -> list[tuple[float, float, float]]:
+    def color(self) -> tuple[float, float, float]:
         color = self.binColor
         b = ((color >> 16) & 0xFF) / 255.0
         g = ((color >> 8) & 0xFF) / 255.0
@@ -142,7 +143,7 @@ class BinaryRasterMetadataItem:
     @property
     def tileStrides(self):
         return (self.binTileWidth * 4, 4)
-    
+
     @property
     def imageBytes(self):
         return self.binWidth * 4 * self.binHeight
@@ -150,7 +151,7 @@ class BinaryRasterMetadataItem:
     @property
     def tileBytes(self):
         return self.binTileWidth * 4 * self.binTileHeight
-    
+
     def makeDownsampled(self, downsize : int) -> BinaryRasterMetadataItem:
         fullsize = full_res_size(self.binWidth, self.binHeight)
         w = self.binWidth * downsize // fullsize
@@ -161,8 +162,8 @@ class BinaryRasterMetadataItem:
             binBitdepth=self.binBitdepth, binLayerId=self.binLayerId, binName=self.binName,
             binUuid=self.binUuid, binComp=self.binComp, binCompOrder=self.binCompOrder,
             binState=self.binState, binColor=self.binColor, binColorMode=self.binColorMode)
-    
-    
+
+
 class BinaryRasterMetadata(collections.UserList):
     def __init__(self, iterable):
         super().__init__(BinaryRasterMetadataItem(**item) if type(item) == dict else item  for item in iterable)
@@ -172,24 +173,24 @@ class BinaryRasterMetadata(collections.UserList):
             if item.binLayerId == id:
                 return item
         return None
-    
+
     @property
     def binIdList(self) -> list[int]:
         return [item.binLayerId for item in self.data]
-    
+
     @property
     def binNameList(self) -> list[str]:
         return [item.binName for item in self.data]
-    
+
     @property
     def binColorList(self) -> list[str]:
-        return [item.binColor for item in self.data]    
-    
+        return [item.binColor for item in self.data]
+
     def to_json(self) -> bytes:
         return json.dumps([asdict(item) for item in self.data]).encode('utf-8')
 
     @staticmethod
-    def from_json(data: bytes|memoryview) -> BinaryRleMetadata:
+    def from_json(data: bytes|memoryview) -> BinaryRasterMetadata:
         if type(data) == memoryview:
             data = data.tobytes()
         decoded = json.loads(data.decode('utf-8'))

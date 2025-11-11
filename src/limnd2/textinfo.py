@@ -35,7 +35,7 @@ class ImageTextInfo:
                     TextInfoItem_9: str = "",
                     TextInfoItem_10: str = "",
                     TextInfoItem_11: str = "",
-                    TextInfoItem_12: str = "", 
+                    TextInfoItem_12: str = "",
                     TextInfoItem_13: str = ""):
         object.__setattr__(self, 'sImageID', TextInfoItem_0)
         object.__setattr__(self, 'sType', TextInfoItem_1)
@@ -52,7 +52,7 @@ class ImageTextInfo:
         object.__setattr__(self, 'sInfo2', TextInfoItem_12)
         object.__setattr__(self, 'sOptics', TextInfoItem_13)
 
-   
+
     def to_dict(self) -> dict[str, str]:
         return dict(
             imageId=self.sImageID,
@@ -67,18 +67,18 @@ class ImageTextInfo:
             date=self.sDate,
             conclusion=self.sConclusion,
             info1=self.sInfo1,
-            info2=self.sInfo2, 
+            info2=self.sInfo2,
             optics=self.sOptics)
 
     @staticmethod
     def from_lv(data: bytes|memoryview) -> ImageTextInfo:
         return ImageTextInfo(**(decode_lv(data).get('SLxImageTextInfo', {})))
-    
+
     @staticmethod
     def from_var(data: bytes|memoryview) -> ImageTextInfo:
         decoded = decode_var(data)
         return ImageTextInfo(**decoded[0])
-    
+
 
 @dataclass(frozen=True, kw_only=True)
 class AppInfo:
@@ -93,6 +93,7 @@ class AppInfo:
     def software(self) -> str:
         return f"{self.m_SWNameString} {self.m_VersionString}"
 
+    @staticmethod
     def from_var(data: bytes|memoryview) -> AppInfo:
         try:
             decoded = decode_var(data)

@@ -1,23 +1,26 @@
 import os
+from typing import Any
 from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject
-from .custom_data import RecordedDataItem, RecordedDataType
+from .custom_data import RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel
 from .metadata import PictureMetadataPicturePlanes
 from .nd2 import Nd2Reader
 
 import hashlib, itertools, json
 
-def generalImageInfo(reader: Nd2Reader) -> dict[str, any]:
+def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     """
     Returns general information about the image as a dictionary.
     """
     ia = reader.imageAttributes
     loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in reader.experiment if 0 < exp_level.count ]) if reader.experiment else ""
-    if reader.filename:
-        path, filename = os.path.split(reader.filename)
-    elif reader.url:
-        path, filename = os.path.split(reader.url.rstrip("/"))
+    path = ""
+    filename = ""
+    if reader.storage_info.filename:
+        path, filename = os.path.split(reader.storage_info.filename)
+    elif reader.storage_info.url:
+        path, filename = os.path.split(reader.storage_info.url.rstrip("/"))
     path += os.sep
 
     bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
@@ -32,16 +35,14 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, any]:
 
     return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
 
-
-
 def imageInformationAsJSON(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> str:
     return json.dumps(gatherImageInformation(file_like, filename=filename, last_modified=last_modified))
 
-def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> dict[str, any]:
+def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> dict[str, Any]:
     with Nd2Reader(file_like, chunker_kwargs=dict(filename=filename, last_modified=last_modified)) as reader:
         return gatherImageInfoFromNd2(reader)
 
-def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, any]:
+def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, Any]:
     ret = {}
     ret["generalInfo"] = file_object.generalImageInfo
     ret["imageTextInfo"] = file_object.imageTextInfo.to_dict() if file_object.imageTextInfo is not None else {}
@@ -71,7 +72,7 @@ def _get_format_fn(val) -> str:
         coldef.fmtfn.bind(coldef);
     };""" % (val, val)
 
-def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], ordering: dict[dict[str, int]]|None = None) -> list[dict[str, any]]:
+def _create_treeview_grouping(rows: list[dict[str, Any]], groupby: list[str], ordering: dict[str, dict[str, int]]|None = None) -> list[dict[str, Any]]:
     sort_keys = {}
     for grpcol in groupby:
         if ordering is not None and grpcol in ordering:
@@ -79,7 +80,7 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
         else:
             sort_keys[grpcol] = lambda row, grpcol=grpcol: row[grpcol]
 
-    def recursive_fn(parent: dict[str, any], hash: object, rows: list[dict[str, any]], groupby: list[str], depth: int):
+    def recursive_fn(parent: dict[str, Any], hash: "hashlib._Hash", rows: list[dict[str, Any]], groupby: list[str], depth: int):
         rcount = 0
         gcount = 0
         ret_group_list = []
@@ -116,7 +117,7 @@ def _create_treeview_grouping(rows: list[dict[str, any]], groupby: list[str], or
     ret += recursive_fn(root, h, rows, groupby.copy(), 1)
     return ret
 
-def _experiment_to_table(exp: ExperimentLevel) -> dict[str, any]:
+def _experiment_to_table(exp: ExperimentLevel) -> dict[str, Any]:
     right_align = {'text-align': 'right'}
     css_style = { 'X': right_align, 'Y': right_align, 'Z': right_align, 'Bottom': right_align, 'Count': right_align, 'Step': right_align, 'Top': right_align, 'Interval': right_align, 'Duration': right_align, 'Loops': right_align }
     min_width = { 'X': '100px', 'Y': '100px', 'Z': '100px', 'Bottom': '80px', 'Count': '60px', 'Step': '80px', 'Top': '80px', 'Interval': '100px', 'Duration': '100px', 'Loops': '100px' }
@@ -140,7 +141,7 @@ def _experiment_to_table(exp: ExperimentLevel) -> dict[str, any]:
 
     return dict(coldefs=col_defs, rowdata=exp.uLoopPars.info)
 
-def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, any]:
+def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, Any]:
     rows=[]
     col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
     settings = planes.sSampleSetting
@@ -184,7 +185,7 @@ def _get_recorded_data_styles(col: RecordedDataItem) -> dict[str, str]:
     else:
         return { "text-align": "left" }
 
-def _recorded_data_to_table(recdata: RecordedDataType) -> dict[str, any]:
+def _recorded_data_to_table(recdata: RecordedData) -> dict[str, Any]:
     coldefs = []
     coldefs.append(dict(id='id', hidden=True))
     rowdata = [ dict(id=i+1) for i in range(recdata.rowCount) ]
@@ -329,7 +330,7 @@ def export_acquisition_details(image_info):
     return output
 
 
-def imageInformationAsTXT(image_information: str|dict[str, any]) -> str:
+def imageInformationAsTXT(image_information: str|dict[str, Any]) -> str:
     data = json.loads(image_information) if isinstance(image_information, str) else image_information
 
     result = ""
@@ -345,10 +346,10 @@ def imageInformationAsTXT(image_information: str|dict[str, any]) -> str:
         result += "Acquisition Details:\n" + export_acquisition_details(data) + "\n\n"
     return result
 
-def imageInformationAsXLSX(image_information: str|dict[str, any]) -> bytes:
+def imageInformationAsXLSX(image_information: str|dict[str, Any]) -> bytes:
     import io as IO
-    import openpyxl
-    from openpyxl.utils import get_column_letter
+    import openpyxl # type: ignore
+    from openpyxl.utils import get_column_letter  # type: ignore
 
     wb = openpyxl.Workbook()
     data = json.loads(image_information) if isinstance(image_information, str) else image_information
@@ -403,7 +404,7 @@ def format_file_size(size: int) -> str:
     return f"{size} B"
 
 
-def format_general_info_sizes(file_bytes: int, frame_bytes: int, volume_bytes: int) -> dict[str, any]:
+def format_general_info_sizes(file_bytes: int, frame_bytes: int, volume_bytes: int) -> dict[str, Any]:
     ret = {
         "file_bytes": file_bytes,
         "frame_bytes": frame_bytes,
