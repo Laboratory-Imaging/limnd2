@@ -7,7 +7,7 @@ Those instances should be used with `Nd2Writer` instance for altering / creating
 
 For creating metadata, you should use [`MetadataFactory`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory) class.
 """
-from typing import Optional
+from typing import Any, Optional
 from .metadata import *
 from dataclasses import dataclass, asdict
 

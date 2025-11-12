@@ -17,10 +17,10 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in reader.experiment if 0 < exp_level.count ]) if reader.experiment else ""
     path = ""
     filename = ""
-    if reader.storage_info.filename:
-        path, filename = os.path.split(reader.storage_info.filename)
-    elif reader.storage_info.url:
-        path, filename = os.path.split(reader.storage_info.url.rstrip("/"))
+    if reader.storageInfo.filename:
+        path, filename = os.path.split(reader.storageInfo.filename)
+    elif reader.storageInfo.url:
+        path, filename = os.path.split(reader.storageInfo.url.rstrip("/"))
     path += os.sep
 
     bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"

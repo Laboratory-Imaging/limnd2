@@ -181,7 +181,7 @@ def generate_frame_list(
 
     return frame_list
 
-def series_export(
+def seriesExport(
         nd2_reader: "Nd2Reader",
         folder: str | Path | None = None,
         prefix: str | None = None,
@@ -268,7 +268,7 @@ def series_export(
     if not progress_to_json:
         print(f"\nExport completed. Files saved to: {output_folder}")
 
-def frame_export(
+def frameExport(
     nd2_reader: "Nd2Reader",
     frame_index: int = 0,
     output_path: str | Path | None = None,

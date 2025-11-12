@@ -35,14 +35,14 @@ class StorageInfoProtocol(Protocol):
         ...
 
     @property
-    def size_on_disk(self) -> int:
+    def sizeOnDisk(self) -> int:
         """
         Returns the number of bytes the file takes on disk.
         """
         ...
 
     @property
-    def last_modified(self) -> datetime.datetime:
+    def lastModified(self) -> datetime.datetime:
         """
         Returns the modify time of the file on disk.
         """
@@ -50,7 +50,7 @@ class StorageInfoProtocol(Protocol):
 
 class ResultsProtocol(Protocol):
     @property
-    def storage_info(self) -> StorageInfoProtocol:
+    def storageInfo(self) -> StorageInfoProtocol:
         """
         Returns storage information.
 
@@ -83,7 +83,7 @@ class Nd2ReaderProtocol(Protocol):
         ...
 
     @property
-    def storage_info(self) -> StorageInfoProtocol:
+    def storageInfo(self) -> StorageInfoProtocol:
         """
         Returns storage information.
 

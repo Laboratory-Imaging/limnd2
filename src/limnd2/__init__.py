@@ -6,7 +6,7 @@ __all__ = [
     "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata",
     "CustomDescription", "RecordedData", "RecordedDataItem", "RecordedDataType",
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
-    "frame_export", "series_export",
+    "frameExport", "seriesExport",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX", "generalImageInfo",
     "Nd2Reader", "Nd2Writer",
     "PictureMetadata",
@@ -20,7 +20,7 @@ from .base import BaseChunker, FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled,
 from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadataItem, BinaryRleMetadata, BinaryRasterMetadataItem, BinaryRasterMetadata
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
-from .export import frame_export, series_export
+from .export import frameExport, seriesExport
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX, generalImageInfo
 from .nd2 import Nd2Reader, Nd2Writer
 from .metadata import PictureMetadata

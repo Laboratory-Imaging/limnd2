@@ -1,5 +1,6 @@
 
 import argparse
+import limnd2
 from limnd2 import Nd2Reader
 
 def sequence_export_cli():
@@ -14,7 +15,8 @@ def sequence_export_cli():
     cli_args = parser.parse_args()
 
     with Nd2Reader(cli_args.nd2file) as reader:
-        reader.series_export(
+        limnd2.seriesExport(
+            reader,
             folder=cli_args.folder,
             prefix=cli_args.prefix,
             dimension_order=cli_args.dimensionOrder,
@@ -33,7 +35,8 @@ def frame_export_cli():
     args = parser.parse_args()
 
     with Nd2Reader(args.nd2file) as reader:
-        reader.frame_export(
+        limnd2.frameExport(
+            reader,
             frame_index = args.frame_index,
             output_path = args.output_path,
             target_bit_depth = args.target_bit_depth,

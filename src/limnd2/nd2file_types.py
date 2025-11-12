@@ -8,11 +8,14 @@ It copies the interface of nd2 library, but uses limnd2 library on the "backend"
 import builtins
 from dataclasses import dataclass, field
 from enum import IntEnum, auto
-from typing import BinaryIO, Literal, NamedTuple, TypedDict, TypeAlias, Union, Any, Mapping, Sequence, Union
+from typing import BinaryIO, ClassVar, Literal, NamedTuple, TypedDict, TypeAlias, Union, Any, Mapping, Sequence, Union
 from os import PathLike
 import warnings
 
 StrOrPath: TypeAlias = Union[str, PathLike]
+# in limnd2 the type alias is
+# FileLikeObject: typing.TypeAlias = str | Path | typing.BinaryIO | memoryview
+# so this alias should be compatible with it
 FileOrBinaryIO: TypeAlias = Union[StrOrPath, BinaryIO]
 
 ListOfDicts: TypeAlias = list[dict[str, Any]]
@@ -59,8 +62,8 @@ LoopParams = Union["TimeLoopParams", "NETimeLoopParams", "XYPosLoopParams", "ZSt
 class _Loop:
     count: int
     nestingLevel: int
-    parameters: LoopParams | None
-    type: LoopTypeString
+    #parameters: LoopParams | None
+    #type: LoopTypeString | Literal["CustomLoop"]
 
 @dataclass
 class SpectLoop:
@@ -72,7 +75,7 @@ class CustomLoop(_Loop):
     count: int
     nestingLevel: int = 0
     parameters: None = None
-    type: Literal["CustomLoop"] = "CustomLoop"
+    type: ClassVar[Literal["CustomLoop"]] = "CustomLoop"
 
 @dataclass
 class PeriodDiff:
@@ -96,7 +99,7 @@ class TimeLoop(_Loop):
     """The time dimension of an experiment."""
 
     parameters: TimeLoopParams
-    type: Literal["TimeLoop"] = "TimeLoop"
+    type: ClassVar[Literal["TimeLoop"]] = "TimeLoop"
 
     def __post_init__(self) -> None:
         # TODO: make superclass do this
@@ -121,7 +124,7 @@ class NETimeLoop(_Loop):
     """The time dimension of an nD experiment."""
 
     parameters: NETimeLoopParams
-    type: Literal["NETimeLoop"] = "NETimeLoop"
+    type: ClassVar[Literal["NETimeLoop"]] = "NETimeLoop"
 
     def __post_init__(self) -> None:
         if isinstance(self.parameters, dict):
@@ -155,7 +158,7 @@ class XYPosLoopParams:
 @dataclass
 class XYPosLoop(_Loop):
     parameters: XYPosLoopParams
-    type: Literal["XYPosLoop"] = "XYPosLoop"
+    type: ClassVar[Literal["XYPosLoop"]] = "XYPosLoop"
 
     def __post_init__(self) -> None:
         if isinstance(self.parameters, dict):
@@ -172,7 +175,7 @@ class ZStackLoopParams:
 @dataclass
 class ZStackLoop(_Loop):
     parameters: ZStackLoopParams
-    type: Literal["ZStackLoop"] = "ZStackLoop"
+    type: ClassVar[Literal["ZStackLoop"]] = "ZStackLoop"
 
     def __post_init__(self) -> None:
         if isinstance(self.parameters, dict):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import enum
 import io, struct, zlib, abc, logging
-from typing import Any, Callable, Final, cast, Union, Self, ClassVar, overload
-from dataclasses import MISSING, Field, field, fields, asdict, is_dataclass
+from typing import Any, Callable, cast, Union, ClassVar, overload
+from dataclasses import MISSING, field, fields, asdict, is_dataclass
 from collections.abc import Mapping
 
 logger = logging.getLogger("limnd2")

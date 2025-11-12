@@ -22,7 +22,7 @@ from typing import Callable, SupportsInt
 
 import numpy as np
 
-from limnd2.experiment import ExperimentLoopType, ExperimentTimeLoop, ZStackType
+from limnd2.experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentXYPosLoop, ExperimentZStackLoop, ZStackType
 from .nd2file_types import *
 
 # IMPORTS FOR LIMND2
@@ -46,7 +46,7 @@ class ND2File:
         search_window: int = 100,
     ) -> None:
         self._path = path
-        self.limnd2 = Nd2Reader(path)
+        self.limnd2 = Nd2Reader(path)       # type: ignore
 
     @staticmethod
     def is_supported_file(path: StrOrPath) -> bool:
@@ -139,7 +139,7 @@ class ND2File:
         exps = []
         count = 0
         for exp in self.limnd2.experiment:
-            if exp.eType == ExperimentLoopType.eEtTimeLoop:
+            if exp.eType == ExperimentLoopType.eEtTimeLoop and isinstance(exp.uLoopPars, ExperimentTimeLoop):
                 ep = TimeLoopParams(
                     startMs = exp.uLoopPars.dStart,
                     periodMs = exp.uLoopPars.dPeriod,
@@ -158,7 +158,7 @@ class ND2File:
                 count += 1
                 exps.append(e)
 
-            elif exp.eType == ExperimentLoopType.eEtZStackLoop:
+            elif exp.eType == ExperimentLoopType.eEtZStackLoop and isinstance(exp.uLoopPars, ExperimentZStackLoop):
                 ep = ZStackLoopParams(
                     bottomToTop = exp.uLoopPars.iType in (ZStackType.zstBottomToTopFixedTop,
                                                           ZStackType.zstBottomToTopFixedBottom,
@@ -176,7 +176,7 @@ class ND2File:
                 count += 1
                 exps.append(e)
 
-            elif exp.eType == ExperimentLoopType.eEtXYPosLoop:
+            elif exp.eType == ExperimentLoopType.eEtXYPosLoop and isinstance(exp.uLoopPars, ExperimentXYPosLoop):
                 points = []
                 for index, pos in enumerate(exp.uLoopPars.Points):
                     if (not exp.pItemValid) or (exp.pItemValid and exp.pItemValid[index]):

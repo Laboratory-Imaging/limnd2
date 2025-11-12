@@ -18,10 +18,9 @@ All data about planes and their settings are stored in [`PictureMetadata`](metad
 
 from __future__ import annotations
 
-import datetime, enum, numpy as np, operator
+import datetime, enum, numpy as operator
 from functools import cached_property
-from typing import Any
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import dataclass
 from math import inf
 
 from .lite_variant import decode_lv, ELxLiteVariantType as LVType, LV_field, LVSerializable, encode_lv

@@ -35,11 +35,11 @@ class StorageInfo:
         return self._url
 
     @property
-    def size_on_disk(self) -> int:
+    def sizeOnDisk(self) -> int:
         return self._size_on_disk
 
     @property
-    def last_modified(self) -> datetime.datetime:
+    def lastModified(self) -> datetime.datetime:
         return self._last_modified
 
 class Nd2Reader():
@@ -81,7 +81,7 @@ class Nd2Reader():
     # Static methods
 
     @staticmethod
-    def file_size_on_disk(filename: str|Path|None) -> int:
+    def fileSizeOnDisk(filename: str|Path|None) -> int:
         if filename is None:
             raise ValueError()
 
@@ -91,13 +91,13 @@ class Nd2Reader():
         filename = filename.with_suffix('.h5')
         try:
             size += filename.stat().st_size
-        except:
+        except (FileNotFoundError, PermissionError):
             pass
 
         return size
 
     @staticmethod
-    def file_last_modified(filename: str|Path|None) -> datetime.datetime:
+    def fileLastModified(filename: str|Path|None) -> datetime.datetime:
         if filename is None:
             raise ValueError()
 
@@ -110,7 +110,7 @@ class Nd2Reader():
             h5_mtime = filename.stat().st_mtime
             if mtime < h5_mtime:
                 mtime = h5_mtime
-        except:
+        except (FileNotFoundError, PermissionError):
             pass
 
         return datetime.datetime.fromtimestamp(mtime)
@@ -120,7 +120,7 @@ class Nd2Reader():
     @property
     def filename(self) -> str|None:
         warnings.warn(
-            "Nd2Reader.filename is deprecated; use Nd2Reader.storage_info.filename instead.",
+            "Nd2Reader.filename is deprecated; use Nd2Reader.storageInfo.filename instead.",
             DeprecationWarning,
             stacklevel=2
         )
@@ -129,7 +129,7 @@ class Nd2Reader():
     @property
     def url(self) -> str|None:
         warnings.warn(
-            "Nd2Reader.url is deprecated; use Nd2Reader.storage_info.url instead.",
+            "Nd2Reader.url is deprecated; use Nd2Reader.storageInfo.url instead.",
             DeprecationWarning,
             stacklevel=2
         )
@@ -141,24 +141,24 @@ class Nd2Reader():
     @property
     def size_on_disk(self) -> int:
         warnings.warn(
-            "Nd2Reader.size_on_disk is deprecated; use Nd2Reader.storage_info.size_on_disk instead.",
+            "Nd2Reader.size_on_disk is deprecated; use Nd2Reader.storageInfo.sizeOnDisk instead.",
             DeprecationWarning,
             stacklevel=2
         )
         try:
-            return Nd2Reader.file_size_on_disk(self.filename)
+            return Nd2Reader.fileSizeOnDisk(self.filename)
         except ValueError or FileNotFoundError or PermissionError:
             return self.chunker.size_on_disk
 
     @property
     def last_modified(self) -> datetime.datetime:
         warnings.warn(
-            "Nd2Reader.last_modified is deprecated; use Nd2Reader.storage_info.last_modified instead.",
+            "Nd2Reader.last_modified is deprecated; use Nd2Reader.storageInfo.lastModified instead.",
             DeprecationWarning,
             stacklevel=2
         )
         try:
-            return Nd2Reader.file_last_modified(self.filename)
+            return Nd2Reader.fileLastModified(self.filename)
         except ValueError or FileNotFoundError or PermissionError:
             return self.chunker.last_modified
 
@@ -173,10 +173,10 @@ class Nd2Reader():
         progress_to_json: bool = False
     ) -> None:
         warnings.warn(
-            "Nd2Reader.series_export is deprecated and will be removed in future versions; use limnd2.series_export() function instead.",
+            "Nd2Reader.series_export is deprecated and will be removed in future versions; use limnd2.seriesExport() function instead.",
             DeprecationWarning,
         )
-        limnd2.series_export(self, folder=folder, prefix=prefix, dimension_order=dimension_order, bits=bits, progress_to_json=progress_to_json)
+        limnd2.seriesExport(self, folder=folder, prefix=prefix, dimension_order=dimension_order, bits=bits, progress_to_json=progress_to_json)
 
     def frame_export(
         self,
@@ -187,10 +187,10 @@ class Nd2Reader():
         progress_to_json: bool = False
     ):
         warnings.warn(
-            "Nd2Reader.frame_export is deprecated and will be removed in future versions; use limnd2.frame_export() function instead.",
+            "Nd2Reader.frame_export is deprecated and will be removed in future versions; use limnd2.frameExport() function instead.",
             DeprecationWarning,
         )
-        limnd2.frame_export(self, frame_index=frame_index, output_path=output_path, target_bit_depth=target_bit_depth, progress_to_json=progress_to_json)
+        limnd2.frameExport(self, frame_index=frame_index, output_path=output_path, target_bit_depth=target_bit_depth, progress_to_json=progress_to_json)
 
     @functools.cached_property
     def generalImageInfo(self) -> dict[str, Any]:
@@ -208,12 +208,12 @@ class Nd2Reader():
         return self.chunker.format_version
 
     @property
-    def storage_info(self) -> StorageInfo:
+    def storageInfo(self) -> StorageInfo:
         try:
             filename = self.chunker.filename
             url = Path(filename).absolute().as_uri() if filename else None
-            size_on_disk = Nd2Reader.file_size_on_disk(filename)
-            last_modified = Nd2Reader.file_last_modified(filename)
+            size_on_disk = Nd2Reader.fileSizeOnDisk(filename)
+            last_modified = Nd2Reader.fileLastModified(filename)
         except (ValueError, FileNotFoundError, PermissionError):
             filename = getattr(self.chunker, "filename", None)
             url = Path(filename).absolute().as_uri() if filename else None
@@ -397,10 +397,6 @@ class Nd2Reader():
         else:
             return exp.generateLoopIndexes(named=named)
 
-
-
-        return self._chunker
-
     def chunk(self, name : bytes|str) -> bytes|memoryview|None:
         return self._chunker.chunk(name)
 
@@ -423,7 +419,7 @@ class Nd2Reader():
 
         Each result potentially contains tabular results (tables, graphs, ...) and binary layers.
         """
-        filename = self.storage_info.filename
+        filename = self.storageInfo.filename
         if filename is None:
             return {}
         return read_results_from_h5(filename.replace(".nd2", ".h5"))
@@ -439,7 +435,7 @@ class Nd2Reader():
         return CustomDescription.from_lv(data)
 
     @functools.cached_property
-    def smart_experiment_description(self) -> dict[str, Any]|None:
+    def smartExperimentDescription(self) -> dict[str, Any]|None:
         if self.customDescription is None or self.customDescription.name != "onepush":
             return None
         se_custom_data = {}
@@ -452,7 +448,7 @@ class Nd2Reader():
         return se_custom_data
 
     @property
-    def chunk_size(self) -> tuple[int,int]|None:
+    def chunkSize(self) -> tuple[int,int]|None:
         return None
 
     def crestDeepSimRawData(self, seqindex: int, component_index: int) -> tuple[NumpyArrayLike, str, str, tuple[float, float], tuple[int, int], tuple[int, int]]:
@@ -547,17 +543,17 @@ class Nd2Reader():
         """
         return self._chunker.crestDeepSimRawDataIndices()
 
-    def result_size_on_disk(self, result_name: str) -> int|None:
+    def resultSizeOnDisk(self, result_name: str) -> int|None:
         """
         Returns size of the result.
         """
-        return None
+        raise NotImplementedError()
 
-    def result_binary_data(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def resultBinaryData(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
         return np.array([])
 
-    def result_private_table(self, result_name: str, pane: str, table_name: str) -> TableData:
+    def resultPrivateTable(self, result_name: str, pane: str, table_name: str) -> TableData:
         the_pane: ResultPane | None = None
         try:
             the_pane = self.results[result_name].result_panes[pane]
@@ -574,7 +570,7 @@ class Nd2Reader():
         except KeyError:
             raise KeyError(f"Table name {table_name} not found in H5 {result_name}/{pane} .")
 
-        filename = self.storage_info.filename
+        filename = self.storageInfo.filename
         if filename is None:
             raise ValueError("Cannot read private table data, ND2 filename is None.")
 

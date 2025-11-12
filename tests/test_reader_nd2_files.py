@@ -12,8 +12,8 @@ def test_general_info_and_basic_open(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as nd2:
         # Basic open and properties
         assert isinstance(nd2.version, tuple) and len(nd2.version) == 2
-        assert nd2.size_on_disk > 0
-        _ = nd2.last_modified
+        assert nd2.storageInfo.sizeOnDisk > 0
+        _ = nd2.storageInfo.lastModified
 
         gi = nd2.generalImageInfo
         assert isinstance(gi, dict)
