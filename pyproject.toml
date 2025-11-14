@@ -4,12 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "limnd2"
-license = "LICENSE"
 version = "0.3.0"
 requires-python = ">=3.9"
 authors = [
     {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
 ]
+license = {file = "LICENSE"}
+description = "A Python library for reading and writing Nikon NIS-Elements .nd2 files"
+readme = "README.md"
 
 dependencies = [
     "numpy",
