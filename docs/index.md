@@ -3,45 +3,77 @@
 !!! warning
     This Python package is not yet available for the public, both the package and the documentation is still being worked on.
 
-`.nd2` (Nikon NIS Elements) file reader and writer in Python.
+A Python library for reading and writing `.nd2` files produced by Nikon NIS-Elements Software.
+
+Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible drop-in interface, adding write capabilities and extended metadata support.
 
 ## Installation
 
-=== "PyPI"
+### Prerequisites
 
-    !!! warning
-        This Python package is not released on PyPI yet, use manual installation.
+limnd2 package requires the following core dependencies:
 
-    You can install this package from PyPI by running following command:
+- python>=3.9
+- numpy
+- ome_types
+- tifffile
+- imagecodecs
+- Pillow
+
+#### Optional Dependencies
+
+For working with results and analytics features, install the optional `results` extras:
+
+- h5py
+- pandas
+
+Install with: `pip install limnd2[results]` or `uv pip install limnd2[results]`
+
+### Installing from PyPI
+
+!!! warning
+    This Python package is not released on PyPI yet, use manual installation.
+
+```sh
+pip install limnd2
+
+# With optional results support
+pip install limnd2[results]
+```
+
+### Manual Installation
+
+This project uses `pyproject.toml` for dependency management and can be installed with either `pip` or `uv`.
+
+=== "Using uv (recommended)"
 
     ```sh
-    pip install limnd2
+    git clone https://github.com/Laboratory-Imaging/limnd2.git
+    cd limnd2
+    uv venv
+
+    # Windows
+    .venv\Scripts\activate
+    # Linux/MacOS
+    # source .venv/bin/activate
+
+    uv pip install -e ".[dev]"
     ```
 
-=== "Manual (Windows)"
+=== "Using pip"
 
-    Run following commands in a folder where you want to install this package.
-
-    ```bat
+    ```sh
     git clone https://github.com/Laboratory-Imaging/limnd2.git
     cd limnd2
     python -m venv env
+
+    # Windows
     env\Scripts\activate
+    # Linux/MacOS
+    # source env/bin/activate
+
     python -m pip install --upgrade pip
-    pip install -r requirements.txt
-    ```
-
-=== "Manual (Linux)"
-
-    Run following commands in a folder where you want to install this package.
-
-    ```sh
-    git clone https://github.com/Laboratory-Imaging/limnd2.git
-    cd limnd2
-    python3 -m venv env
-    source env/bin/activate
-    python3 -m pip install --upgrade pip
-    pip install -r requirements.txt
+    pip install -e ".[dev]"
     ```
 <!---
 ### Installation from PyPI
@@ -76,6 +108,19 @@ pip install -r requirements.txt
 
 An example Python file showcasing how to read an `.nd2` file with this library is found at GitHub repo for this page: [example_reader.py](https://github.com/Laboratory-Imaging/limnd2/blob/main/examples/example_reader.py).
 
+You can read the following from `.nd2` files:
+
+- **[Summary image information](#summary-image-information)** - Quick overview of file dimensions, calibration, and acquisition details
+- **[Image attributes](#image-attributes)** - Structured data about width, height, component count, pixel types, and sequence count
+- **[Image data](#image-data)** - Raw image frames as NumPy arrays
+- **[Metadata](#metadata)** - Comprehensive channel information including wavelengths, microscope settings, and objectives
+- **[Experiment data](#experiment-data)** - Loop definitions (time, Z-stack, multipoint) organizing image sequences
+- **[Text information](#text-information)** - Descriptive text metadata and microscope settings stored as strings
+- **[Other data](#other-data-and-metadata)** - Binary layers, ROIs, and additional custom data
+
+!!! note
+    Metadata may not be present if the image is a simple RGB or Mono image. Experiment data may not be present if the file contains just one frame.
+
 #### Opening `.nd2` file
 
 An `.nd2` file can be opened using `Nd2Reader` class like this:
@@ -90,7 +135,7 @@ However it is recommended to open `.nd2` files (especially when writing) using `
 with limnd2.Nd2Reader("file.nd2") as nd2:
 ```
 
-#### Getting summary information
+#### Summary image information
 
 Quick access to information about the file can be gained with `generalImageInfo` dictionary:
 
@@ -117,7 +162,176 @@ for key, value in nd2.generalImageInfo.items():
     app_created: NIS-Elements AR 5.20.00 (Build 1423)
     ```
 
-#### Getting text information
+#### Image attributes
+
+Image attributes dataclass mostly contains information about dimensions of an image like width and height,
+number of components and number of frames in nd2 file.
+
+For all properties and methods of this dataclass see [attributes.py](attributes.md).
+
+To get image attributes use `imageAttributes` attribute of `Nd2Reader` instance created in previous step.
+
+```python linenums="18" title="example_reader.py"
+attributes = nd2.imageAttributes
+```
+
+Then you can use following properties to get information about the file:
+
+```python linenums="20" title="example_reader.py"
+print(f"Image resolution: {attributes.width} x {attributes.height}")
+print(f"Number of components: {attributes.componentCount}")
+print(f"Number of frames: {attributes.frameCount}")
+print(f"Image size (in bytes): {attributes.imageBytes}")
+print(f"Python data type: {attributes.dtype}")
+```
+
+??? example "See example output"
+    ```
+    Image resolution: 1024 x 1024
+    Number of components: 2
+    Number of frames: 125
+    Image size (in bytes): 8388608
+    Python data type: <class 'numpy.float32'>
+    ```
+
+#### Image data
+
+This library uses NumPy arrays to store image data found in the `.nd2` file, if you want to access image data itself, you can do so by using [`.image()`](nd2.md#limnd2.nd2.Nd2Reader.image) method with index of the image you want to get like this:
+
+```python linenums="29" title="example_reader.py"
+image = nd2.image(0)        # get first image
+print(type(image))
+print("Numpy array shape:", image.shape, "stored datatype:", image.dtype)
+```
+
+??? example "See example output"
+    ```
+    <class 'numpy.ndarray'>
+    Numpy array shape: (1024, 1024, 2) stored datatype: float32
+    ```
+
+If you want to get all images in the `.nd2` file, use a for loop with `frameCount` property from image attributes.
+
+```python linenums="34" title="example_reader.py"
+images = []
+for i in range(attributes.frameCount):
+    images.append(nd2.image(i))
+print(f"Obtained {len(images)} frames.")
+```
+
+??? example "See example output"
+    ```
+    Obtained 125 frames.
+    ```
+
+#### Metadata
+
+Metadata in `.nd2` file contain a lot of additional data about the image, especially about planes, this information includes:
+
+- plane name
+- modality
+- filter path
+- sample settings
+- fluorescent probe
+- much more, see [metadata.py](metadata.md) for full information about `.nd2` metadata
+
+To get metadata, use `pictureMetadata` attribute like this:
+
+```py linenums="59" title="example_reader.py"
+metadata = nd2.pictureMetadata
+```
+
+To iterate over planes in the image, you can use `.channels()` method from the metadata that just were created, then `.sampleSettings()` method to get sample settings for given plane.
+
+With channel and settings stored in separate variables, you can then access selected attributes like this:
+
+```py linenums="61" title="example_reader.py"
+for channel in metadata.channels:
+    settings = metadata.sampleSettings(channel)
+    print("Channel name:", channel.sDescription)
+    print(" Modality:", " ".join(limnd2.metadata.PicturePlaneModalityFlags.to_str_list(channel.uiModalityMask)))
+    print(" Emission wavelength:", channel.emissionWavelengthNm)
+    print(" Excitation wavelength:", channel.excitationWavelengthNm)
+
+    print(" Camera name", settings.cameraName)
+    print(" Microscope name", settings.microscopeName)
+    print(" Objective magnification", settings.objectiveMagnification)
+    print()
+```
+
+??? example "See example output"
+    ```
+    Channel name: DETECTOR A
+     Modality: Camera AUX
+     Emission wavelength: 520.0
+     Excitation wavelength: 488.0
+     Camera name Nikon A1 LFOV
+     Microscope name Ti2 Microscope
+     Objective magnification 40.0
+
+    Channel name: DETECTOR B
+     Modality: Camera AUX
+     Emission wavelength: 650.0
+     Excitation wavelength: 488.0
+     Camera name Nikon A1 LFOV
+     Microscope name Ti2 Microscope
+     Objective magnification 40.0
+    ```
+
+#### Experiment data
+
+Experiments in `.nd2` files define how image sequences are organized and looped. The most common types of loops include:
+
+- **Time Loop (`timeloop`)**: A sequence of images captured over time.
+- **Z-Stack (`zstack`)**: Frames stacked along the z-axis, representing different focal planes.
+- **Multi-Point (`multipoint`)**: Images captured at multiple specified locations (points) with known coordinates.
+
+An image can have no experiment, a single experiment, or a combination of multiple experiments.
+
+To obtain data structure with information about used experiments, use `experiment` property.
+
+```py linenums="42" title="example_reader.py"
+experiment = nd2.experiment
+```
+
+Then to see what kind of experiment `.nd2` file contains, you can iterate over this data structure with a for loop:
+
+```py linenums="44" title="example_reader.py"
+print("Experiment loops in image:")
+for e in experiment:
+    print(f"Experiment name: {e.name}, number of frames: {e.count}")
+```
+
+??? example "See example output"
+    ```
+    Experiment loops in image:
+    Experiment name: Multipoint, number of frames: 25
+    Experiment name: Z-Stack, number of frames: 5
+    ```
+
+Now if we want to access attributes and methods for specific loop type, we can use .findLevel() method with ExperimentLoopType type as parameter, in this example we search for Z-Stack experiment = use value ExperimentLoopType.eEtZStackLoop.
+
+Then we can access data for this experiment through parameters of this experiment, in this example we use attributes and properties of ExperimentZStackLoop.
+
+```py linenums="49" title="example_reader.py"
+zstack = experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
+
+print("Distance between frames:", zstack.uLoopPars.dZStep, "μm")
+print("Home index:", zstack.uLoopPars.homeIndex)
+print("Top position:", zstack.uLoopPars.top, "μm")
+print("Bottom position:", zstack.uLoopPars.bottom, "μm")
+```
+??? example "See example output"
+    ```
+    Distance between frames: 4.0 μm
+    Home index: 2
+    Top position: 5.0 μm
+    Bottom position: -5.0 μm
+    ```
+
+For all attributes of all experiments type look into [experiment.py](experiment.md)
+
+#### Text information
 
 More information about components can be in `imageTextInfo` dataclass, though this information is stored as a string:
 
@@ -267,176 +481,7 @@ for key, value in nd2.imageTextInfo.to_dict().items():
     optics: Apo LWD 40x WI λS DIC N2
     ```
 
-#### Getting image attributes
-
-Image attributes dataclass mostly contains information about dimensions of an image like width and height,
-number of components and number of frames in nd2 file.
-
-For all properties and methods of this dataclass see [attributes.py](attributes.md).
-
-To get image attributes use `imageAttributes` attribute of `Nd2Reader` instance created in previous step.
-
-```python linenums="18" title="example_reader.py"
-attributes = nd2.imageAttributes
-```
-
-Then you can use following properties to get information about the file:
-
-```python linenums="20" title="example_reader.py"
-print(f"Image resolution: {attributes.width} x {attributes.height}")
-print(f"Number of components: {attributes.componentCount}")
-print(f"Number of frames: {attributes.frameCount}")
-print(f"Image size (in bytes): {attributes.imageBytes}")
-print(f"Python data type: {attributes.dtype}")
-```
-
-??? example "See example output"
-    ```
-    Image resolution: 1024 x 1024
-    Number of components: 2
-    Number of frames: 125
-    Image size (in bytes): 8388608
-    Python data type: <class 'numpy.float32'>
-    ```
-
-#### Getting image data
-
-This library uses NumPy arrays to store image data found in the `.nd2` file, if you want to access image data itself, you can do so by using [`.image()`](nd2.md#limnd2.nd2.Nd2Reader.image) method with index of the image you want to get like this:
-
-```python linenums="29" title="example_reader.py"
-image = nd2.image(0)        # get first image
-print(type(image))
-print("Numpy array shape:", image.shape, "stored datatype:", image.dtype)
-```
-
-??? example "See example output"
-    ```
-    <class 'numpy.ndarray'>
-    Numpy array shape: (1024, 1024, 2) stored datatype: float32
-    ```
-
-If you want to get all images in the `.nd2` file, use a for loop with `frameCount` property from image attributes.
-
-```python linenums="34" title="example_reader.py"
-images = []
-for i in range(attributes.frameCount):
-    images.append(nd2.image(i))
-print(f"Obtained {len(images)} frames.")
-```
-
-??? example "See example output"
-    ```
-    Obtained 125 frames.
-    ```
-
-#### Getting experiment data
-
-Experiments in `.nd2` files define how image sequences are organized and looped. The most common types of loops include:
-
-- **Time Loop (`timeloop`)**: A sequence of images captured over time.
-- **Z-Stack (`zstack`)**: Frames stacked along the z-axis, representing different focal planes.
-- **Multi-Point (`multipoint`)**: Images captured at multiple specified locations (points) with known coordinates.
-
-An image can have no experiment, a single experiment, or a combination of multiple experiments.
-
-To obtain data structure with information about used experiments, use `experiment` property.
-
-```py linenums="42" title="example_reader.py"
-experiment = nd2.experiment
-```
-
-Then to see what kind of experiment `.nd2` file contains, you can iterate over this data structure with a for loop:
-
-```py linenums="44" title="example_reader.py"
-print("Experiment loops in image:")
-for e in experiment:
-    print(f"Experiment name: {e.name}, number of frames: {e.count}")
-```
-
-??? example "See example output"
-    ```
-    Experiment loops in image:
-    Experiment name: Multipoint, number of frames: 25
-    Experiment name: Z-Stack, number of frames: 5
-    ```
-
-Now if we want to access attributes and methods for specific loop type, we can use .findLevel() method with ExperimentLoopType type as parameter, in this example we search for Z-Stack experiment = use value ExperimentLoopType.eEtZStackLoop.
-
-Then we can access data for this experiment through parameters of this experiment, in this example we use attributes and properties of ExperimentZStackLoop.
-
-```py linenums="49" title="example_reader.py"
-zstack = experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
-
-print("Distance between frames:", zstack.uLoopPars.dZStep, "μm")
-print("Home index:", zstack.uLoopPars.homeIndex)
-print("Top position:", zstack.uLoopPars.top, "μm")
-print("Bottom position:", zstack.uLoopPars.bottom, "μm")
-```
-??? example "See example output"
-    ```
-    Distance between frames: 4.0 μm
-    Home index: 2
-    Top position: 5.0 μm
-    Bottom position: -5.0 μm
-    ```
-
-For all attributes of all experiments type look into [experiment.py](experiment.md)
-
-#### Getting metadata
-
-Metadata in `.nd2` file contain a lot of additional data about the image, especially about planes, this information includes:
-
-- plane name
-- modality
-- filter path
-- sample settings
-- fluorescent probe
-- much more, see [metadata.py](metadata.md) for full information about `.nd2` metadata
-
-To get metadata, use `pictureMetadata` attribute like this:
-
-```py linenums="59" title="example_reader.py"
-metadata = nd2.pictureMetadata
-```
-
-To iterate over planes in the image, you can use `.channels()` method from the metadata that just were created, then `.sampleSettings()` method to get sample settings for given plane.
-
-With channel and settings stored in separate variables, you can then access selected attributes like this:
-
-```py linenums="61" title="example_reader.py"
-for channel in metadata.channels:
-    settings = metadata.sampleSettings(channel)
-    print("Channel name:", channel.sDescription)
-    print(" Modality:", " ".join(limnd2.metadata.PicturePlaneModalityFlags.to_str_list(channel.uiModalityMask)))
-    print(" Emission wavelength:", channel.emissionWavelengthNm)
-    print(" Excitation wavelength:", channel.excitationWavelengthNm)
-
-    print(" Camera name", settings.cameraName)
-    print(" Microscope name", settings.microscopeName)
-    print(" Objective magnification", settings.objectiveMagnification)
-    print()
-```
-
-??? example "See example output"
-    ```
-    Channel name: DETECTOR A
-     Modality: Camera AUX
-     Emission wavelength: 520.0
-     Excitation wavelength: 488.0
-     Camera name Nikon A1 LFOV
-     Microscope name Ti2 Microscope
-     Objective magnification 40.0
-
-    Channel name: DETECTOR B
-     Modality: Camera AUX
-     Emission wavelength: 650.0
-     Excitation wavelength: 488.0
-     Camera name Nikon A1 LFOV
-     Microscope name Ti2 Microscope
-     Objective magnification 40.0
-    ```
-
-#### Getting other data
+#### Other data and metadata
 
 Attributes, experiments, metadata, and image data are the most important parts of an .nd2 file, which is why they were the focus of this guide. The limnd2 module can also access information about binary layers, ROIs, and other data stored in the file. However, at this time, we do not provide a guide on how to read these additional components.
 

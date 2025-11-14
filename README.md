@@ -1,6 +1,8 @@
 # limnd2
 
-`.nd2` (Nikon NIS Elements) file reader and writer in Python.
+A Python library for reading and writing `.nd2` files produced by Nikon NIS-Elements Software.
+
+Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible drop-in interface, adding write capabilities and extended metadata support.
 
 ## Documentation
 Documentation is available [here](https://laboratory-imaging.github.io/limnd2/docs/).
