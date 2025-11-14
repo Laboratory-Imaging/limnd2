@@ -9,15 +9,23 @@ Documentation is available [here](https://laboratory-imaging.github.io/limnd2/do
 
 ### Prerequisites
 
-limnd2 package requires following packages (also listed in `requirements.txt`) to work correctly:
+limnd2 package requires the following core dependencies:
 
-- python>=3.12.0
+- python>=3.9
 - numpy
-- h5py
 - ome_types
-- pandas
 - tifffile
 - imagecodecs
+- Pillow
+
+#### Optional Dependencies
+
+For working with results and analytics features, install the optional `results` extras:
+
+- h5py
+- pandas
+
+Install with: `pip install limnd2[results]` or `uv pip install limnd2[results]`
 
 ### Installation scripts
 
@@ -38,19 +46,47 @@ curl -O https://raw.githubusercontent.com/Laboratory-Imaging/Laboratory-Imaging.
 
 ### Manual Installation
 
-#### Windows
+This project uses `pyproject.toml` for dependency management and can be installed with either `pip` or `uv`.
+
+#### Using uv (recommended)
+
+```powershell
+git clone https://github.com/Laboratory-Imaging/limnd2.git
+cd limnd2
+uv venv
+# Windows
+.venv\Scripts\activate
+# Linux/MacOS
+# source .venv/bin/activate
+uv pip install -e ".[dev]"
+code .
+```
+
+#### Using pip
 
 ```powershell
 git clone https://github.com/Laboratory-Imaging/limnd2.git
 cd limnd2
 python -m venv env
+# Windows
 env\Scripts\activate
+# Linux/MacOS
+# source env/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e ".[dev]"
 code .
 ```
 
-Commands for building and uploading to private Pypi
+### Building and Publishing
+
+#### Using uv (recommended)
+
+```powershell
+uv build
+uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
+```
+
+#### Using pip/twine
 
 ```powershell
 pip install build setuptools twine
@@ -58,8 +94,9 @@ python -m build
 twine upload -r local dist\*
 ```
 
-Command to preview documentation
-```
+### Documentation Preview
+
+```sh
 mkdocs serve
 ```
 
