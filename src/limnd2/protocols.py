@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import datetime
-import functools
-from pathlib import Path
-from typing import Protocol, Any
+from typing import Protocol
 
 from .attributes import ImageAttributes
 from .base import (

@@ -453,10 +453,9 @@ class BaseChunker(abc.ABC):
 
     @property
     def acqFrames(self) -> np.ndarray | None:
-        # TODO: shouldnt this be _acq_frames?
-        if self._acq_times is None:
+        if self._acq_frames is None:
             if (data := self.chunk(ND2_CHUNK_NAME_AcqFramesCache)) is not None:
-                self._acq_times = np.ndarray(
+                self._acq_frames = np.ndarray(
                     buffer=data, dtype=np.uint32,
                     shape=(self.imageAttributes.uiSequenceCount, ),
                     strides=(4, ))
