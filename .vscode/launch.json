@@ -85,5 +85,20 @@
                 "-1"
             ],
         },
+        {
+            "name": "Metadata JSON Export",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/examples/example_metadata_json_export.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "args": [
+                // Add your .nd2 file path here, or leave empty to use default "file.nd2"
+                // "C:/path/to/your/file.nd2"
+            ]
+        },
     ]
 }

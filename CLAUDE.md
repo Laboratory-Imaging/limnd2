@@ -142,6 +142,16 @@ Optional features ([results.py](src/limnd2/results.py)):
 - `limnd2-sequence-export`: Export ND2 sequences
 - `limnd2-frame-export`: Export individual frames
 
+### Metadata Export
+
+**LLM-Friendly JSON Export** ([export.py](src/limnd2/export.py)):
+- `metadataAsJSON()`: Export all metadata as JSON with embedded documentation
+  - Preserves existing structure from ND2 files
+  - Adds `_description` and `_doc` fields for LLM understanding
+  - Includes computed summary flags (is3D, hasMultipleXYSites, etc.)
+  - Useful for asking LLMs questions about image properties
+  - Example: "Is this a 3D image?" → Check `summary.is3D` in exported JSON
+
 ## Code Patterns
 
 ### Type Safety
