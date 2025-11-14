@@ -847,7 +847,7 @@ class ExperimentLevel(LVSerializable):
             object.__setattr__(self, 'pItemValid', bytes(self.pItemValid.values()))
         object.__setattr__(self, 'eType', ExperimentLoopType(self.eType))
         object.__setattr__(self, 'ppNextLevelEx', ExperimentLevel.createExperimentLevels(self.ppNextLevelEx))
-        object.__setattr__(self, 'uLoopPars', ExperimentLoop.createExperimentLoop(self.eType, self.uLoopPars))
+        object.__setattr__(self, 'uLoopPars', ExperimentLoop.createExperimentLoop(self.eType, self.uLoopPars)) # type: ignore
 
         if not self.pLargeImage and "pLargeImageEx" in self._unknown_fields:
             object.__setattr__(self, 'pLargeImage', self._unknown_fields.pop("pLargeImageEx"))
@@ -1038,7 +1038,7 @@ class ExperimentLevel(LVSerializable):
     @staticmethod
     def from_var(data: bytes|memoryview) -> ExperimentLevel:
         decoded = decode_var(data)
-        return ExperimentLevel(**decoded[0])
+        return ExperimentLevel(**decoded[0]) # type: ignore
 
     def __str__(self):
         all = self._allLevels()

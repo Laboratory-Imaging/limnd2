@@ -77,7 +77,7 @@ class ImageTextInfo:
     @staticmethod
     def from_var(data: bytes|memoryview) -> ImageTextInfo:
         decoded = decode_var(data)
-        return ImageTextInfo(**decoded[0])
+        return ImageTextInfo(**decoded[0]) # type: ignore
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -97,6 +97,6 @@ class AppInfo:
     def from_var(data: bytes|memoryview) -> AppInfo:
         try:
             decoded = decode_var(data)
-            return AppInfo(**decoded[0])
+            return AppInfo(**decoded[0]) # type: ignore
         except:
             return AppInfo()

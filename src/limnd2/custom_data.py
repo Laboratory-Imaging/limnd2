@@ -105,8 +105,8 @@ class CustomDescriptionItem:
                  CLxItem: dict = {},
                  **kwargs):
         if "CLxText" in kwargs:
-            kwargs = kwargs.get("CLxText")
-            CLxItem = kwargs.get("CLxItem")
+            kwargs = kwargs.get("CLxText", {})
+            CLxItem = kwargs.get("CLxItem", {})
         if kwargs is None:
             kwargs = {}
         object.__setattr__(self, 'type', CustomDescriptionItemType(CLxItem.get('eType', 0)))

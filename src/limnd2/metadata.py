@@ -18,7 +18,7 @@ All data about planes and their settings are stored in [`PictureMetadata`](metad
 
 from __future__ import annotations
 
-import datetime, enum, numpy as operator
+import datetime, enum, operator, numpy as np
 from functools import cached_property
 from dataclasses import dataclass
 from math import inf
@@ -1839,4 +1839,4 @@ class PictureMetadata(LVSerializable):
     @staticmethod
     def from_var(data: bytes|memoryview) -> PictureMetadata:
         decoded = decode_var(data)
-        return PictureMetadata(**decoded[0])
+        return PictureMetadata(**decoded[0]) # type: ignore
