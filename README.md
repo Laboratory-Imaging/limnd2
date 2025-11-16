@@ -102,7 +102,40 @@ twine upload -r local dist\*
 mkdocs serve
 ```
 
-## Running MyPy static type checker
+## Development
+
+### Running Tests
+
+This project uses pytest for testing. After installing the dev dependencies (see Manual Installation above), you can run tests in several ways:
+
+#### Using VS Code Testing UI
+
+Once you've installed the dev dependencies with `uv pip install -e ".[dev]"` or `pip install -e ".[dev]"`, you can use VS Code's built-in Testing UI:
+
+1. Click the Testing icon in the Activity Bar (left sidebar)
+2. VS Code will automatically discover tests in the `tests/` directory
+3. Run individual tests or the entire test suite from the UI
+
+> [!NOTE]
+> If you get an error "No module named pytest" when using VS Code's Testing button, make sure you've installed the dev dependencies first.
+
+#### Using Command Line
+
+```powershell
+# Run all tests with coverage
+pytest
+
+# Run tests with HTML report (Windows)
+tests\run_tests.bat
+
+# Run specific test file
+pytest tests/test_reader_base.py
+
+# Skip slow tests (marked with @pytest.mark.slow)
+pytest -m "not slow"
+```
+
+### Running MyPy static type checker
 
 > [!NOTE]
 > MyPy is not required for running the package, it is only used for static type checking.

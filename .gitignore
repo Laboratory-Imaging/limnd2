@@ -2,6 +2,7 @@ __pycache__
 /build
 /dist
 /env
+/.venv
 /tst_data
 /**/*.egg-info
 *.nd2
@@ -12,3 +13,6 @@ decoder_types.txt
 /docs_sphinx
 /tst/_*
 .coverage
+
+# Claude Code local settings
+.claude/settings.local.json
