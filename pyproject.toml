@@ -117,3 +117,9 @@ name = "local"
 url = "http://gaexec:9500/simple"
 publish-url = "http://gaexec:9500"
 explicit = true
+
+[[tool.uv.index]]
+name = "aws-pypi"
+url = "http://18.184.201.85:8080/simple"
+publish-url = "http://18.184.201.85:8080"
+explicit = true

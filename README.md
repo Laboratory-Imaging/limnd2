@@ -81,20 +81,84 @@ code .
 
 ### Building and Publishing
 
-#### Using uv (recommended)
+#### Build the Package
+
+First, build the distribution packages:
 
 ```powershell
+# Using uv (recommended)
 uv build
-uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
+
+# Or using pip/build
+python -m build
 ```
 
-#### Using pip/twine
+This creates `.whl` and `.tar.gz` files in the `dist/` directory.
+
+#### Publishing to PyPI Servers
+
+The project is configured with multiple PyPI server indices in `pyproject.toml`:
+- `pypi`: Public PyPI (https://pypi.org)
+- `local`: Internal server at http://gaexec:9500
+- `aws-pypi`: AWS server at http://18.184.201.85:8080
+
+**Option 1: Using `uv publish` (recommended)**
 
 ```powershell
-pip install build setuptools twine
-python -m build
-twine upload -r local dist\*
+# Publish to local server (no authentication)
+uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
+
+# Publish to AWS server (with authentication via environment variables)
+$env:UV_PUBLISH_USERNAME = "your-username"
+$env:UV_PUBLISH_PASSWORD = "your-password"
+uv publish --publish-url http://18.184.201.85:8080 dist/*
+
+# Or pass credentials directly
+uv publish --publish-url http://18.184.201.85:8080 --username "your-username" --password "your-password" dist/*
 ```
+
+**Option 2: Using `twine` (traditional method)**
+
+First, configure credentials in `~/.pypirc` (Linux/Mac) or `%USERPROFILE%\.pypirc` (Windows):
+
+```ini
+[distutils]
+index-servers =
+    local
+    aws-pypi
+
+[local]
+repository = http://gaexec:9500
+username = -
+password = -
+
+[aws-pypi]
+repository = http://18.184.201.85:8080
+username = your-username
+password = your-password
+```
+
+Then upload:
+
+```powershell
+# Upload to local server
+twine upload -r local dist/*
+
+# Upload to AWS server
+twine upload -r aws-pypi dist/*
+```
+
+> [!WARNING]
+> Never commit the `.pypirc` file to version control as it contains credentials. It's already ignored in `.gitignore` by default.
+
+> [!TIP]
+> For security, use environment variables for credentials:
+> ```powershell
+> # Windows PowerShell
+> $env:TWINE_USERNAME = "your-username"
+> $env:TWINE_PASSWORD = "your-password"
+> twine upload -r aws-pypi dist/*
+> ```
 
 ### Documentation Preview
 

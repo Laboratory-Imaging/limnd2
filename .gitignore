@@ -18,5 +18,8 @@ decoder_types.txt
 /tests/test_files/nd2_files/
 /tests/test_files/nd2_with_result/
 
+# PyPI credentials
+.pypirc
+
 # Claude Code local settings
 .claude/settings.local.json
