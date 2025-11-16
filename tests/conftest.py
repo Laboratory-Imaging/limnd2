@@ -10,6 +10,7 @@ Fixtures (name -> provides):
 
 Other responsibilities:
 - Mirror ND2 sample data from REMOTE_ROOT into the local cache
+- Download from S3 if network share unavailable
 - Make src/ importable before collection starts
 - Parametrize tests requesting nd2_path with every discovered .nd2 file (auto-skip when none exist)
 """
@@ -18,11 +19,13 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from urllib.request import urlretrieve
 
 import pytest
 
 LOCAL_ROOT = Path(__file__).parent / "test_files"
 REMOTE_ROOT = Path(r"\\server\home\lukas.jirusek\limnd2_test_files")
+S3_TEST_DATA_URL = "https://lim-public-af010c85-0d3e-4156-9378-5adc1bbef7b3.s3.eu-central-1.amazonaws.com/LimNd2TestFiles/nd2_test_images_from_talley.7z"
 
 
 def copy_test_files(remote_root: Path, local_root: Path) -> None:
@@ -51,6 +54,45 @@ def copy_test_files(remote_root: Path, local_root: Path) -> None:
             shutil.copy2(src_file, dst_file)
 
 
+def _download_and_extract_from_s3(local_root: Path) -> bool:
+    """Download test files from S3 and extract them.
+
+    Returns True if successful, False otherwise.
+    """
+    try:
+        import py7zr
+    except ImportError:
+        print("py7zr not installed. Skipping S3 download. Install with: pip install py7zr")
+        return False
+
+    archive_path = local_root / "nd2_test_images.7z"
+
+    try:
+        # Download the 7z archive
+        print(f"Downloading test data from S3: {S3_TEST_DATA_URL}")
+        urlretrieve(S3_TEST_DATA_URL, archive_path)
+
+        # Extract to nd2_files directory
+        extract_dir = local_root / "nd2_files"
+        extract_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"Extracting test data to {extract_dir}")
+        with py7zr.SevenZipFile(archive_path, mode='r') as archive:
+            archive.extractall(path=extract_dir)
+
+        # Clean up archive
+        archive_path.unlink()
+
+        print("Test data successfully downloaded and extracted from S3")
+        return True
+
+    except Exception as e:
+        print(f"Failed to download/extract from S3: {e}")
+        if archive_path.exists():
+            archive_path.unlink()
+        return False
+
+
 def _get_remote_root(pytestconfig: pytest.Config | None = None) -> Path:
     env_value = os.getenv("LIMND2_TEST_DATA_ROOT")
     if env_value:
@@ -65,16 +107,44 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     It ensures that the src/ directory is in sys.path and
     that test files are copied from the remote location if needed.
 
+    Test data acquisition strategy (in order):
+    1. Try network share (REMOTE_ROOT or LIMND2_TEST_DATA_ROOT env variable)
+    2. Try downloading from S3 if network share unavailable
+    3. Skip tests if both fail (no test data available)
+
     """
     repo_root = Path(__file__).resolve().parents[1]
     src_path = repo_root / "src"
     if src_path.exists():
         sys.path.insert(0, str(src_path))
 
-    remote_root = _get_remote_root(session.config)
     local_root = LOCAL_ROOT
+    nd2_files_dir = local_root / "nd2_files"
+
+    # Check if we already have test files
+    if nd2_files_dir.exists() and list(nd2_files_dir.rglob("*.nd2")):
+        print(f"Test data already present in {nd2_files_dir}")
+        return
+
+    # Strategy 1: Try network share
+    remote_root = _get_remote_root(session.config)
     if remote_root.exists():
+        print(f"Copying test data from network share: {remote_root}")
         copy_test_files(remote_root, local_root)
+        return
+
+    # Strategy 2: Try S3 download
+    print(f"Network share not accessible: {remote_root}")
+    print("Attempting to download test data from S3...")
+    if _download_and_extract_from_s3(local_root):
+        return
+
+    # Strategy 3: No test data available - tests will be skipped
+    print("No test data available. Tests requiring .nd2 files will be skipped.")
+    print("To run these tests, either:")
+    print(f"  1. Ensure access to network share: {remote_root}")
+    print(f"  2. Install py7zr (pip install py7zr) for S3 download")
+    print(f"  3. Set LIMND2_TEST_DATA_ROOT environment variable to a directory with .nd2 files")
 
 
 def _list_local_nd2_files(base: Path) -> tuple[Path, ...]:

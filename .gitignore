@@ -14,5 +14,9 @@ decoder_types.txt
 /tst/_*
 .coverage
 
+# Test data files
+/tests/test_files/nd2_files/
+/tests/test_files/nd2_with_result/
+
 # Claude Code local settings
 .claude/settings.local.json

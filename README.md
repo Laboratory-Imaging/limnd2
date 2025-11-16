@@ -108,21 +108,37 @@ mkdocs serve
 
 This project uses pytest for testing. After installing the dev dependencies (see Manual Installation above), you can run tests in several ways:
 
+#### Test Data Acquisition
+
+Many tests require `.nd2` sample files. The test suite automatically acquires test data using a three-tier fallback strategy:
+
+1. **Network share** (intranet): Copies from `\\server\home\lukas.jirusek\limnd2_test_files` if accessible
+2. **S3 download** (public): Downloads and extracts from AWS S3 if network share unavailable (requires `py7zr`)
+3. **Skip tests**: Tests requiring sample files are automatically skipped if neither source is available
+
+The test data is automatically downloaded on first test run and cached in `tests/test_files/nd2_files/`. You can also manually set the `LIMND2_TEST_DATA_ROOT` environment variable to point to a custom directory containing `.nd2` files.
+
 #### Using VS Code Testing UI
 
 Once you've installed the dev dependencies with `uv pip install -e ".[dev]"` or `pip install -e ".[dev]"`, you can use VS Code's built-in Testing UI:
 
 1. Click the Testing icon in the Activity Bar (left sidebar)
 2. VS Code will automatically discover tests in the `tests/` directory
-3. Run individual tests or the entire test suite from the UI
+3. On first run, test data will be automatically downloaded from S3 (if needed)
+4. Run individual tests or the entire test suite from the UI
 
 > [!NOTE]
 > If you get an error "No module named pytest" when using VS Code's Testing button, make sure you've installed the dev dependencies first.
 
+> [!TIP]
+> If VS Code shows "not found" errors for parametrized tests (tests with `[parameter]` suffix), try refreshing the test discovery:
+> - Command Palette → `Testing: Refresh Tests`
+> - Or click individual parametrized test cases instead of the parent test node
+
 #### Using Command Line
 
 ```powershell
-# Run all tests with coverage
+# Run all tests with coverage (downloads test data automatically on first run)
 pytest
 
 # Run tests with HTML report (Windows)
