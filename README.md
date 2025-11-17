@@ -55,13 +55,9 @@ This project uses `pyproject.toml` for dependency management and can be installe
 ```powershell
 git clone https://github.com/Laboratory-Imaging/limnd2.git
 cd limnd2
-uv venv
-# Windows
-.venv\Scripts\activate
-# Linux/MacOS
-# source .venv/bin/activate
-uv pip install -e ".[dev]"
-code .
+uv sync                     # dependencies in .venv
+uv pip install -e ".[dev]"  # for development
+code .                      # opens VS Code editor
 ```
 
 #### Using pip
@@ -100,7 +96,7 @@ This creates `.whl` and `.tar.gz` files in the `dist/` directory.
 The project is configured with multiple PyPI server indices in `pyproject.toml`:
 - `pypi`: Public PyPI (https://pypi.org)
 - `local`: Internal server at http://gaexec:9500
-- `aws-pypi`: AWS server at http://18.184.201.85:8080
+- `aws-pypi`: AWS server at http://3.127.54.19:8080
 
 **Option 1: Using `uv publish` (recommended)**
 
@@ -111,10 +107,10 @@ uv publish --publish-url http://gaexec:9500 --trusted-publishing never --usernam
 # Publish to AWS server (with authentication via environment variables)
 $env:UV_PUBLISH_USERNAME = "your-username"
 $env:UV_PUBLISH_PASSWORD = "your-password"
-uv publish --publish-url http://18.184.201.85:8080 dist/*
+uv publish --publish-url http://3.127.54.19:8080 dist/*
 
 # Or pass credentials directly
-uv publish --publish-url http://18.184.201.85:8080 --username "your-username" --password "your-password" dist/*
+uv publish --publish-url http://3.127.54.19:8080 --username "your-username" --password "your-password" dist/*
 ```
 
 **Option 2: Using `twine` (traditional method)**
@@ -133,7 +129,7 @@ username = -
 password = -
 
 [aws-pypi]
-repository = http://18.184.201.85:8080
+repository = http://3.127.54.19:8080
 username = your-username
 password = your-password
 ```
