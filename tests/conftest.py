@@ -120,14 +120,18 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
     local_root = LOCAL_ROOT
     nd2_files_dir = local_root / "nd2_files"
+    remote_root = _get_remote_root(session.config)
 
     # Check if we already have test files
     if nd2_files_dir.exists() and list(nd2_files_dir.rglob("*.nd2")):
-        print(f"Test data already present in {nd2_files_dir}")
+        if remote_root.exists():
+            print(f"Syncing test data from network share: {remote_root}")
+            copy_test_files(remote_root, local_root)
+        else:
+            print(f"Test data already present in {nd2_files_dir}")
         return
 
     # Strategy 1: Try network share
-    remote_root = _get_remote_root(session.config)
     if remote_root.exists():
         print(f"Copying test data from network share: {remote_root}")
         copy_test_files(remote_root, local_root)
