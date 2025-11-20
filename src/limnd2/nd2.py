@@ -5,10 +5,19 @@ import limnd2
 from pathlib import Path
 
 from .attributes import ImageAttributesPixelType
-from .base import FileLikeObject, Nd2LoggerEnabled, BinaryRleMetadata, BinaryRasterMetadata, ImageAttributes, NumpyArrayLike
+from .base import (
+    BaseChunker,
+    FileLikeObject,
+    Nd2LoggerEnabled,
+    BinaryRleMetadata,
+    BinaryRasterMetadata,
+    ImageAttributes,
+    NumpyArrayLike,
+)
 from .custom_data import CustomDescription, CustomDescriptionItemType, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
 from .file import LimBinaryIOChunker
+from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
 from .results import create_table_data_from_h5, read_results_from_h5, TableData, ResultItem, ResultPane
 from .textinfo import ImageTextInfo, AppInfo
@@ -49,7 +58,7 @@ class Nd2Reader():
     See [`Nd2ReaderProtocol`](protocols.md#limnd2.protocols.Nd2ReaderProtocol) for more information.
     """
 
-    def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
+    def create_chunker(self, *args, **kwargs) -> BaseChunker:
         kwargs["readonly"] = True
         return _create_chunker(*args, **kwargs)
 
@@ -587,7 +596,7 @@ class Nd2Writer():
     See [`Nd2WriterProtocol`](protocols.md#limnd2.protocols.Nd2WriterProtocol) for more information.
 
     """
-    def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
+    def create_chunker(self, *args, **kwargs) -> BaseChunker:
         kwargs["readonly"] = False
         return _create_chunker(*args, **kwargs)
 
@@ -656,7 +665,13 @@ class Nd2Writer():
     def rollback(self) -> None:
         return self._chunker.rollback()
 
-def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: bool|None = None, chunker_kwargs: dict = {}) -> LimBinaryIOChunker:
+def _create_chunker(
+    file: FileLikeObject,
+    *,
+    readonly: bool = True,
+    append: bool | None = None,
+    chunker_kwargs: dict = {},
+) -> BaseChunker:
     if isinstance(file, (str, Path)):
         if readonly:
             mode = "rb"
@@ -669,10 +684,24 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
         #    raise FileExistsError("This file already exists, can not open for writing.")
 
         fh = open(file, mode)
-        chunker_kwargs.update(dict(filename=file))
+        chunker_kwargs.update(dict(filename=str(file)))
+        if is_legacy_jpeg2000_source(fh):
+            if readonly:
+                fh.seek(0)
+                return LimJpeg2000Chunker(fh, **chunker_kwargs)
+            raise RuntimeError(
+                "Writing legacy JPEG2000 ND2 files is not supported."
+            )
+        fh.seek(0)
         return LimBinaryIOChunker(fh, **chunker_kwargs)
 
     elif isinstance(file, memoryview):
+        if is_legacy_jpeg2000_source(file):
+            if readonly:
+                return LimJpeg2000Chunker(file, **chunker_kwargs)
+            raise RuntimeError(
+                "Writing legacy JPEG2000 ND2 files is not supported."
+            )
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
     elif (hasattr(file, "read") or hasattr(file, "write")) and hasattr(file, "seek") and hasattr(file, "tell") and hasattr(file, "mode"):
@@ -680,6 +709,14 @@ def _create_chunker(file : FileLikeObject, *, readonly: bool = True, append: boo
             raise ValueError("File handle passed to LimNd2Reader must have \"rb\" mode")
         elif not readonly and file.mode not in ("rb+", "wb"):
             raise ValueError("File handle passed to LimNd2Writer must have \"rb+\" or \"wb\" mode")
+        if is_legacy_jpeg2000_source(file):
+            if readonly:
+                file.seek(0)
+                return LimJpeg2000Chunker(file, **chunker_kwargs)
+            raise RuntimeError(
+                "Writing legacy JPEG2000 ND2 files is not supported."
+            )
+        file.seek(0)
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
     raise ValueError("Invalid chunker source, must be filename, file handle or memoryview.")

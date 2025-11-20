@@ -59,7 +59,8 @@ class LimBinaryIOChunker(BaseChunker):
                 try:
                     self._mmap = mmap.mmap(self._fh.fileno(), 0, access=mmap.ACCESS_READ)
                 except Exception as e:
-                    print(f"Debug: could not mmap file {e}")
+                    if Nd2LoggerEnabled:
+                        logger.debug(f"Debug: could not mmap file {e}")
                     self._mmap = None
             # 3. check the header and version
             ver = self.read_file_header()

@@ -100,5 +100,22 @@
                 // "C:/path/to/your/file.nd2"
             ]
         },
+        {
+            "name": "Index Legacy Filter",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/limnd2/tools/index.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            },
+            "args": [
+                "D:\\test_file",
+                "-r",
+                "-F",
+                "int(Version.split('.')[0]) < 3"
+            ]
+        },
     ]
 }

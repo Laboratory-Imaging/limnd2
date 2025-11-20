@@ -5,6 +5,7 @@ from typing import Protocol
 
 from .attributes import ImageAttributes
 from .base import (
+    BaseChunker,
     FileLikeObject,
     BinaryRleMetadata,
     BinaryRasterMetadata,
@@ -12,7 +13,6 @@ from .base import (
 )
 from .custom_data import RecordedData
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
-from .file import LimBinaryIOChunker
 from .metadata import PictureMetadata
 from .results import ResultItem
 from .textinfo import ImageTextInfo, AppInfo
@@ -304,7 +304,7 @@ class Nd2WriterProtocol(Protocol):
     See [Quickstart](index.md#writing-to-nd2-file) for an example of how to use this class and how to write individual chunks.
     """
 
-    def create_chunker(self, *args, **kwargs) -> LimBinaryIOChunker:
+    def create_chunker(self, *args, **kwargs) -> BaseChunker:
         ...
 
     def __init__(self, file: FileLikeObject, *, append: bool | None = None, chunker_kwargs: dict = {}) -> None:

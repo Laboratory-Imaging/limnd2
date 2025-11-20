@@ -16,6 +16,7 @@ import sys
 from argparse import RawTextHelpFormatter
 from datetime import datetime
 from pathlib import Path
+import sys
 from typing import (
     Any,
     Iterable,
@@ -68,13 +69,15 @@ def index_file(path: Path) -> Record:
     bin_info = ""
     try:
         file_obj = limnd2.Nd2Reader(str(path.resolve()))
-        raster_bin_count = len(file_obj.chunker.binaryRasterMetadata)
-        if 0 < raster_bin_count:
-            bin_info = f"{raster_bin_count}x BIN"
-        else:
-            rle_bin_count = len(file_obj.chunker.binaryRleMetadata)
-            if 0 < rle_bin_count:
-                bin_info = f"{rle_bin_count}x RLEv{file_obj.chunker.rleBinaryVersion()}"
+        bins = file_obj.chunker.binaryRasterMetadata
+        if bins is not None:
+            raster_bin_count = len(bins)
+            if 0 < raster_bin_count:
+                bin_info = f"{raster_bin_count}x BIN"
+            else:
+                rle_bin_count = len(file_obj.chunker.binaryRleMetadata)
+                if 0 < rle_bin_count:
+                    bin_info = f"{rle_bin_count}x RLEv{file_obj.chunker.rleBinaryVersion()}"
     except limnd2.UnsupportedChunkmapError as e:
         file_version = e.file_version
 
@@ -167,7 +170,6 @@ def _index_files(
             results.append(index_file(file_path))
         except Exception as e:
             if not error:
-                import sys
                 error = True
                 if format == "table":
                     print("[red]Following files could not be processed:[/red]")
@@ -196,6 +198,7 @@ def _pretty_print_table(data: list[Record], sort_column: str | None = None) -> N
 
     # add headers, and highlight any sorted columns
     sort_col = ""
+    direction = ""
     if sort_column:
         sort_col = (sort_column or "").rstrip("-")
         direction = " ↓" if sort_column.endswith("-") else " ↑"

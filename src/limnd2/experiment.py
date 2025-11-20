@@ -112,7 +112,7 @@ class ExperimentLoop(LVSerializable):
         elif eType == ExperimentLoopType.eEtSpectLoop:
             return ExperimentSpectralLoop(**uLoopPars)
         else:
-            raise NotImplementedError(f'Loop type {eType} not implemented yet')
+            raise NotImplementedError(f'Loop type \'{ExperimentLoopType.toLongName(eType)}\' ({eType}) not implemented yet')
 
     @property
     def step(self) -> float|None:
@@ -248,6 +248,8 @@ class ExperimentNETimeLoop(ExperimentLoop, LVSerializable):
     sAutoFocusBeforeCapture: dict                           = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
     wsCommandBeforePeriod: dict                             = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
     wsCommandAfterPeriod: dict                              = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
+    szCommandBeforePeriod: dict                             = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
+    szCommandAfterPeriod: dict                              = LV_field(dict,            LVType.ENCODING_NOT_IMPLEMENTED)
     pPeriodValid: bytes                                     = LV_field(bytes,           LVType.BYTEARRAY)
 
     def __post_init__(self):
