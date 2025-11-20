@@ -6,6 +6,29 @@ from .LimImageSource import LimImageSource
 
 import numpy as np
 
+_COMMON_FF_HINT = (
+    '[commonff] extra not installed. Install it with `pip install "limnd2[commonff]"`.'
+)
+
+
+def _missing_convert_dependency(package: str) -> ImportError:
+    msg = (
+        f'Missing optional dependency "{package}" required for PNG conversion. '
+        f"{_COMMON_FF_HINT}"
+    )
+    return ImportError(msg)
+
+
+def _require_pillow() -> type["Image"]:
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise _missing_convert_dependency("Pillow") from exc
+    return Image
+
+
+Image = _require_pillow()
+
 
 class LimImageSourcePng(LimImageSource):
     """Class for reading images from PNG files."""
@@ -15,7 +38,6 @@ class LimImageSourcePng(LimImageSource):
 
     def read(self) -> np.ndarray:
         """Read the image into numpy array writeable by limnd2 library."""
-        from PIL import Image
         with Image.open(self.filename) as img:
             if img.mode in ["L", "P"]:
                 return np.array(img, dtype=np.uint8)
@@ -42,7 +64,6 @@ class LimImageSourcePng(LimImageSource):
     @property
     def is_rgb(self) -> bool:
         """Check if the image is RGB."""
-        from PIL import Image
         if self._is_rgb is None:
             with Image.open(self.filename) as img:
                 if img.mode in ["L", "P", "I", "F"]:
@@ -59,7 +80,6 @@ class LimImageSourcePng(LimImageSource):
 
     def nd2_attributes(self, *, sequence_count=1):
         """Get the attributes of the image for ND2 file."""
-        from PIL import Image
         with Image.open(self.filename) as img:
             if img.mode == "L":
                 comps = 1

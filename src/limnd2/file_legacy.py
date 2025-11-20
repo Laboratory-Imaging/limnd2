@@ -1225,7 +1225,8 @@ class LimJpeg2000Chunker(BaseChunker):
         self._ensure_frame_index(seqindex)
         if imagecodecs is None:  # pragma: no cover - dependency is part of install
             raise ModuleNotFoundError(
-                "imagecodecs is required to read legacy JPEG2000 ND2 files."
+                'imagecodecs is required to read legacy JPEG2000 ND2 files. '
+                'Install it with `pip install "limnd2[legacy]"`.'
             )
 
         planes: list[np.ndarray] = []

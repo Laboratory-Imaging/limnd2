@@ -9,6 +9,29 @@ from .LimImageSource import LimImageSource
 
 import numpy as np
 
+_COMMON_FF_HINT = (
+    '[commonff] extra not installed. Install it with `pip install "limnd2[commonff]"`.'
+)
+
+
+def _missing_convert_dependency(package: str) -> ImportError:
+    msg = (
+        f'Missing optional dependency "{package}" required for JPEG conversion. '
+        f"{_COMMON_FF_HINT}"
+    )
+    return ImportError(msg)
+
+
+def _require_pillow() -> tuple[type["Image"], type["ImageOps"]]:
+    try:
+        from PIL import Image, ImageOps
+    except ImportError as exc:
+        raise _missing_convert_dependency("Pillow") from exc
+    return Image, ImageOps
+
+
+Image, ImageOps = _require_pillow()
+
 
 class LimImageSourceJpeg(LimImageSource):
     """Class for reading images from JPEG files."""
@@ -18,7 +41,6 @@ class LimImageSourceJpeg(LimImageSource):
 
     def read(self) -> np.ndarray:
         """Read the image into numpy array writeable by limnd2 library."""
-        from PIL import Image, ImageOps
         with Image.open(self.filename) as img:
             img = ImageOps.exif_transpose(img)
             if img.mode in ["L", "P"]:
@@ -47,7 +69,6 @@ class LimImageSourceJpeg(LimImageSource):
     @property
     def is_rgb(self) -> bool:
         """Check if the image is RGB."""
-        from PIL import Image, ImageOps
         if self._is_rgb is None:
             with Image.open(self.filename) as img:
                 img = ImageOps.exif_transpose(img)
@@ -65,7 +86,6 @@ class LimImageSourceJpeg(LimImageSource):
 
     def nd2_attributes(self, *, sequence_count=1):
         """Get the attributes of the image for ND2 file."""
-        from PIL import Image, ImageOps
         with Image.open(self.filename) as img:
             img = ImageOps.exif_transpose(img)
             if img.mode == "L":
@@ -138,7 +158,6 @@ class LimImageSourceJpeg(LimImageSource):
             8: "Rotated 90° CCW",
         }
 
-        from PIL import Image
         with Image.open(self.filename) as img:
             w, h = img.size
             orientation = 1

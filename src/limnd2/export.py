@@ -1,5 +1,4 @@
 from copy import deepcopy
-from fractions import Fraction
 import json
 from pathlib import Path
 from itertools import product
@@ -8,7 +7,34 @@ import datetime
 from typing import TYPE_CHECKING, Any, cast, Optional, Union
 
 import numpy as np
-import tifffile
+
+_COMMON_FF_HINT = (
+    '[commonff] extra not installed. Install it with `pip install "limnd2[commonff]"`.'
+)
+
+
+def _missing_convert_dependency(package: str) -> ImportError:
+    msg = (
+        f'Missing optional dependency "{package}" required for TIFF export. '
+        f"{_COMMON_FF_HINT}"
+    )
+    return ImportError(msg)
+
+
+_TIFFFILE: Any | None = None
+
+
+def _require_tifffile():
+    global _TIFFFILE
+    if _TIFFFILE is not None:
+        return _TIFFFILE
+    try:
+        import tifffile  # type: ignore
+    except ImportError as exc:
+        raise _missing_convert_dependency("tifffile") from exc
+    _TIFFFILE = tifffile
+    return tifffile
+
 if TYPE_CHECKING:
     from limnd2 import Nd2Reader
     from limnd2.experiment import ExperimentLevel
@@ -71,7 +97,7 @@ def save_float_tiff(
             args.setdefault('planarconfig', 'CONTIG')
 
     delete_file(output_path)
-    tifffile.imwrite(output_path, array, **args)
+    _require_tifffile().imwrite(output_path, array, **args)
 
 def save_uint_tiff(
     array: np.ndarray,
@@ -105,6 +131,8 @@ def save_uint_tiff(
 
     args = {} if writer_arguments is None else dict(writer_arguments)
     args["extratags"] = [(281, 'H', 1, (2**target_bit_depth) - 1, False)]
+
+    tifffile = _require_tifffile()
 
     if array.ndim == 2:
         args.setdefault('photometric', 'minisblack')
@@ -218,10 +246,11 @@ def seriesExport(
         Data will be scaled if necessary.
     """
 
-    if nd2_reader.filename is None:
+    storage_info = nd2_reader.storageInfo
+    if storage_info.filename is None:
         raise ValueError("Cannot export series: ND2 file path is not available.")
 
-    nd2_path = Path(nd2_reader.filename)
+    nd2_path = Path(storage_info.filename)
     output_folder = Path(folder) if folder is not None else nd2_path.parent / (nd2_path.stem + "_export")
     output_folder.mkdir(parents=True, exist_ok=True)
     file_prefix = nd2_path.stem if prefix is None else prefix
@@ -288,11 +317,12 @@ def frameExport(
         target_bit_depth: int | None
             If specified, converts the image to this bit depth.
     """
-    if nd2_reader.filename is None:
+    storage_info = nd2_reader.storageInfo
+    if storage_info.filename is None:
         raise ValueError("Cannot export frame: ND2 file path is not available.")
 
     if output_path is None:
-        output_path = Path(nd2_reader.filename).with_suffix('.tiff')
+        output_path = Path(storage_info.filename).with_suffix('.tiff')
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -644,12 +674,13 @@ def metadataAsJSON(
     from limnd2.attributes import ImageAttributesPixelType
 
     # Build the complete metadata dictionary
+    source_filename = nd2_reader.storageInfo.filename
     metadata_dict: dict[str, Any] = {
         "_schema_version": "1.0",
         "_export_info": {
             "limnd2_version": "0.3.0",
             "export_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-            "source_file": str(nd2_reader.filename) if nd2_reader.filename else "unknown"
+            "source_file": str(source_filename) if source_filename else "unknown"
         }
     }
 

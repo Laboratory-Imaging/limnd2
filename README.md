@@ -11,24 +11,29 @@ Documentation is available [here](https://laboratory-imaging.github.io/limnd2/do
 
 ### Prerequisites
 
-limnd2 package requires the following core dependencies:
-
+B
 - python>=3.9
 - numpy
 - ome_types
-- tifffile
-- imagecodecs
-- Pillow
 
-#### Optional Dependencies
+Optional extras enable specific workflows:
 
-For working with results and analytics features, install the optional `results` extras:
+- `limnd2[results]` – load analysis tables from `.h5` files (`h5py`, `pandas`)
+- `limnd2[commonff]` – shared common-file-format deps (`Pillow` + `tifffile`); install to enable exporting and external conversions
+- `limnd2[legacy]` – read legacy JPEG2000‑compressed ND2 (`imagecodecs`)
+- `limnd2[all]` – installs extras mentioned above
+- `limnd2[dev]` – everything above plus tooling for docs, testing, coverage, static type checking
 
-- h5py
-- pandas
+Use the combos you need, e.g.:
 
-Install with: `pip install limnd2[results]` or `uv pip install limnd2[results]`
+```sh
+pip install limnd2[results]
+pip install limnd2[commonff,legacy]
+pip install limnd2[all]
+pip install limnd2[dev]    # docs + pytest + coverage + mypy + mkdocs
+```
 
+<!--
 ### Installation scripts
 
 This package and its prerequisites can be installed running following commands in Powershell / shell.
@@ -44,7 +49,7 @@ powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/L
 ```sh
 curl -O https://raw.githubusercontent.com/Laboratory-Imaging/Laboratory-Imaging.github.io/refs/heads/main/limnd2/setup_limnd2.sh && chmod +x setup_limnd2.sh && ./setup_limnd2.sh && rm ./setup.sh
 ```
-
+-->
 
 ### Manual Installation
 

@@ -5,7 +5,37 @@ import math
 from pathlib import Path
 
 import numpy as np
-import tifffile
+
+_COMMON_FF_HINT = (
+    '[commonff] extra not installed. Install it with `pip install "limnd2[commonff]"`.'
+)
+
+
+def _missing_convert_dependency(package: str) -> ImportError:
+    msg = (
+        f'Missing optional dependency "{package}" required for TIFF conversion. '
+        f"{_COMMON_FF_HINT}"
+    )
+    return ImportError(msg)
+
+
+def _require_tifffile():
+    try:
+        import tifffile
+    except ImportError as exc:
+        raise _missing_convert_dependency("tifffile") from exc
+    return tifffile
+
+
+def _require_ome_types():
+    try:
+        import ome_types
+    except ImportError as exc:
+        raise _missing_convert_dependency("ome-types") from exc
+    return ome_types
+
+
+tifffile = _require_tifffile()
 
 import limnd2
 from limnd2.attributes import ImageAttributes, ImageAttributesPixelType
@@ -222,7 +252,7 @@ class LimImageSourceTiff(LimImageSource):
 
     @staticmethod
     def get_significant_bits_from_ome(path) -> int:
-        import ome_types
+        ome_types = _require_ome_types()
         try:
             return ome_types.from_tiff(path).images[0].pixels.significant_bits             # try to get significant bits from OME
         except:
@@ -271,7 +301,7 @@ class LimImageSourceTiff(LimImageSource):
         )
 
     def parse_additional_metadata(self, metadata_storage: ConvertSequenceArgs | ConversionSettings):
-        import ome_types
+        ome_types = _require_ome_types()
 
         try:
             ome = ome_types.from_tiff(self.filename)
@@ -423,7 +453,7 @@ class LimImageSourceTiff(LimImageSource):
 
         # --- Read OME ---
         try:
-            import ome_types
+            ome_types = _require_ome_types()
             ome = ome_types.from_tiff(self.filename)
         except Exception:
             return {}

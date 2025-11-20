@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import enum
+import importlib
 import os
 from pathlib import Path
 import re
-
-
-from .LimImageSourceJpeg import LimImageSourceJpeg
-from .LimImageSourcePng import LimImageSourcePng
-from .LimImageSourceTiff import LimImageSourceTiff
-
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from .LimImageSource import LimImageSource
 
@@ -19,18 +15,48 @@ class ImageFormat(enum.Enum):
     PNG = enum.auto()
     JPEG = enum.auto()
 
-EXTENSION_MAP = {
-    ImageFormat.TIFF: [".tiff", ".tif", ".btf"],
-    ImageFormat.PNG: [".png"],
-    ImageFormat.JPEG: [".jpeg", ".jpg"]
+_FORMAT_REGISTRY: dict[ImageFormat, dict[str, object]] = {
+    ImageFormat.TIFF: {
+        "module": ".LimImageSourceTiff",
+        "class": "LimImageSourceTiff",
+        "extensions": [".tiff", ".tif", ".btf"],
+        "extra": "commonff",            # specify which extra dependency is needed for given format
+    },
+    ImageFormat.PNG: {
+        "module": ".LimImageSourcePng",
+        "class": "LimImageSourcePng",
+        "extensions": [".png"],
+        "extra": "commonff",
+    },
+    ImageFormat.JPEG: {
+        "module": ".LimImageSourceJpeg",
+        "class": "LimImageSourceJpeg",
+        "extensions": [".jpeg", ".jpg"],
+        "extra": "commonff",
+    },
 }
 
-EXTENSION_TO_FORMAT = {ext: fmt for fmt, exts in EXTENSION_MAP.items() for ext in exts}
+EXTENSION_MAP: dict[ImageFormat, list[str]] = {}
+READER_CLASS_MAP: dict[ImageFormat, type["LimImageSource"]] = {}
+_OPTIONAL_EXTENSION_TO_EXTRA: dict[str, str] = {}
 
-READER_CLASS_MAP = {
-    ImageFormat.TIFF: LimImageSourceTiff,
-    ImageFormat.PNG: LimImageSourcePng,
-    ImageFormat.JPEG: LimImageSourceJpeg
+for fmt, config in _FORMAT_REGISTRY.items():
+    extensions = config["extensions"]  # type: ignore[assignment]
+    extra = config["extra"]  # type: ignore[assignment]
+    for ext in extensions:
+        _OPTIONAL_EXTENSION_TO_EXTRA[ext] = extra
+
+    try:
+        module = importlib.import_module(config["module"], package=__package__)
+        reader_cls = getattr(module, config["class"])
+    except Exception:
+        continue
+
+    EXTENSION_MAP[fmt] = list(extensions)
+    READER_CLASS_MAP[fmt] = reader_cls
+
+EXTENSION_TO_FORMAT = {
+    ext: fmt for fmt, exts in EXTENSION_MAP.items() for ext in exts
 }
 
 def open_lim_image_source(filename: str | Path) -> LimImageSource:
@@ -44,10 +70,27 @@ def open_lim_image_source(filename: str | Path) -> LimImageSource:
     extension = filename.suffix.lower()
     if extension in EXTENSION_TO_FORMAT:
         image_format = EXTENSION_TO_FORMAT[extension]
+    elif extension in _OPTIONAL_EXTENSION_TO_EXTRA:
+        extra = _OPTIONAL_EXTENSION_TO_EXTRA[extension]
+        raise ImportError(
+            f'Loading "{extension}" files requires the optional extra '
+            f'"{extra}". Install it with `pip install "limnd2[{extra}]"`.'
+        )
     else:
-        raise ValueError(f"Unsupported file extension: {extension}. Supported extensions are: {', '.join(EXTENSION_TO_FORMAT.keys())}.")
+        supported = ", ".join(EXTENSION_TO_FORMAT.keys()) or "none"
+        raise ValueError(
+            f"Unsupported file extension: {extension}. Supported extensions are: {supported}."
+        )
 
-    image_source_class = READER_CLASS_MAP[image_format]
+    try:
+        image_source_class = READER_CLASS_MAP[image_format]
+    except KeyError:
+        extra = _FORMAT_REGISTRY[image_format]["extra"]
+        raise ImportError(
+            f'The reader for "{image_format.name}" is unavailable. Install '
+            f'`limnd2[{extra}]` to enable it.'
+        ) from None
+
     return image_source_class(filename)
 
 def image_format_from_regexp(regexp_str: re.Pattern | str) -> ImageFormat | None:
@@ -59,8 +102,14 @@ def image_format_from_regexp(regexp_str: re.Pattern | str) -> ImageFormat | None
     ext = ext.lower()
     if ext in EXTENSION_TO_FORMAT:
         return EXTENSION_TO_FORMAT[ext]
+    elif ext in _OPTIONAL_EXTENSION_TO_EXTRA:
+        extra = _OPTIONAL_EXTENSION_TO_EXTRA[ext]
+        raise ImportError(
+            f'Reading "{ext}" sources requires the optional extra '
+            f'"{extra}". Install it with `pip install "limnd2[{extra}]"`.'
+        )
     elif ext == "":
-        raise ValueError(f"File extension not found. Make sure file extension is part of regular expression matching files.")
+        raise ValueError("File extension not found. Make sure the extension is part of the regular expression.")
     else:
-        raise ValueError(f"Unsupported file extension: {ext}. Supported extensions are: {', '.join(EXTENSION_TO_FORMAT.keys())}.")
-
+        supported = ", ".join(EXTENSION_TO_FORMAT.keys()) or "none"
+        raise ValueError(f"Unsupported file extension: {ext}. Supported extensions are: {supported}.")

@@ -13,20 +13,30 @@ license = {file = "LICENSE"}
 description = "A Python library for reading and writing Nikon NIS-Elements .nd2 files"
 readme = "README.md"
 
-dependencies = [
+dependencies = [                # base needed for limnd2
     "numpy",
     "ome_types",
-    "tifffile",
-    "imagecodecs",
-    "Pillow",
 ]
 
 [project.optional-dependencies]
-results = [
+results = [                     # results
     "h5py==3.12.1",
     "pandas",
 ]
-dev = [
+commonff = [                    # shared file-format deps
+    "Pillow",
+    "tifffile",
+    "ome_types",
+]
+legacy = [                      # Jpeg2000 chanker
+    "imagecodecs",
+]
+all = [                         # all above
+    "limnd2[legacy]",
+    "limnd2[results]",
+    "limnd2[commonff]",
+]
+dev = [                         # tools for dev
     "build",
     "coverage",
     "mkdocs",
@@ -43,7 +53,7 @@ dev = [
     "uv",
     "wheel",
 
-    "limnd2[results]",
+    "limnd2[all]",
 ]
 
 [project.scripts]
