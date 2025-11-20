@@ -11,7 +11,8 @@ Documentation is available [here](https://laboratory-imaging.github.io/limnd2/do
 
 ### Prerequisites
 
-B
+Base limnd2 package requires the following core dependencies:
+
 - python>=3.9
 - numpy
 - ome_types
