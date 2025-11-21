@@ -299,4 +299,4 @@ class ImageAttributes(LVSerializable):
         Decodes ImageAttributes from ND2 XML chunk.
         """
         decoded = decode_var(data)
-        return ImageAttributes(**decoded[0])
+        return ImageAttributes(**decoded[0]) # type: ignore

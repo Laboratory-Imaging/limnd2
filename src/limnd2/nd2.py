@@ -4,7 +4,6 @@ import warnings
 import limnd2
 from pathlib import Path
 
-from .attributes import ImageAttributesPixelType
 from .base import (
     BaseChunker,
     FileLikeObject,
@@ -371,9 +370,74 @@ class Nd2Reader():
         else:
             return self._chunker.binaryRasterMetadata
 
-    @property
-    def shape(self) -> tuple[int, ...]:
-        return (self.experiment.shape(skipSpectralLoop=True) if self.experiment else tuple()) + self.imageAttributes.shape
+    @functools.cached_property
+    def shape(self) -> tuple[int, int, int, int, int, int]:
+        """
+        Returns 6D canonical data shape (T, M, Z, Y, X, C).
+        """
+        from .experiment import canonical_shape
+        return canonical_shape(self.experiment) + self.imageAttributes.shape
+
+    @functools.cached_property
+    def calibration(self) -> tuple[float, float, float, float, float, float]:
+        """
+        Returns 6D canonical data calibration (T in ms, 0, Z in um, Y in um, X in um, 0) 0 is for uncalibrated.
+        """
+        from .experiment import canonical_calibration
+        xy: float = 0.0
+        if self.pictureMetadata is not None and self.pictureMetadata.bCalibrated:
+            xy = self.pictureMetadata.dCalibration
+        return canonical_calibration(self.experiment) + (xy, xy, 0)
+
+    def delayedImageData(self) -> Any:
+        """
+        Returns 6D canonical data shape (T, M, Z, Y, X, C).
+        """
+        try:
+            import dask.array as da # type: ignore
+            from dask.delayed import delayed # type: ignore
+
+            def read_frame(nd2: Nd2Reader, index: int, rect: tuple[int, int, int, int]|None = None) -> np.ndarray:
+                return nd2.image(index, rect)
+
+            if self.experiment:
+                nf = self.imageAttributes.frameCount
+                current = [
+                    da.from_delayed(
+                        delayed(read_frame)(self, i),
+                        self.imageAttributes.shape,
+                        self.imageAttributes.dtype,
+                    )
+                    for i in range(nf)
+                ]
+
+                nt, nm, nz = self.shape[0], self.shape[1], self.shape[2]
+                assert nf == nt*nm*nz, f"frameCount ({nf}) is not equal to the product of shape ({nt*nm*nz} = {nt} * {nm} * {nz})"
+
+                exp_shape = [nt, nm, nz]
+                while exp_shape:
+                    n = exp_shape.pop()
+                    num_items = len(current)
+                    prev = current
+                    current = []
+                    for i in range(0, num_items, n):
+                        current.append(da.stack(prev[i : i + n]))
+
+                return da.stack(current)
+
+            else:
+                delayed_arrays: list[da.Array] = [
+                    da.from_delayed(
+                        delayed(read_frame)(self, 0),
+                        self.imageAttributes.shape,
+                        self.imageAttributes.dtype,
+                    )
+                ]
+                return da.stack(delayed_arrays)
+
+        except ImportError:
+            raise
+
 
     def dimensionSizes(self, skipSpectralLoop=True) -> dict[str, int]:
         if self.experiment is None:

@@ -869,7 +869,7 @@ class ExperimentLevel(LVSerializable):
     @property
     def valid(self) -> bool:
         """
-        Checks if experiment and all subexperiments are valid.
+        Checks if experiment and all sub-experiments are valid.
         """
         return (
             self.eType != ExperimentLoopType.eEtUnknown
@@ -880,9 +880,30 @@ class ExperimentLevel(LVSerializable):
     @property
     def isLambda(self) -> bool:
         """
-        Checks if experiment is spectral loop experiment.
+        Checks if this experiment loop is a spectral loop.
         """
         return self.eType == ExperimentLoopType.eEtSpectLoop
+
+    @property
+    def isZStack(self) -> bool:
+        """
+        Checks if this experiment loop is a Z-Stack
+        """
+        return self.eType == ExperimentLoopType.eEtZStackLoop
+
+    @property
+    def isMultipoint(self) -> bool:
+        """
+        Checks if this experiment loop is a Multi point
+        """
+        return self.eType == ExperimentLoopType.eEtXYPosLoop
+
+    @property
+    def isTimeLapse(self) -> bool:
+        """
+        Checks if this experiment loop is a Time lapse
+        """
+        return self.eType == ExperimentLoopType.eEtTimeLoop or self.eType == ExperimentLoopType.eEtNETimeLoop
 
     @property
     def count(self) -> int:
@@ -1045,3 +1066,45 @@ class ExperimentLevel(LVSerializable):
     def __str__(self):
         all = self._allLevels()
         return ", ".join([str(x.uLoopPars) for x in all])
+
+def canonical_experiment(e: ExperimentLevel|None) -> tuple[ExperimentLevel|None, ExperimentLevel|None, ExperimentLevel|None]:
+    """
+    Returns experiment levels in canonical TMZ order.
+    """
+    if e is None:
+        return (None, None, None)
+    t, m, z = None, None, None
+    for level in e:
+        if level.isTimeLapse:
+            t = e
+        elif level.isMultipoint:
+            m = e
+        elif level.isZStack:
+            z = e
+    return t, m, z
+
+def canonical_shape(e: ExperimentLevel|None) -> tuple[int, int, int]:
+    """
+    Returns experiment levels in canonical TMZ order.
+    """
+    if e is None:
+        return (1, 1, 1)
+    t, m, z = canonical_experiment(e)
+    return (
+        t.count if t is not None else 1,
+        m.count if m is not None else 1,
+        z.count if z is not None else 1
+    )
+
+def canonical_calibration(e: ExperimentLevel|None) -> tuple[float, float, float]:
+    """
+    Returns experiment levels in canonical TMZ order.
+    """
+    if e is None:
+        return (0.0, 0.0, 0.0)
+    t, _, z = canonical_experiment(e)
+    return (
+        t.uLoopPars.step if t and t.uLoopPars.step is not None else 0.0,
+        0.0,
+        z.uLoopPars.step if z and z.uLoopPars.step is not None else 0.0
+    )
