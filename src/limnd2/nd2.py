@@ -1,34 +1,63 @@
-import datetime, functools, numpy as np, os
-from typing import Any
+import datetime
+import functools
+import os
 import warnings
-import limnd2
 from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+import limnd2
 
 from .base import (
     BaseChunker,
-    FileLikeObject,
-    Nd2LoggerEnabled,
-    BinaryRleMetadata,
     BinaryRasterMetadata,
+    BinaryRleMetadata,
+    FileLikeObject,
     ImageAttributes,
+    Nd2LoggerEnabled,
     NumpyArrayLike,
 )
-from .custom_data import CustomDescription, CustomDescriptionItemType, RecordedData, RecordedDataItem, RecordedDataType
-from .experiment import ExperimentLevel, ExperimentLoopType, WellplateDesc, WellplateFrameInfo
+from .custom_data import (
+    CustomDescription,
+    CustomDescriptionItemType,
+    RecordedData,
+    RecordedDataItem,
+    RecordedDataType,
+)
+from .experiment import (
+    ExperimentLevel,
+    ExperimentLoopType,
+    WellplateDesc,
+    WellplateFrameInfo,
+)
 from .file import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
-from .results import create_table_data_from_h5, read_results_from_h5, TableData, ResultItem, ResultPane
-from .textinfo import ImageTextInfo, AppInfo
+from .results import (
+    ResultItem,
+    ResultPane,
+    TableData,
+    create_table_data_from_h5,
+    read_results_from_h5,
+)
+from .textinfo import AppInfo, ImageTextInfo
 from .variant import decode_var
-
 
 if Nd2LoggerEnabled:
     import logging
+
     logger = logging.getLogger("limnd2")
 
+
 class StorageInfo:
-    def __init__(self, filename: str | None, url: str | None, size_on_disk: int, last_modified: datetime.datetime):
+    def __init__(
+        self,
+        filename: str | None,
+        url: str | None,
+        size_on_disk: int,
+        last_modified: datetime.datetime,
+    ):
         self._filename = filename
         self._url = url
         self._size_on_disk = size_on_disk
@@ -50,7 +79,8 @@ class StorageInfo:
     def lastModified(self) -> datetime.datetime:
         return self._last_modified
 
-class Nd2Reader():
+
+class Nd2Reader:
     """
     Specific implementation of `Nd2ReaderProtocol` specific to `.nd2` files, implementing additional methods.
 
@@ -65,7 +95,7 @@ class Nd2Reader():
     def chunker(self):
         return self._chunker
 
-    def __init__(self, file : FileLikeObject, *, chunker_kwargs: dict = {}) -> None:
+    def __init__(self, file: FileLikeObject, *, chunker_kwargs: dict = {}) -> None:
         """
         Parameters
         -----------
@@ -89,14 +119,14 @@ class Nd2Reader():
     # Static methods
 
     @staticmethod
-    def fileSizeOnDisk(filename: str|Path|None) -> int:
+    def fileSizeOnDisk(filename: str | Path | None) -> int:
         if filename is None:
             raise ValueError()
 
         if isinstance(filename, str):
             filename = Path(filename)
         size = filename.stat().st_size
-        filename = filename.with_suffix('.h5')
+        filename = filename.with_suffix(".h5")
         try:
             size += filename.stat().st_size
         except (FileNotFoundError, PermissionError):
@@ -105,7 +135,7 @@ class Nd2Reader():
         return size
 
     @staticmethod
-    def fileLastModified(filename: str|Path|None) -> datetime.datetime:
+    def fileLastModified(filename: str | Path | None) -> datetime.datetime:
         if filename is None:
             raise ValueError()
 
@@ -113,7 +143,7 @@ class Nd2Reader():
             filename = Path(filename)
         mtime = filename.stat().st_mtime
 
-        filename = filename.with_suffix('.h5')
+        filename = filename.with_suffix(".h5")
         try:
             h5_mtime = filename.stat().st_mtime
             if mtime < h5_mtime:
@@ -126,20 +156,20 @@ class Nd2Reader():
     # DEPRECATED properties and methods, will be removed in future versions
 
     @property
-    def filename(self) -> str|None:
+    def filename(self) -> str | None:
         warnings.warn(
             "Nd2Reader.filename is deprecated; use Nd2Reader.storageInfo.filename instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         return self.chunker.filename
 
     @property
-    def url(self) -> str|None:
+    def url(self) -> str | None:
         warnings.warn(
             "Nd2Reader.url is deprecated; use Nd2Reader.storageInfo.url instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         filename = self.chunker.filename
         if filename is None:
@@ -151,7 +181,7 @@ class Nd2Reader():
         warnings.warn(
             "Nd2Reader.size_on_disk is deprecated; use Nd2Reader.storageInfo.sizeOnDisk instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         try:
             return Nd2Reader.fileSizeOnDisk(self.filename)
@@ -163,13 +193,12 @@ class Nd2Reader():
         warnings.warn(
             "Nd2Reader.last_modified is deprecated; use Nd2Reader.storageInfo.lastModified instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         try:
             return Nd2Reader.fileLastModified(self.filename)
         except ValueError or FileNotFoundError or PermissionError:
             return self.chunker.last_modified
-
 
     def series_export(
         self,
@@ -178,13 +207,20 @@ class Nd2Reader():
         dimension_order: list[str] | None = None,
         bits: int | None = None,
         *,
-        progress_to_json: bool = False
+        progress_to_json: bool = False,
     ) -> None:
         warnings.warn(
             "Nd2Reader.series_export is deprecated and will be removed in future versions; use limnd2.seriesExport() function instead.",
             DeprecationWarning,
         )
-        limnd2.seriesExport(self, folder=folder, prefix=prefix, dimension_order=dimension_order, bits=bits, progress_to_json=progress_to_json)
+        limnd2.seriesExport(
+            self,
+            folder=folder,
+            prefix=prefix,
+            dimension_order=dimension_order,
+            bits=bits,
+            progress_to_json=progress_to_json,
+        )
 
     def frame_export(
         self,
@@ -192,20 +228,26 @@ class Nd2Reader():
         output_path: str | Path | None = None,
         target_bit_depth: int | None = None,
         *,
-        progress_to_json: bool = False
+        progress_to_json: bool = False,
     ):
         warnings.warn(
             "Nd2Reader.frame_export is deprecated and will be removed in future versions; use limnd2.frameExport() function instead.",
             DeprecationWarning,
         )
-        limnd2.frameExport(self, frame_index=frame_index, output_path=output_path, target_bit_depth=target_bit_depth, progress_to_json=progress_to_json)
+        limnd2.frameExport(
+            self,
+            frame_index=frame_index,
+            output_path=output_path,
+            target_bit_depth=target_bit_depth,
+            progress_to_json=progress_to_json,
+        )
 
     @functools.cached_property
     def generalImageInfo(self) -> dict[str, Any]:
         warnings.warn(
             "Nd2Reader.generalImageInfo is deprecated and will be removed in future versions. Use limnd2.generalImageInfo() function instead.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         return limnd2.generalImageInfo(self)
 
@@ -226,7 +268,9 @@ class Nd2Reader():
             filename = getattr(self.chunker, "filename", None)
             url = Path(filename).absolute().as_uri() if filename else None
             size_on_disk = getattr(self.chunker, "size_on_disk", 0)
-            last_modified = getattr(self.chunker, "last_modified", datetime.datetime.fromtimestamp(0))
+            last_modified = getattr(
+                self.chunker, "last_modified", datetime.datetime.fromtimestamp(0)
+            )
         return StorageInfo(filename, url, size_on_disk, last_modified)
 
     @functools.cached_property
@@ -264,7 +308,7 @@ class Nd2Reader():
         return self._chunker.pictureMetadata
 
     @property
-    def experiment(self) -> ExperimentLevel|None:
+    def experiment(self) -> ExperimentLevel | None:
         return self._chunker.experiment
 
     @property
@@ -272,20 +316,23 @@ class Nd2Reader():
         return self._chunker.imageTextInfo
 
     @functools.cached_property
-    def wellplateDesc(self) -> WellplateDesc|None:
+    def wellplateDesc(self) -> WellplateDesc | None:
         from .base import ND2_CHUNK_NAME_WellPlateDesc
+
         data = self.chunk(ND2_CHUNK_NAME_WellPlateDesc)
         return WellplateDesc.from_lv(data) if data is not None else None
 
     @functools.cached_property
-    def wellplateFrameInfo(self) -> WellplateFrameInfo|None:
+    def wellplateFrameInfo(self) -> WellplateFrameInfo | None:
         from .base import ND2_CHUNK_NAME_WellPlateFrameInfo
+
         data = self.chunk(ND2_CHUNK_NAME_WellPlateFrameInfo)
         return WellplateFrameInfo.from_json(data) if data is not None else None
 
     @functools.cached_property
     def appInfo(self) -> AppInfo:
         from .base import ND2_CHUNK_NAME_AppInfo
+
         data = self.chunk(ND2_CHUNK_NAME_AppInfo)
         if data is None:
             return AppInfo()
@@ -300,11 +347,11 @@ class Nd2Reader():
         return self._chunker.acqFrames
 
     @property
-    def acqTimes(self) -> NumpyArrayLike|None:
+    def acqTimes(self) -> NumpyArrayLike | None:
         return self._chunker.acqTimes
 
     @property
-    def acqTimes2(self) -> NumpyArrayLike|None:
+    def acqTimes2(self) -> NumpyArrayLike | None:
         return self._chunker.acqTimes2
 
     @property
@@ -317,16 +364,21 @@ class Nd2Reader():
 
     @functools.cached_property
     def imageDataRange(self) -> tuple[int, int]:
-        return (np.min(self.compRange[:, 0]), np.max(self.compRange[:, 1])) if self.isFloat else (0, 2 ** self.imageAttributes.uiBpcSignificant - 1)
+        return (
+            (np.min(self.compRange[:, 0]), np.max(self.compRange[:, 1]))
+            if self.isFloat
+            else (0, 2**self.imageAttributes.uiBpcSignificant - 1)
+        )
 
     @property
     def recordedData(self) -> RecordedData:
         from .base import ND2_CHUNK_NAME_CustomDataVar
+
         recData = RecordedData()
         if self.acqTimes is not None:
             strings = []
             for ms in self.acqTimes:
-                sign = '-' if ms < 0 else ''
+                sign = "-" if ms < 0 else ""
                 total_ms = abs(ms)
                 hh = int(total_ms // 3_600_000)
                 total_ms -= hh * 3_600_000
@@ -338,22 +390,47 @@ class Nd2Reader():
                 total_ms -= ss * 1_000
                 rem_ms = int(total_ms)
                 strings.append(f"{sign}{hh}:{mm:02d}:{ss:02d}.{rem_ms:03d}")
-            recData.append(RecordedDataItem(ID='ACQTIME', Desc='Time', Unit='h:m:s.ms', Type=RecordedDataType.eString, Group=0, Size=len(strings), Data=np.array(strings)))
+            recData.append(
+                RecordedDataItem(
+                    ID="ACQTIME",
+                    Desc="Time",
+                    Unit="h:m:s.ms",
+                    Type=RecordedDataType.eString,
+                    Group=0,
+                    Size=len(strings),
+                    Data=np.array(strings),
+                )
+            )
         data = self.chunk(ND2_CHUNK_NAME_CustomDataVar)
         if data is not None:
             decoded = decode_var(data)
-            desc = decoded.get('CustomTagDescription_v1.0', {})
+            desc = decoded.get("CustomTagDescription_v1.0", {})
             for i in range(len(desc)):
                 itemDesc = desc.get(f"Tag{i}", None)
                 if itemDesc is not None:
-                    colData = self.chunk(b'CustomData|%s!' % (itemDesc.get('ID').encode('utf-8')))
+                    colData = self.chunk(
+                        b"CustomData|%s!" % (itemDesc.get("ID").encode("utf-8"))
+                    )
                     if colData is None:
                         continue
                     if isinstance(colData, memoryview):
                         colData = colData.tobytes()
-                    recData.append(RecordedDataItem.from_desc_and_data(itemDesc, colData))
+                    recData.append(
+                        RecordedDataItem.from_desc_and_data(itemDesc, colData)
+                    )
         if 0 < len(recData):
-            recData.insert(0, RecordedDataItem(ID='INDEX', Desc='Index', Unit='', Type=RecordedDataType.eInt, Group=0, Size=recData.rowCount, Data=np.arange(1, recData.rowCount+1)))
+            recData.insert(
+                0,
+                RecordedDataItem(
+                    ID="INDEX",
+                    Desc="Index",
+                    Unit="",
+                    Type=RecordedDataType.eInt,
+                    Group=0,
+                    Size=recData.rowCount,
+                    Data=np.arange(1, recData.rowCount + 1),
+                ),
+            )
             recData.sort()
         return recData
 
@@ -365,79 +442,14 @@ class Nd2Reader():
     def binaryRasterMetadata(self) -> BinaryRasterMetadata | None:
         if self._chunker.binaryRasterMetadata is None:
             return None
-        if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(self._chunker.binaryRleMetadata):
-            return self._chunker.binaryRleMetadata.makeRasterMetadata(self.imageAttributes.width, self.imageAttributes.height)
+        if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(
+            self._chunker.binaryRleMetadata
+        ):
+            return self._chunker.binaryRleMetadata.makeRasterMetadata(
+                self.imageAttributes.width, self.imageAttributes.height
+            )
         else:
             return self._chunker.binaryRasterMetadata
-
-    @functools.cached_property
-    def shape(self) -> tuple[int, int, int, int, int, int]:
-        """
-        Returns 6D canonical data shape (T, M, Z, Y, X, C).
-        """
-        from .experiment import canonical_shape
-        return canonical_shape(self.experiment) + self.imageAttributes.shape
-
-    @functools.cached_property
-    def calibration(self) -> tuple[float, float, float, float, float, float]:
-        """
-        Returns 6D canonical data calibration (T in ms, 0, Z in um, Y in um, X in um, 0) 0 is for uncalibrated.
-        """
-        from .experiment import canonical_calibration
-        xy: float = 0.0
-        if self.pictureMetadata is not None and self.pictureMetadata.bCalibrated:
-            xy = self.pictureMetadata.dCalibration
-        return canonical_calibration(self.experiment) + (xy, xy, 0)
-
-    def delayedImageData(self) -> Any:
-        """
-        Returns 6D canonical data shape (T, M, Z, Y, X, C).
-        """
-        try:
-            import dask.array as da # type: ignore
-            from dask.delayed import delayed # type: ignore
-
-            def read_frame(nd2: Nd2Reader, index: int, rect: tuple[int, int, int, int]|None = None) -> np.ndarray:
-                return nd2.image(index, rect)
-
-            if self.experiment:
-                nf = self.imageAttributes.frameCount
-                current = [
-                    da.from_delayed(
-                        delayed(read_frame)(self, i),
-                        self.imageAttributes.shape,
-                        self.imageAttributes.dtype,
-                    )
-                    for i in range(nf)
-                ]
-
-                nt, nm, nz = self.shape[0], self.shape[1], self.shape[2]
-                assert nf == nt*nm*nz, f"frameCount ({nf}) is not equal to the product of shape ({nt*nm*nz} = {nt} * {nm} * {nz})"
-
-                exp_shape = [nt, nm, nz]
-                while exp_shape:
-                    n = exp_shape.pop()
-                    num_items = len(current)
-                    prev = current
-                    current = []
-                    for i in range(0, num_items, n):
-                        current.append(da.stack(prev[i : i + n]))
-
-                return da.stack(current)
-
-            else:
-                delayed_arrays: list[da.Array] = [
-                    da.from_delayed(
-                        delayed(read_frame)(self, 0),
-                        self.imageAttributes.shape,
-                        self.imageAttributes.dtype,
-                    )
-                ]
-                return da.stack(delayed_arrays)
-
-        except ImportError:
-            raise
-
 
     def dimensionSizes(self, skipSpectralLoop=True) -> dict[str, int]:
         if self.experiment is None:
@@ -453,11 +465,19 @@ class Nd2Reader():
             return []
         wp_desc = self.wellplateDesc
         wp_frameinfo = self.wellplateFrameInfo
-        names, shape = exp.dimnames(skipSpectralLoop=True), exp.shape(skipSpectralLoop=True)
-        if isinstance(wp_desc, WellplateDesc) and isinstance(wp_frameinfo, WellplateFrameInfo) and 'm' in names and len(wp_frameinfo):
+        names, shape = (
+            exp.dimnames(skipSpectralLoop=True),
+            exp.shape(skipSpectralLoop=True),
+        )
+        if (
+            isinstance(wp_desc, WellplateDesc)
+            and isinstance(wp_frameinfo, WellplateFrameInfo)
+            and "m" in names
+            and len(wp_frameinfo)
+        ):
             ret = []
-            i = names.index('m')
-            names = ('w', ) + names
+            i = names.index("m")
+            names = ("w",) + names
             mp_size, wp_size = shape[i], wp_frameinfo.nwells
             true_mp_size = mp_size // wp_size
             for indexes in exp.generateLoopIndexes(named=False):
@@ -470,20 +490,37 @@ class Nd2Reader():
         else:
             return exp.generateLoopIndexes(named=named)
 
-    def chunk(self, name : bytes|str) -> bytes|memoryview|None:
+    def chunk(self, name: bytes | str) -> bytes | memoryview | None:
         return self._chunker.chunk(name)
 
-    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def image(
+        self, seqindex: int, rect: tuple[int, int, int, int] | None = None
+    ) -> NumpyArrayLike:
         return self._chunker.image(seqindex, rect)
 
-    def downsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def downsampledImage(
+        self,
+        seqindex: int,
+        downsize: int,
+        rect: tuple[int, int, int, int] | None = None,
+    ) -> NumpyArrayLike:
         return self._chunker.downsampledImage(seqindex, downsize, rect)
 
-    def binaryRasterData(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def binaryRasterData(
+        self, bin_id: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
+    ) -> NumpyArrayLike:
         return self._chunker.binaryRasterData(bin_id, seqindex, rect)
 
-    def downsampledBinaryRasterData(self, bin_id: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
-        return self._chunker.downsampledBinaryRasterData(bin_id, seqindex, downsize, rect)
+    def downsampledBinaryRasterData(
+        self,
+        bin_id: int,
+        seqindex: int,
+        downsize: int,
+        rect: tuple[int, int, int, int] | None = None,
+    ) -> NumpyArrayLike:
+        return self._chunker.downsampledBinaryRasterData(
+            bin_id, seqindex, downsize, rect
+        )
 
     @functools.cached_property
     def results(self) -> dict[str, ResultItem]:
@@ -500,20 +537,120 @@ class Nd2Reader():
     # ADDITIONAL PROPERTIES AND METHODS NOT IN THE PROTOCOL SPECIFIC TO ND2Reader, THOSE SHOULD BE DOCUMENTED HERE
 
     @functools.cached_property
-    def customDescription(self) -> CustomDescription|None:
+    def shape(self) -> tuple[int, int, int, int, int, int]:
+        """
+        Returns 6D canonical data shape (T, M, Z, Y, X, C).
+        """
+        from .experiment import canonical_shape
+
+        return canonical_shape(self.experiment) + self.imageAttributes.shape
+
+    @functools.cached_property
+    def calibration(self) -> tuple[float, float, float, float, float, float]:
+        """
+        Returns 6D canonical data calibration (T in ms, 0, Z in um, Y in um, X in um, 0) 0 is for uncalibrated.
+        """
+        from .experiment import canonical_calibration
+
+        xy: float = 0.0
+        if self.pictureMetadata is not None and self.pictureMetadata.bCalibrated:
+            xy = self.pictureMetadata.dCalibration
+        return canonical_calibration(self.experiment) + (xy, xy, 0)
+
+    def delayedImageData(self, tiling: tuple[int, int] | None = None) -> Any:
+        """
+        Returns 6D canonical data shape (T, M, Z, Y, X, C) dask array with
+        delayed chunks.
+
+        Parameters
+        ----------
+        tiling : tuple[int, int] | None
+            Optional frame tiling x, y.
+        """
+        try:
+            import dask.array as da  # type: ignore
+            from dask.delayed import delayed  # type: ignore
+
+            def make_edges(n, step):
+                edges = list(range(0, n, step))
+                if edges[-1] != n:
+                    edges.append(n)
+                return edges
+
+            def read_frame(
+                nd2: Nd2Reader,
+                index: int,
+                rect: tuple[int, int, int, int] | None = None,
+            ) -> np.ndarray:
+                if rect is not None:
+                    print(Rf"Reading frame {index} with rect {rect}.")
+                else:
+                    print(Rf"Reading frame {index}.")
+                return nd2.image(index, rect)
+
+            nf = self.imageAttributes.frameCount
+            nt, nm, nz, ny, nx, nc = self.shape
+
+            edges: tuple[list[int], list[int]] | None = None
+            if tiling is not None:
+                edges = (make_edges(ny, tiling[1]), make_edges(nx, tiling[0]))
+                # y_chunks = tuple(y_edges[i+1] - y_edges[i] for i in range(len(y_edges) - 1))
+                # x_chunks = tuple(x_edges[i+1] - x_edges[i] for i in range(len(x_edges) - 1))
+
+            def build_frame(i: int) -> da.Array:
+                if edges is not None:
+                    rows = []
+                    for iy, (y0, y1) in enumerate(zip(edges[0][:-1], edges[0][1:])):
+                        col_tiles = []
+                        for ix, (x0, x1) in enumerate(zip(edges[1][:-1], edges[1][1:])):
+                            d = delayed(read_frame)(self, i, (x0, y0, x1 - x0, y1 - y0))
+                            a = da.from_delayed(
+                                d,
+                                shape=(y1 - y0, x1 - x0, nc),
+                                dtype=self.imageAttributes.dtype,
+                            )
+                            col_tiles.append(a)
+                        rows.append(da.concatenate(col_tiles, axis=1))
+                    return da.concatenate(rows, axis=0)
+                else:
+                    return da.from_delayed(
+                        delayed(read_frame)(self, i),
+                        shape=self.imageAttributes.shape,
+                        dtype=self.imageAttributes.dtype,
+                    )
+
+            if self.experiment:
+                assert nf == nt * nm * nz, (
+                    f"frameCount ({nf}) is not equal to the product of shape ({nt * nm * nz} = {nt} * {nm} * {nz})"
+                )
+
+                frames = [build_frame(i) for i in range(nf)]
+
+                return da.stack(frames).reshape(nt, nm, nz, ny, nx, nc)
+
+            else:
+                frame: da.Array = build_frame(0)
+                return frame.reshape(nt, nm, nz, ny, nx, nc)
+
+        except ImportError:
+            raise
+
+    @functools.cached_property
+    def customDescription(self) -> CustomDescription | None:
         from .base import ND2_CHUNK_NAME_CustomDescription
+
         data = self.chunk(ND2_CHUNK_NAME_CustomDescription)
         if data is None:
             return None
         return CustomDescription.from_lv(data)
 
     @functools.cached_property
-    def smartExperimentDescription(self) -> dict[str, Any]|None:
+    def smartExperimentDescription(self) -> dict[str, Any] | None:
         if self.customDescription is None or self.customDescription.name != "onepush":
             return None
         se_custom_data = {}
         for item in self.customDescription:
-            if item.name in [ 'Assay', 'Date', 'Name', 'Plate', 'User', 'Notes' ]:
+            if item.name in ["Assay", "Date", "Name", "Plate", "User", "Notes"]:
                 if item.type == CustomDescriptionItemType.Date:
                     se_custom_data[item.name.lower()] = item.date.isoformat()
                 else:
@@ -521,10 +658,14 @@ class Nd2Reader():
         return se_custom_data
 
     @property
-    def chunkSize(self) -> tuple[int,int]|None:
+    def chunkSize(self) -> tuple[int, int] | None:
         return None
 
-    def crestDeepSimRawData(self, seqindex: int, component_index: int) -> tuple[NumpyArrayLike, str, str, tuple[float, float], tuple[int, int], tuple[int, int]]:
+    def crestDeepSimRawData(
+        self, seqindex: int, component_index: int
+    ) -> tuple[
+        NumpyArrayLike, str, str, tuple[float, float], tuple[int, int], tuple[int, int]
+    ]:
         """
         This method retrieves deepSIM data for a specific sequence index and component.
 
@@ -616,17 +757,21 @@ class Nd2Reader():
         """
         return self._chunker.crestDeepSimRawDataIndices()
 
-    def resultSizeOnDisk(self, result_name: str) -> int|None:
+    def resultSizeOnDisk(self, result_name: str) -> int | None:
         """
         Returns size of the result.
         """
         raise NotImplementedError()
 
-    def resultBinaryData(self, bin_id: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def resultBinaryData(
+        self, bin_id: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
+    ) -> NumpyArrayLike:
         pass
         return np.array([])
 
-    def resultPrivateTable(self, result_name: str, pane: str, table_name: str) -> TableData:
+    def resultPrivateTable(
+        self, result_name: str, pane: str, table_name: str
+    ) -> TableData:
         the_pane: ResultPane | None = None
         try:
             the_pane = self.results[result_name].result_panes[pane]
@@ -641,30 +786,41 @@ class Nd2Reader():
         try:
             loc = the_pane.private_table_locations[table_name]
         except KeyError:
-            raise KeyError(f"Table name {table_name} not found in H5 {result_name}/{pane} .")
+            raise KeyError(
+                f"Table name {table_name} not found in H5 {result_name}/{pane} ."
+            )
 
         filename = self.storageInfo.filename
         if filename is None:
             raise ValueError("Cannot read private table data, ND2 filename is None.")
 
-        table_data: TableData = create_table_data_from_h5(filename.replace(".nd2", ".h5"), loc)
+        table_data: TableData = create_table_data_from_h5(
+            filename.replace(".nd2", ".h5"), loc
+        )
         the_pane.private_tables[table_name] = table_data
 
         return the_pane.private_tables[table_name]
 
 
-class Nd2Writer():
+class Nd2Writer:
     """
     Writer class for writing `.nd2` files.
 
     See [`Nd2WriterProtocol`](protocols.md#limnd2.protocols.Nd2WriterProtocol) for more information.
 
     """
+
     def create_chunker(self, *args, **kwargs) -> BaseChunker:
         kwargs["readonly"] = False
         return _create_chunker(*args, **kwargs)
 
-    def __init__(self, file : FileLikeObject, *, append : bool|None = None, chunker_kwargs:dict = {}) -> None:
+    def __init__(
+        self,
+        file: FileLikeObject,
+        *,
+        append: bool | None = None,
+        chunker_kwargs: dict = {},
+    ) -> None:
         """
         Parameters
         -----------
@@ -674,7 +830,9 @@ class Nd2Writer():
             Additional parameters for chunker.
         """
         super().__init__()
-        self._chunker = self.create_chunker(file, append=append, chunker_kwargs=chunker_kwargs)
+        self._chunker = self.create_chunker(
+            file, append=append, chunker_kwargs=chunker_kwargs
+        )
 
     def __enter__(self):
         return self
@@ -683,7 +841,7 @@ class Nd2Writer():
         self.finalize()
 
     @property
-    def filename(self) -> str|None:
+    def filename(self) -> str | None:
         return self.chunker.filename
 
     @property
@@ -717,7 +875,7 @@ class Nd2Writer():
     def chunker(self):
         return self._chunker
 
-    def setChunk(self, name : bytes|str, data : bytes|memoryview) -> None:
+    def setChunk(self, name: bytes | str, data: bytes | memoryview) -> None:
         return self._chunker.setChunk(name, data)
 
     def setImage(self, seq_index: int, data: NumpyArrayLike) -> None:
@@ -728,6 +886,7 @@ class Nd2Writer():
 
     def rollback(self) -> None:
         return self._chunker.rollback()
+
 
 def _create_chunker(
     file: FileLikeObject,
@@ -744,7 +903,7 @@ def _create_chunker(
                 append = os.path.isfile(file)
             mode = "rb+" if append else "wb"
 
-        #if mode == "rb+":
+        # if mode == "rb+":
         #    raise FileExistsError("This file already exists, can not open for writing.")
 
         fh = open(file, mode)
@@ -753,9 +912,7 @@ def _create_chunker(
             if readonly:
                 fh.seek(0)
                 return LimJpeg2000Chunker(fh, **chunker_kwargs)
-            raise RuntimeError(
-                "Writing legacy JPEG2000 ND2 files is not supported."
-            )
+            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
         fh.seek(0)
         return LimBinaryIOChunker(fh, **chunker_kwargs)
 
@@ -763,24 +920,29 @@ def _create_chunker(
         if is_legacy_jpeg2000_source(file):
             if readonly:
                 return LimJpeg2000Chunker(file, **chunker_kwargs)
-            raise RuntimeError(
-                "Writing legacy JPEG2000 ND2 files is not supported."
-            )
+            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
-    elif (hasattr(file, "read") or hasattr(file, "write")) and hasattr(file, "seek") and hasattr(file, "tell") and hasattr(file, "mode"):
+    elif (
+        (hasattr(file, "read") or hasattr(file, "write"))
+        and hasattr(file, "seek")
+        and hasattr(file, "tell")
+        and hasattr(file, "mode")
+    ):
         if readonly and "rb" != file.mode:
-            raise ValueError("File handle passed to LimNd2Reader must have \"rb\" mode")
+            raise ValueError('File handle passed to LimNd2Reader must have "rb" mode')
         elif not readonly and file.mode not in ("rb+", "wb"):
-            raise ValueError("File handle passed to LimNd2Writer must have \"rb+\" or \"wb\" mode")
+            raise ValueError(
+                'File handle passed to LimNd2Writer must have "rb+" or "wb" mode'
+            )
         if is_legacy_jpeg2000_source(file):
             if readonly:
                 file.seek(0)
                 return LimJpeg2000Chunker(file, **chunker_kwargs)
-            raise RuntimeError(
-                "Writing legacy JPEG2000 ND2 files is not supported."
-            )
+            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
         file.seek(0)
         return LimBinaryIOChunker(file, **chunker_kwargs)
 
-    raise ValueError("Invalid chunker source, must be filename, file handle or memoryview.")
+    raise ValueError(
+        "Invalid chunker source, must be filename, file handle or memoryview."
+    )
