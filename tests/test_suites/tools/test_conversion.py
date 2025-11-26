@@ -5,7 +5,8 @@ import pytest
 import os
 from limnd2.tools.conversion.LimConvertSequence import convert_sequence_to_nd2_args
 
-LOCAL_ROOT = Path(__file__).parent / "test_files"
+TESTS_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_ROOT = TESTS_ROOT / "test_files"
 CONVERSION_ROOT = LOCAL_ROOT / "conversion"
 OUT_DIR = LOCAL_ROOT / "output"
 
