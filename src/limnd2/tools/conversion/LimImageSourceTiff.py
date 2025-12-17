@@ -49,6 +49,24 @@ if TYPE_CHECKING:
     import ome_types
 
 
+CHUNKED_SWAP_PIXELS = 1_000_000
+
+
+def _swap_rgb_to_bgr_inplace(arr: np.ndarray, *, chunk_size: int = CHUNKED_SWAP_PIXELS) -> None:
+    """
+    Swap RGB -> BGR in-place without duplicating the whole array.
+    Works on arrays of shape (..., 3).
+    """
+    if arr.ndim < 3 or arr.shape[-1] != 3:
+        return
+    flat = arr.reshape(-1, 3)
+    for start in range(0, flat.shape[0], chunk_size):
+        end = min(flat.shape[0], start + chunk_size)
+        tmp = flat[start:end, 0].copy()
+        flat[start:end, 0] = flat[start:end, 2]
+        flat[start:end, 2] = tmp
+
+
 class LimImageSourceTiff(LimImageSource):
     """Class for reading images from TIFF files."""
     idf: int
@@ -126,10 +144,14 @@ class LimImageSourceTiff(LimImageSource):
         result = copy.deepcopy(LimImageSource.DEFAULT_INFORMATION_TEMPLATE)
 
         with tifffile.TiffReader(self.filename) as tiff:
-            if tiff.pages[0].photometric.name == "RGB":
+            pm_name = tiff.pages[0].photometric.name
+
+            if pm_name in ("RGB", "YCBCR"):
+                # Treat YCbCr as RGB-like (color image, not "channels")
                 result["is_rgb"] = True
                 self._is_rgb = True
             else:
+                result["is_rgb"] = False
                 self._is_rgb = False
 
             if len(tiff.series) == 1:
@@ -167,18 +189,44 @@ class LimImageSourceTiff(LimImageSource):
                     raise ValueError(f"Multi-page TIFF file with different resolutions not supported")
         return result
 
+    @staticmethod
+    def _has_ome_metadata(path: str | Path) -> bool:
+        """Cheap check whether the TIFF contains OME-XML in ImageDescription."""
+        try:
+            # you already have a module-level `tifffile = _require_tifffile()`
+            with tifffile.TiffFile(path) as tif:
+                desc_tag = tif.pages[0].tags.get("ImageDescription")
+                if desc_tag is None:
+                    return False
+
+                value = desc_tag.value
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", errors="ignore")
+        except Exception:
+            return False
+
+        text = value.lstrip()
+        return (
+            (text.startswith("<?xml") and "<OME" in text)
+            or "http://www.openmicroscopy.org/Schemas/OME" in text
+        )
 
     @property
     def is_rgb(self) -> bool:
         if self._is_rgb is None:
             with tifffile.TiffReader(self.filename) as tiff:
-                self._is_rgb = tiff.pages[0].photometric.name == "RGB"
+                pm_name = tiff.pages[0].photometric.name
+                self._is_rgb = pm_name in ("RGB", "YCBCR")
         return self._is_rgb
 
 
 
-    def parse_additional_dimensions(self, sources: dict[list["LimImageSource"], tuple], original_dimensions: dict[str, int], unknown_dimension_type: str = None) \
-        -> tuple[list["LimImageSource"], dict[str, int]]:
+    def parse_additional_dimensions(
+        self,
+        sources: dict["LimImageSource", list[int]],
+        original_dimensions: dict[str, int],
+        unknown_dimension_type: str | None = None,
+    ) -> tuple[dict["LimImageSource", list[int]], dict[str, int]]:
         """
         Parse additional dimensions from the tiff source.
         Adds IDF to tiff file based on dimensions found in the TIFF file.
@@ -251,11 +299,17 @@ class LimImageSourceTiff(LimImageSource):
         return bpc_significant
 
     @staticmethod
-    def get_significant_bits_from_ome(path) -> int:
-        ome_types = _require_ome_types()
+    def get_significant_bits_from_ome(path) -> int | None:
+        has_ome = LimImageSourceTiff._has_ome_metadata(path)
+        if not has_ome:
+            return None
+        try:
+            ome_types = _require_ome_types()
+        except ImportError:
+            return None
         try:
             return ome_types.from_tiff(path).images[0].pixels.significant_bits             # try to get significant bits from OME
-        except:
+        except Exception:
             return None
 
     def nd2_attributes(self, *, sequence_count = 1) -> ImageAttributes:
@@ -301,6 +355,10 @@ class LimImageSourceTiff(LimImageSource):
         )
 
     def parse_additional_metadata(self, metadata_storage: ConvertSequenceArgs | ConversionSettings):
+        has_ome = LimImageSourceTiff._has_ome_metadata(self.filename)
+        if not has_ome:
+            return
+
         ome_types = _require_ome_types()
 
         try:
@@ -612,21 +670,28 @@ class OMEUtils:
         except ValueError:
             contrast = limnd2.metadata.PicturePlaneModalityFlags.modUnknown
 
+        color = channel.color.as_rgb_tuple(alpha=False) if getattr(channel, "color", None) else None
+
         plane = Plane(name = channel.name,
                     modality = acquisition | contrast,
-                    color = channel.color.as_rgb_tuple(alpha=False),
+                    color = color,
                     excitation_wavelength = channel.excitation_wavelength,
                     emission_wavelength = channel.emission_wavelength
         )
         return plane
 
     @staticmethod
-    def channels_from_ome(ome: "ome_types.model.OME", metadata_factory: MetadataFactory = None):
-        # parses metadata from OME-TIFF file and returns a factory for such metadata and a dictionary of channels
+    def channels_from_ome(
+        ome: "ome_types.model.OME",
+        metadata_factory: MetadataFactory | None = None,
+    ):
         if metadata_factory is not None:
             provided_settings = metadata_factory._other_settings
+            base_pixel_cal = metadata_factory.pixel_calibration
         else:
             provided_settings = {}
+            base_pixel_cal = None
+
         image = ome.images[0]
 
         objective_numerical_aperture = None
@@ -635,34 +700,39 @@ class OMEUtils:
 
         used_instrument = None
         used_objective = None
-        if ome.instruments:
+
+        if getattr(ome, "instruments", None) and getattr(image, "instrument_ref", None):
             for instrument in ome.instruments:
                 if instrument.id == image.instrument_ref.id:
                     used_instrument = instrument
-        if used_instrument:
-            if used_instrument.objectives and image.objective_settings:
-                for objective in used_instrument.objectives:
-                    if objective.id == image.objective_settings.id:
-                        used_objective = objective
+                    break
+
+        if used_instrument and getattr(used_instrument, "objectives", None) and getattr(image, "objective_settings", None):
+            for objective in used_instrument.objectives:
+                if objective.id == image.objective_settings.id:
+                    used_objective = objective
+                    break
 
         if used_objective:
             objective_numerical_aperture = used_objective.lens_na
 
-        immersion_refractive_index = image.objective_settings.refractive_index if image.objective_settings else None
-        pixel_calibration = image.pixels.physical_size_x
+        immersion_refractive_index = image.objective_settings.refractive_index if getattr(image, "objective_settings", None) else None
+        pixel_calibration = image.pixels.physical_size_x if getattr(image, "pixels", None) else None
 
-        new_factory = MetadataFactory(pixel_calibration = metadata_factory.pixel_calibration if metadata_factory.pixel_calibration else pixel_calibration,
-                                    immersion_refractive_index = provided_settings.get("immersion_refractive_index", immersion_refractive_index),
-                                    objective_numerical_aperture = provided_settings.get("objective_numerical_aperture", objective_numerical_aperture))
+        new_factory = MetadataFactory(
+            pixel_calibration = base_pixel_cal if base_pixel_cal else pixel_calibration,
+            immersion_refractive_index = provided_settings.get("immersion_refractive_index", immersion_refractive_index),
+            objective_numerical_aperture = provided_settings.get("objective_numerical_aperture", objective_numerical_aperture),
+        )
 
         for key, value in provided_settings.items():
             if key not in new_factory._other_settings:
                 new_factory._other_settings[key] = value
 
-        channels = {}
-        for index, channel in enumerate(sorted(image.pixels.channels, key=lambda x: x.id)):
-            channels[index] = OMEUtils.channel_from_ome(channel)
-
+        channels: dict[int, Plane] = {}
+        if getattr(image, "pixels", None) and getattr(image.pixels, "channels", None):
+            for index, channel in enumerate(sorted(image.pixels.channels, key=lambda x: x.id)):
+                channels[index] = OMEUtils.channel_from_ome(channel)
 
         return new_factory, channels
 

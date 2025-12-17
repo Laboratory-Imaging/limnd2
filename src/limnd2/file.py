@@ -1,4 +1,5 @@
 import collections, datetime, mmap, os, struct, typing
+#from contextlib import contextmanager
 from .base import *
 from .attributes import ImageAttributesCompression
 
@@ -388,6 +389,86 @@ class LimBinaryIOChunker(BaseChunker):
         else:
             np.copyto(tmp, image)
         self._update_chunkmap(name, self._write_chunk(self._currpos(), name, struct.pack("d", acqtime), buffer))
+
+    '''
+    @contextmanager
+    def imageWriteArray(self, seqindex: int, *, acqtime: float = -1.0):
+        """
+        EXPERIMENTAL method to write an image into nd2 file directly to a file without an
+        intermediate numpy array object (useful for speed and for huge images).
+
+
+
+        Context manager that exposes a writable ndarray backed by the ND2 chunk.
+
+        Usage:
+            with chunker.imageWriteArray(0) as arr:
+                tifffile.TiffReader(...).asarray(out=arr)
+        """
+        if self.is_readonly or self._fh is None or not hasattr(self._fh, "name"):
+            raise PermissionError("Writable on-disk file handle required for streaming image writes.")
+
+        attrs = self.imageAttributes
+        data2_len = attrs.imageBytes
+        if data2_len <= 0:
+            raise ValueError("ImageAttributes.imageBytes must be positive.")
+
+        name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
+        if isinstance(name, str):
+            name = name.encode("ascii")
+
+        timestamp_bytes = struct.pack("d", acqtime)
+        data1_len = len(timestamp_bytes)
+
+        pos = self._currpos()
+        name_len = len(name)
+        header_len = STRUCT_CHUNK_HEADER.size + name_len + ND2_CHUNK_NAME_RESERVE
+        header_and_data1_len = header_len + data1_len
+        header_and_data1_4k_len = _ceil_align(header_and_data1_len, ND2_CHUNK_ALIGNMENT)
+        blank_len = header_and_data1_4k_len - header_and_data1_len + ND2_CHUNK_NAME_RESERVE
+        actual_name_len = name_len
+        if 0 < data1_len and 0 < blank_len:
+            actual_name_len += blank_len
+
+        total_data_len = data1_len + data2_len
+        data_written_len = 0
+        data_written_len += self._fh.write(STRUCT_CHUNK_HEADER.pack(ND2_CHUNK_MAGIC, actual_name_len, total_data_len))
+        data_written_len += self._fh.write(name)
+        if 0 < data1_len and 0 < blank_len:
+            data_written_len += self._fh.write(b'\0' * blank_len)
+        data_written_len += self._fh.write(timestamp_bytes)
+        data_written_4k_len = _ceil_align(data_written_len, ND2_CHUNK_ALIGNMENT)
+        if data_written_len < data_written_4k_len:
+            pad_len = data_written_4k_len - data_written_len
+            self._fh.write(b'\0' * pad_len)
+
+        data_start = self._fh.tell()
+        data2_4k_len = _ceil_align(data2_len, ND2_CHUNK_ALIGNMENT)
+        end_pos = data_start + data2_4k_len
+        self._fh.seek(end_pos)
+        self._fh.truncate(end_pos)
+        self._fh.seek(data_start)
+
+        array = np.memmap(self._fh.name, dtype=attrs.dtype, mode="r+", offset=data_start, shape=attrs.shape)
+        def _close_memmap(arr: np.memmap) -> None:
+            mmap_obj = getattr(arr, "_mmap", None)
+            if mmap_obj is not None:
+                mmap_obj.close()
+
+        try:
+            yield array
+        except Exception:
+            array.flush()
+            _close_memmap(array)
+            self._fh.truncate(pos)
+            self._fh.seek(pos)
+            raise
+        else:
+            array.flush()
+            _close_memmap(array)
+            self._fh.seek(end_pos)
+            self._update_chunkmap(name, (pos, total_data_len))
+    '''
 
     def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)

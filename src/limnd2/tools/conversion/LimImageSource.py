@@ -38,6 +38,7 @@ class LimImageSource(ABC):
 
     """
     filename: Path
+    supports_streaming_read: bool = False
     _is_rgb: bool
     _additional_dimensions: dict
 
@@ -103,8 +104,12 @@ class LimImageSource(ABC):
         """Check if the image is RGB."""
         raise NotImplementedError("is_rgb not implemented for this abstract image source.")
 
-    def parse_additional_dimensions(self, sources: dict[list["LimImageSource"], tuple], original_dimensions: dict[str, int], unknown_dimension_type: str = None) \
-        -> tuple[list["LimImageSource"], dict[str, int]]:
+    def parse_additional_dimensions(
+        self,
+        sources: dict["LimImageSource", list[int]],
+        original_dimensions: dict[str, int],
+        unknown_dimension_type: str | None = None,
+    ) -> tuple[dict["LimImageSource", list[int]], dict[str, int]]:
 
         # Parse additional dimensions from the image source.
         # In OME TIFF file, this will parse OME dimensions within file.

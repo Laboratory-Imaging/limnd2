@@ -99,6 +99,22 @@ class LIMND2Utils:
             tiff_file = frame_sources[0]
             array = tiff_file.read()
 
+        """
+        if getattr(tiff_file, "supports_streaming_read", False):
+            def _write_direct():
+                with nd2.chunker.imageWriteArray(image_seq_index) as out_array:
+                    tiff_file.read(out=out_array)
+
+            if nd2_file_lock:
+                with nd2_file_lock:
+                    _write_direct()
+            else:
+                _write_direct()
+            wrote_directly = True
+        else:
+            array = tiff_file.read()
+            """
+
         if nd2_file_lock:
             with nd2_file_lock:
                 nd2.setImage(image_seq_index, array)
