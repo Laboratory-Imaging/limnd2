@@ -62,7 +62,8 @@ class BinaryRleMetadataItem:
             binName=self.strName, binUuid=self.strUuid,
             binComp=self.strCompName, binCompOrder=self.uiCompOrder,
             binState=self.uiState, binColor=self.uiColor,
-            binColorMode=self.uiColorMode)
+            binColorMode=self.uiColorMode,
+            emulatedOverRle=True)
 
 class BinaryRleMetadata(collections.UserList):
     def __init__(self, iterable):
@@ -107,6 +108,7 @@ class BinaryRasterMetadataItem:
     binState: BinaryItemStateFlags | Literal[0] = 0
     binColor: int = 0
     binColorMode: BinaryItemColorMode = BinaryItemColorMode.eBaseBinObjColors
+    emulatedOverRle: bool = False
 
     @property
     def id(self) -> int:
