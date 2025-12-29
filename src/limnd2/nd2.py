@@ -200,57 +200,6 @@ class Nd2Reader:
         except ValueError or FileNotFoundError or PermissionError:
             return self.chunker.last_modified
 
-    def series_export(
-        self,
-        folder: str | Path | None = None,
-        prefix: str | None = None,
-        dimension_order: list[str] | None = None,
-        bits: int | None = None,
-        *,
-        progress_to_json: bool = False,
-    ) -> None:
-        warnings.warn(
-            "Nd2Reader.series_export is deprecated and will be removed in future versions; use limnd2.seriesExport() function instead.",
-            DeprecationWarning,
-        )
-        limnd2.seriesExport(
-            self,
-            folder=folder,
-            prefix=prefix,
-            dimension_order=dimension_order,
-            bits=bits,
-            progress_to_json=progress_to_json,
-        )
-
-    def frame_export(
-        self,
-        frame_index: int = 0,
-        output_path: str | Path | None = None,
-        target_bit_depth: int | None = None,
-        *,
-        progress_to_json: bool = False,
-    ):
-        warnings.warn(
-            "Nd2Reader.frame_export is deprecated and will be removed in future versions; use limnd2.frameExport() function instead.",
-            DeprecationWarning,
-        )
-        limnd2.frameExport(
-            self,
-            frame_index=frame_index,
-            output_path=output_path,
-            target_bit_depth=target_bit_depth,
-            progress_to_json=progress_to_json,
-        )
-
-    @functools.cached_property
-    def generalImageInfo(self) -> dict[str, Any]:
-        warnings.warn(
-            "Nd2Reader.generalImageInfo is deprecated and will be removed in future versions. Use limnd2.generalImageInfo() function instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return limnd2.generalImageInfo(self)
-
     # METHODS AND PROPERTIES IMPLEMENTING Nd2ReaderProtocol -> those should be documented in protocols.py
 
     @property
@@ -494,32 +443,33 @@ class Nd2Reader:
         return self._chunker.chunk(name)
 
     def image(
-        self, seqindex: int, rect: tuple[int, int, int, int] | None = None
-    ) -> NumpyArrayLike:
-        return self._chunker.image(seqindex, rect)
-
-    def downsampledImage(
         self,
-        seqindex: int,
-        downsize: int,
+        seq_index: int,
+        *,
         rect: tuple[int, int, int, int] | None = None,
+        down_size: int = 0
     ) -> NumpyArrayLike:
-        return self._chunker.downsampledImage(seqindex, downsize, rect)
+        assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
+        assert isinstance(down_size, int) and 0 <= down_size, "down_size must be non-negative integer"
+        return (
+            self._chunker.image(seq_index, rect) if 0 == down_size else
+            self._chunker.downsampledImage(seq_index, down_size, rect)
+        )
 
     def binaryRasterData(
-        self, bin_id: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
-    ) -> NumpyArrayLike:
-        return self._chunker.binaryRasterData(bin_id, seqindex, rect)
-
-    def downsampledBinaryRasterData(
         self,
         bin_id: int,
-        seqindex: int,
-        downsize: int,
+        seq_index: int,
+        *,
         rect: tuple[int, int, int, int] | None = None,
+        down_size: int = 0
     ) -> NumpyArrayLike:
-        return self._chunker.downsampledBinaryRasterData(
-            bin_id, seqindex, downsize, rect
+        assert isinstance(bin_id, int) and 0 < bin_id, "bin_id must be positive integer"
+        assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
+        assert isinstance(down_size, int) and 0 <= down_size, "down_size must be non-negative integer"
+        return (
+            self._chunker.binaryRasterData(bin_id, seq_index, rect) if 0 == down_size else
+            self._chunker.downsampledBinaryRasterData(bin_id, seq_index, down_size, rect)
         )
 
     @functools.cached_property
@@ -586,7 +536,7 @@ class Nd2Reader:
                     print(Rf"Reading frame {index} with rect {rect}.")
                 else:
                     print(Rf"Reading frame {index}.")
-                return nd2.image(index, rect)
+                return nd2.image(index, rect=rect)
 
             nf = self.imageAttributes.frameCount
             nt, nm, nz, ny, nx, nc = self.shape
@@ -594,8 +544,6 @@ class Nd2Reader:
             edges: tuple[list[int], list[int]] | None = None
             if tiling is not None:
                 edges = (make_edges(ny, tiling[1]), make_edges(nx, tiling[0]))
-                # y_chunks = tuple(y_edges[i+1] - y_edges[i] for i in range(len(y_edges) - 1))
-                # x_chunks = tuple(x_edges[i+1] - x_edges[i] for i in range(len(x_edges) - 1))
 
             def build_frame(i: int) -> da.Array:
                 if edges is not None:

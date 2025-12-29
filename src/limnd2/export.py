@@ -555,6 +555,7 @@ def _get_textinfo_dict(nd2: "Nd2Reader") -> dict[str, Any]:
 def _get_summary_dict(nd2: "Nd2Reader") -> dict[str, Any]:
     """Generate computed summary information for common LLM queries."""
     experiment = nd2.experiment
+    from limnd2 import generalImageInfo
 
     # Detect common experiment types
     has_zstack = False
@@ -578,7 +579,7 @@ def _get_summary_dict(nd2: "Nd2Reader") -> dict[str, Any]:
                     has_multipoint = True
                     multipoint_count = level.count
 
-    general_info = nd2.generalImageInfo
+    general_info = generalImageInfo(nd2)
 
     return {
         "_description": "Quick reference information and computed flags for common queries",
@@ -671,7 +672,7 @@ def metadataAsJSON(
     - "What wavelengths were used?" → Check `metadata.channels[].emissionWavelengthNm`
     - "What's the pixel size?" → Check `metadata.calibration.pixelSizeUM`
     """
-    from limnd2.attributes import ImageAttributesPixelType
+    from limnd2 import generalImageInfo
 
     # Build the complete metadata dictionary
     source_filename = nd2_reader.storageInfo.filename
@@ -694,7 +695,7 @@ def metadataAsJSON(
     metadata_dict["textInfo"] = _get_textinfo_dict(nd2_reader)
 
     # Add general image info if available
-    general_info = nd2_reader.generalImageInfo
+    general_info = generalImageInfo(nd2_reader)
     if general_info:
         metadata_dict["generalInfo"] = {
             "_description": "Quick overview of file properties",
