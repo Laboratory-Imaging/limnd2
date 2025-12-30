@@ -78,16 +78,8 @@ class LimBinaryIOChunker(BaseChunker):
                 self._chunkmap = collections.OrderedDict()
 
     @property
-    def filename(self) -> str|None:
-        return self._store.filename
-
-    @property
-    def size_on_disk(self) -> int:
-        return self._store.sizeOnDisk
-
-    @property
-    def last_modified(self) -> datetime.datetime:
-        return self._store.lastModified
+    def store(self) -> Store:
+        return self._store
 
     @property
     def format_version(self) -> tuple[int, int]:

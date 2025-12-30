@@ -246,11 +246,10 @@ def seriesExport(
         Data will be scaled if necessary.
     """
 
-    storage_info = nd2_reader.storageInfo
-    if storage_info.filename is None:
+    if nd2_reader.store.filename is None:
         raise ValueError("Cannot export series: ND2 file path is not available.")
 
-    nd2_path = Path(storage_info.filename)
+    nd2_path = Path(nd2_reader.store.filename)
     output_folder = Path(folder) if folder is not None else nd2_path.parent / (nd2_path.stem + "_export")
     output_folder.mkdir(parents=True, exist_ok=True)
     file_prefix = nd2_path.stem if prefix is None else prefix
@@ -317,12 +316,11 @@ def frameExport(
         target_bit_depth: int | None
             If specified, converts the image to this bit depth.
     """
-    storage_info = nd2_reader.storageInfo
-    if storage_info.filename is None:
+    if nd2_reader.store.filename is None:
         raise ValueError("Cannot export frame: ND2 file path is not available.")
 
     if output_path is None:
-        output_path = Path(storage_info.filename).with_suffix('.tiff')
+        output_path = Path(nd2_reader.store.filename).with_suffix('.tiff')
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -675,13 +673,12 @@ def metadataAsJSON(
     from limnd2 import generalImageInfo
 
     # Build the complete metadata dictionary
-    source_filename = nd2_reader.storageInfo.filename
     metadata_dict: dict[str, Any] = {
         "_schema_version": "1.0",
         "_export_info": {
             "limnd2_version": "0.3.0",
             "export_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
-            "source_file": str(source_filename) if source_filename else "unknown"
+            "source_file": str(nd2_reader.store.filename) if nd2_reader.store.filename else "unknown"
         }
     }
 

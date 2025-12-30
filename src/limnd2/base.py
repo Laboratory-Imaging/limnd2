@@ -360,17 +360,7 @@ class BaseChunker(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def filename(self) -> str|None:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def size_on_disk(self) -> int:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def last_modified(self) -> datetime.datetime:
+    def store(self) -> Store:
         pass
 
     @property

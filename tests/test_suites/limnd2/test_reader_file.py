@@ -22,10 +22,10 @@ def test_chunker_properties_and_chunk_access(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
         c = r.chunker
         # filename, version and timestamps
-        assert isinstance(c.filename, (str, type(None)))
+        assert isinstance(c.store.filename, (str, type(None)))
         assert isinstance(c.format_version, tuple) and len(c.format_version) == 2
-        assert isinstance(c.last_modified, datetime.datetime)
-        assert c.size_on_disk > 0
+        assert isinstance(c.store.lastModified, datetime.datetime)
+        assert c.store.sizeOnDisk > 0
 
         # chunk names present; metadata chunk missing returns None
         names = c.chunk_names

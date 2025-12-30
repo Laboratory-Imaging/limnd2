@@ -10,6 +10,7 @@ from .base import (
     BinaryRleMetadata,
     BinaryRasterMetadata,
     NumpyArrayLike,
+    Store
 )
 from .custom_data import RecordedData
 from .experiment import ExperimentLevel, WellplateDesc, WellplateFrameInfo
@@ -17,45 +18,7 @@ from .metadata import PictureMetadata
 from .results import ResultItem
 from .textinfo import ImageTextInfo, AppInfo
 
-class StorageInfoProtocol(Protocol):
-    @property
-    def filename(self) -> str | None:
-        """
-        Returns the filename of the file if available, otherwise `None`.
-        """
-        ...
-
-    @property
-    def url(self) -> str | None:
-        """
-        Returns the URL of the file if available, otherwise `None`.
-        """
-        ...
-
-    @property
-    def sizeOnDisk(self) -> int:
-        """
-        Returns the number of bytes the file takes on disk.
-        """
-        ...
-
-    @property
-    def lastModified(self) -> datetime.datetime:
-        """
-        Returns the modify time of the file on disk.
-        """
-        ...
-
 class ResultsProtocol(Protocol):
-    @property
-    def storageInfo(self) -> StorageInfoProtocol:
-        """
-        Returns storage information.
-
-        See [`StorageInfoProtocol`](protocols.md#limnd2.protocols.StorageInfoProtocol) for more information.
-        """
-        ...
-
     @property
     def items(self) -> dict[str, ResultItem]:
         """
@@ -81,11 +44,9 @@ class Nd2ReaderProtocol(Protocol):
         ...
 
     @property
-    def storageInfo(self) -> StorageInfoProtocol:
+    def store(self) -> Store:
         """
-        Returns storage information.
-
-        See [`StorageInfoProtocol`](#limnd2.protocols.StorageInfoProtocol) for more information.
+        Returns the backing store.
         """
         ...
 

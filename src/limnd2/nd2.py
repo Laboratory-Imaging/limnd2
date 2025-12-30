@@ -49,38 +49,8 @@ from .variant import decode_var
 
 if Nd2LoggerEnabled:
     import logging
-
     logger = logging.getLogger("limnd2")
 
-
-class StorageInfo:
-    def __init__(
-        self,
-        filename: str | None,
-        url: str | None,
-        size_on_disk: int,
-        last_modified: datetime.datetime,
-    ):
-        self._filename = filename
-        self._url = url
-        self._size_on_disk = size_on_disk
-        self._last_modified = last_modified
-
-    @property
-    def filename(self) -> str | None:
-        return self._filename
-
-    @property
-    def url(self) -> str | None:
-        return self._url
-
-    @property
-    def sizeOnDisk(self) -> int:
-        return self._size_on_disk
-
-    @property
-    def lastModified(self) -> datetime.datetime:
-        return self._last_modified
 
 
 class Nd2Reader:
@@ -156,53 +126,6 @@ class Nd2Reader:
 
         return datetime.datetime.fromtimestamp(mtime)
 
-    # DEPRECATED properties and methods, will be removed in future versions
-
-    @property
-    def filename(self) -> str | None:
-        warnings.warn(
-            "Nd2Reader.filename is deprecated; use Nd2Reader.storageInfo.filename instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.chunker.filename
-
-    @property
-    def url(self) -> str | None:
-        warnings.warn(
-            "Nd2Reader.url is deprecated; use Nd2Reader.storageInfo.url instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        filename = self.chunker.filename
-        if filename is None:
-            return None
-        return Path(filename).absolute().as_uri()
-
-    @property
-    def size_on_disk(self) -> int:
-        warnings.warn(
-            "Nd2Reader.size_on_disk is deprecated; use Nd2Reader.storageInfo.sizeOnDisk instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        try:
-            return Nd2Reader.fileSizeOnDisk(self.filename)
-        except ValueError or FileNotFoundError or PermissionError:
-            return self.chunker.size_on_disk
-
-    @property
-    def last_modified(self) -> datetime.datetime:
-        warnings.warn(
-            "Nd2Reader.last_modified is deprecated; use Nd2Reader.storageInfo.lastModified instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        try:
-            return Nd2Reader.fileLastModified(self.filename)
-        except ValueError or FileNotFoundError or PermissionError:
-            return self.chunker.last_modified
-
     # METHODS AND PROPERTIES IMPLEMENTING Nd2ReaderProtocol -> those should be documented in protocols.py
 
     @property
@@ -210,20 +133,8 @@ class Nd2Reader:
         return self.chunker.format_version
 
     @property
-    def storageInfo(self) -> StorageInfo:
-        try:
-            filename = self.chunker.filename
-            url = Path(filename).absolute().as_uri() if filename else None
-            size_on_disk = Nd2Reader.fileSizeOnDisk(filename)
-            last_modified = Nd2Reader.fileLastModified(filename)
-        except (ValueError, FileNotFoundError, PermissionError):
-            filename = getattr(self.chunker, "filename", None)
-            url = Path(filename).absolute().as_uri() if filename else None
-            size_on_disk = getattr(self.chunker, "size_on_disk", 0)
-            last_modified = getattr(
-                self.chunker, "last_modified", datetime.datetime.fromtimestamp(0)
-            )
-        return StorageInfo(filename, url, size_on_disk, last_modified)
+    def store(self) -> Store:
+        return self.chunker.store
 
     @functools.cached_property
     def is3d(self) -> bool:
@@ -482,7 +393,7 @@ class Nd2Reader:
 
         Each result potentially contains tabular results (tables, graphs, ...) and binary layers.
         """
-        filename = self.storageInfo.filename
+        filename = self.store.filename
         if filename is None:
             return {}
         return read_results_from_h5(filename.replace(".nd2", ".h5"))
@@ -741,7 +652,7 @@ class Nd2Reader:
                 f"Table name {table_name} not found in H5 {result_name}/{pane} ."
             )
 
-        filename = self.storageInfo.filename
+        filename = self.store.filename
         if filename is None:
             raise ValueError("Cannot read private table data, ND2 filename is None.")
 
@@ -790,10 +701,6 @@ class Nd2Writer:
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.finalize()
-
-    @property
-    def filename(self) -> str | None:
-        return self.chunker.filename
 
     @property
     def imageAttributes(self) -> ImageAttributes:

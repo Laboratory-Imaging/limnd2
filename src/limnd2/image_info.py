@@ -17,10 +17,10 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in reader.experiment if 0 < exp_level.count ]) if reader.experiment else ""
     path = ""
     filename = ""
-    if reader.storageInfo.filename:
-        path, filename = os.path.split(reader.storageInfo.filename)
-    elif reader.storageInfo.url:
-        path, filename = os.path.split(reader.storageInfo.url.rstrip("/"))
+    if reader.store.filename:
+        path, filename = os.path.split(reader.store.filename)
+    elif reader.store.uri:
+        path, filename = os.path.split(reader.store.uri.rstrip("/"))
     path += os.sep
 
     bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
@@ -28,10 +28,10 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
     calibration = f"{reader.pictureMetadata.dCalibration:.3f} µm/px" if reader.pictureMetadata.bCalibrated else "Uncalibrated"
 
-    mtime = f"{reader.chunker.last_modified.strftime('%x %X')}"
+    mtime = f"{reader.store.lastModified.strftime('%x %X')}"
     app_created = reader.appInfo.software
 
-    sizes = format_general_info_sizes(reader.chunker.size_on_disk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*reader.experiment.dims.get('z', 0) if reader.experiment is not None else 0)
+    sizes = format_general_info_sizes(reader.store.sizeOnDisk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*reader.experiment.dims.get('z', 0) if reader.experiment is not None else 0)
 
     return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
 
