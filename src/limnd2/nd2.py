@@ -31,7 +31,7 @@ from .experiment import (
     WellplateDesc,
     WellplateFrameInfo,
 )
-from .file import LimBinaryIOChunker
+from .file_modern import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
 from .results import (
