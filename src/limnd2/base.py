@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import abc, datetime, io, itertools, re, struct, typing, zlib
+import abc, datetime, io, itertools, mmap, re, struct, typing, zlib
 import numpy as np
 from typing import Any
 from .attributes import ImageAttributes, NumpyArrayLike
@@ -112,6 +112,168 @@ class UnexpectedCallError(Exception):
         self.chunk_name = name if isinstance(name, str) else name.decode('ascii')
         self.message = f"Unexpected call ({self.function_name}): {self.chunk_name}"
         super().__init__(self.message)
+
+class Store(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def isFile(self) -> bool:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def uri(self) -> str:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def sizeOnDisk(self) -> int:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def lastModified(self) -> datetime.datetime:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def filename(self) -> str|None:
+        pass
+
+    @abc.abstractmethod
+    def open(self, mode: str) -> None:
+        pass
+
+    @abc.abstractmethod
+    def close(self) -> None:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def fh(self) -> typing.BinaryIO|None:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def mem(self) -> bytes|None:
+        pass
+
+class FileStore(Store):
+    def __init__(self, path: Path|str) -> None:
+        assert isinstance(path, (Path, str)), f"argument 'path' expected to be 'Path|str' but was '{typeof(path).__name__}'"
+        self._path: Path = Path(path) if isinstance(path, str) else path
+        self._fh: typing.BinaryIO|None = None
+        self._mmap: mmap.mmap|None = None
+
+    @property
+    def isFile(self) -> bool:
+        return True
+
+    @property
+    def uri(self) -> str:
+        return self._path.as_uri()
+
+    @property
+    def sizeOnDisk(self) -> int:
+        return self._path.stat().st_size
+
+    @property
+    def lastModified(self) -> datetime.datetime:
+        return datetime.datetime.fromtimestamp(self._path.stat().st_mtime)
+
+    @property
+    def filename(self) -> str|None:
+        return self._path.as_posix()
+
+    def open(self, mode: str) -> None:
+        assert mode in ("rb", "wb", "rb+"), f"argument 'mode' expected to be one of ('rb', 'wb', 'rb+') but was '{mode}'"
+        assert self._fh is None, f"file is already open"
+        self._fh = typing.cast(typing.BinaryIO, open(self._path, mode))
+        if self._fh and mode == "rb":
+            assert self._mmap is None, f"file is already mapped into memory"
+            self._mmap = mmap.mmap(self._fh.fileno(), 0, access=mmap.ACCESS_READ)
+
+    def close(self) -> None:
+        if self._mmap is not None:
+            self._mmap.close()
+        if self._fh is not None:
+            self._fh.close()
+
+    @property
+    def fh(self) -> typing.BinaryIO|None:
+        return self._fh
+
+    @property
+    def mem(self) -> bytes|None:
+        return self._mmap # type: ignore
+
+class _BytesView:
+    """A tiny wrapper around memoryview where indexing/slicing returns bytes copies."""
+    __slots__ = ("_mv",)
+
+    def __init__(self, obj):
+        self._mv = obj if isinstance(obj, memoryview) else memoryview(obj)
+
+    def __len__(self):
+        return len(self._mv)
+
+    def __getitem__(self, key):
+        # memoryview indexing returns int; slicing returns memoryview
+        v = self._mv[key]
+        if isinstance(v, memoryview):
+            return v.tobytes()     # slice -> bytes copy
+        return v                   # single index -> int (same as memoryview)
+
+    def __iter__(self):
+        return iter(self._mv)      # yields ints, like memoryview
+
+    def tobytes(self):
+        return self._mv.tobytes()
+
+    def __bytes__(self):
+        return self._mv.tobytes()
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self._mv!r})"
+
+class MemoryStore(Store):
+    def __init__(self, mv, *, uri: str|None = None, lastModified: datetime.datetime|None = None) -> None:
+        self._mem: _BytesView = _BytesView(mv)
+        self._uri = f"memory://{id(self._mem._mv):#x}" if uri is None else uri
+        self._lastModified = datetime.datetime.now() if lastModified is None else lastModified
+
+    @property
+    def isFile(self) -> bool:
+        return False
+
+    @property
+    def uri(self) -> str:
+        return self._uri
+
+    @property
+    def sizeOnDisk(self) -> int:
+        return len(self._mem)
+
+    @property
+    def lastModified(self) -> datetime.datetime:
+        return self._lastModified
+
+    @property
+    def filename(self) -> str|None:
+        return None
+
+    def open(self, mode: str) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def fh(self) -> typing.BinaryIO|None:
+        return None
+
+    @property
+    def mem(self) -> bytes|None:
+        return self._mem # type: ignore
 
 class BaseChunker(abc.ABC):
     def __init__(self,

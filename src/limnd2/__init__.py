@@ -10,6 +10,7 @@ __all__ = [
     "frameExport", "seriesExport", "metadataAsJSON",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX", "generalImageInfo",
     "Nd2Reader", "Nd2Writer",
+    "ND2File",
     "PictureMetadata",
     "MetadataFactory",
     "Nd2WriterProtocol", "Nd2ReaderProtocol",
@@ -26,6 +27,7 @@ from .experiment_factory import ExperimentFactory
 from .export import frameExport, seriesExport, metadataAsJSON
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX, generalImageInfo
 from .nd2 import Nd2Reader, Nd2Writer
+from .nd2file import ND2File
 from .metadata import PictureMetadata
 from .metadata_factory import MetadataFactory
 from .protocols import Nd2WriterProtocol, Nd2ReaderProtocol
