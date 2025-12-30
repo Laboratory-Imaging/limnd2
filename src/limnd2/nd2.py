@@ -367,7 +367,10 @@ class Nd2Reader:
         assert isinstance(down_size, int) and 0 <= down_size, "down_size must be non-negative integer"
         return (
             self._chunker.image(seq_index, rect) if 0 == down_size else
-            self._chunker.downsampledImage(seq_index, down_size, rect)
+            self._chunker.downsampledImage(
+                seq_index,
+                self.imageAttributes.lowerPowSizeList[down_size-1],
+                rect)
         )
 
     def binaryRasterData(
@@ -383,7 +386,11 @@ class Nd2Reader:
         assert isinstance(down_size, int) and 0 <= down_size, "down_size must be non-negative integer"
         return (
             self._chunker.binaryRasterData(bin_id, seq_index, rect) if 0 == down_size else
-            self._chunker.downsampledBinaryRasterData(bin_id, seq_index, down_size, rect)
+            self._chunker.downsampledBinaryRasterData(
+                bin_id,
+                seq_index,
+                self.imageAttributes.lowerPowSizeList[down_size-1],
+                rect)
         )
 
     @functools.cached_property

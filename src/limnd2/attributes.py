@@ -257,6 +257,14 @@ class ImageAttributes(LVSerializable):
             ret.append(size)
         return ret
 
+    def downSizeFromPowSizeBase(self, req_pow: int) -> int:
+        ret, p = 0, _full_res_base_pow2(self.uiWidth, self.uiHeight)
+        while req_pow < p:
+            ret, p = ret + 1, p - 1
+        return ret
+
+
+
     def makeDownsampledFromPowBase(self, powBase: int) -> ImageAttributes:
         """
         Returns ImageAttributes for downsampled image using power of 2 exponent.

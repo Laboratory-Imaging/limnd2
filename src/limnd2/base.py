@@ -190,7 +190,7 @@ class FileStore(Store):
 
     @property
     def filename(self) -> str|None:
-        return self._path.as_posix()
+        return str(self._path)
 
     def remove(self, missing_ok: bool = True) -> None:
         self._path.unlink(missing_ok)
