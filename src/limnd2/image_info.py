@@ -44,7 +44,7 @@ def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = No
 
 def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, Any]:
     ret = {}
-    ret["generalInfo"] = file_object.generalImageInfo
+    ret["generalInfo"] = generalImageInfo(file_object)
     ret["imageTextInfo"] = file_object.imageTextInfo.to_dict() if file_object.imageTextInfo is not None else {}
 
     exp_data = []

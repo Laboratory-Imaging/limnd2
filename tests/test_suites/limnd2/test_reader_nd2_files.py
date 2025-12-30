@@ -15,7 +15,7 @@ def test_general_info_and_basic_open(nd2_path: Path):
         assert nd2.storageInfo.sizeOnDisk > 0
         _ = nd2.storageInfo.lastModified
 
-        gi = nd2.generalImageInfo
+        gi = limnd2.generalImageInfo(nd2)
         assert isinstance(gi, dict)
         assert "dimension" in gi
 
