@@ -15,7 +15,7 @@ from limnd2.base import (
     ND2_CHUNK_NAME_AcqFramesCache,
     BaseChunker,
 )
-from limnd2.binary import BinaryRasterMetadataItem, BinaryRasterMetadata
+from limnd2.binary import BinaryRasterMetadataItem, BinaryRasterMetadata, BinaryItemColorMode
 
 
 def test_chunker_properties_and_chunk_access(nd2_path: Path):
@@ -86,7 +86,7 @@ def test_set_downsampled_image_write_and_read(tmp_path: Path, nd2_base_dir: Path
             pytest.skip("lowerPowSizeList is empty for target file")
         down = lower[0]
         dattrs = w.chunker.imageAttributes.makeDownsampled(down)
-        dimg = np.random.randint(0, 256, dattrs.shape, dtype=dattrs.dtype)
+        dimg = np.random.randint(0, 256, dattrs.shape, dtype=dattrs.dtype) # type: ignore
         w.chunker.setDownsampledImage(0, down, dimg)
 
     # Read back and compare
@@ -114,7 +114,7 @@ def test_downsampledImage_reads_chunk_and_fallback(tmp_path: Path, nd2_base_dir:
             pytest.skip("lowerPowSizeList is empty for target file")
         down = lower[0]
         dattrs = w.chunker.imageAttributes.makeDownsampled(down)
-        dimg = np.random.randint(0, 256, dattrs.shape, dtype=dattrs.dtype)
+        dimg = np.random.randint(0, 256, dattrs.shape, dtype=dattrs.dtype) # type: ignore
         w.chunker.setDownsampledImage(0, down, dimg)
 
     with limnd2.Nd2Reader(out) as r:
@@ -182,7 +182,7 @@ def test_binary_raster_downsample_workflow(tmp_path: Path):
             binCompOrder=0,
             binState=0,
             binColor=0,
-            binColorMode=0,
+            binColorMode=BinaryItemColorMode.eBaseBinObjColors,
         )
     ])
 
@@ -205,7 +205,7 @@ def test_binary_raster_downsample_workflow(tmp_path: Path):
         w.chunker.generateAndSetDownsampledBinaryRasterData(binid, 0, base_bin)
         dread = w.chunker.readDownsampledBinaryRasterData(binid, 0, down)
         assert isinstance(dread, np.ndarray)
-        exp_meta = brm.findItemById(binid).makeDownsampled(down)
+        exp_meta = brm.findItemById(binid).makeDownsampled(down) # type: ignore
         assert dread.shape == exp_meta.shape
 
     with limnd2.Nd2Reader(out) as r:
