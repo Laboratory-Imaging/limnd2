@@ -10,7 +10,6 @@ from .experiment import ExperimentLevel, ExperimentLoopType, ExperimentSpectralL
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo
 
-FileLikeObject: typing.TypeAlias = str | Path | typing.BinaryIO | memoryview
 ChunkMap: typing.TypeAlias = typing.Mapping[bytes, tuple]
 
 Nd2LoggerEnabled = False
@@ -140,6 +139,10 @@ class Store(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def remove(self, missing_ok: bool = True) -> None:
+        pass
+
+    @abc.abstractmethod
     def open(self, mode: str) -> None:
         pass
 
@@ -149,7 +152,12 @@ class Store(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def io(self) -> typing.BinaryIO|None:
+    def isOpen(self) -> bool:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def io(self) -> typing.BinaryIO:
         pass
 
     @property
@@ -159,14 +167,14 @@ class Store(abc.ABC):
 
 class FileStore(Store):
     def __init__(self, path: Path|str) -> None:
-        assert isinstance(path, (Path, str)), f"argument 'path' expected to be 'Path|str' but was '{typeof(path).__name__}'"
+        assert isinstance(path, (Path, str)), f"argument 'path' expected to be 'Path|str' but was '{type(path).__name__}'"
         self._path: Path = Path(path) if isinstance(path, str) else path
         self._fh: typing.BinaryIO|None = None
         self._mmap: mmap.mmap|None = None
 
     @property
     def isFile(self) -> bool:
-        return True
+        return self._path.exists()
 
     @property
     def uri(self) -> str:
@@ -184,6 +192,9 @@ class FileStore(Store):
     def filename(self) -> str|None:
         return self._path.as_posix()
 
+    def remove(self, missing_ok: bool = True) -> None:
+        self._path.unlink(missing_ok)
+
     def open(self, mode: str) -> None:
         assert mode in ("rb", "wb", "rb+"), f"argument 'mode' expected to be one of ('rb', 'wb', 'rb+') but was '{mode}'"
         assert self._fh is None, f"file is already open"
@@ -199,8 +210,12 @@ class FileStore(Store):
             self._fh.close()
 
     @property
-    def io(self) -> typing.BinaryIO|None:
-        return self._fh
+    def isOpen(self) -> bool:
+        return self._fh is not None
+
+    @property
+    def io(self) -> typing.BinaryIO:
+        return self._fh # type: ignore
 
     @property
     def mem(self) -> bytes|None:
@@ -239,6 +254,10 @@ class _BytesView:
     @property
     def closed(self) -> bool:
         return False
+
+    @property
+    def mode(self) -> str:
+        return "rb"
 
     def readable(self) -> bool:
         return True
@@ -295,6 +314,9 @@ class MemoryStore(Store):
     def filename(self) -> str|None:
         return None
 
+    def remove(self, missing_ok: bool = True) -> None:
+        pass
+
     def open(self, mode: str) -> None:
         pass
 
@@ -302,12 +324,18 @@ class MemoryStore(Store):
         pass
 
     @property
-    def io(self) -> typing.BinaryIO|None:
+    def isOpen(self) -> bool:
+        return True
+
+    @property
+    def io(self) -> typing.BinaryIO:
         return self._memio # type: ignore
 
     @property
     def mem(self) -> bytes|None:
         return self._memio # type: ignore
+
+FileLikeObject: typing.TypeAlias = str | Path | Store | typing.BinaryIO | memoryview
 
 class BaseChunker(abc.ABC):
     def __init__(self,

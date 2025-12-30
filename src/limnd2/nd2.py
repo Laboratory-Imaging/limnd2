@@ -17,6 +17,9 @@ from .base import (
     ImageAttributes,
     Nd2LoggerEnabled,
     NumpyArrayLike,
+    Store,
+    FileStore,
+    MemoryStore
 )
 from .custom_data import (
     CustomDescription,
@@ -99,7 +102,7 @@ class Nd2Reader:
         """
         Parameters
         -----------
-        file : str | Path | int | typing.BinaryIO
+        file : str | Path | Store | typing.BinaryIO | memoryview
             Filename of the ND2 file.
         chunker_kwargs
             Additional parameters for chunker.
@@ -772,7 +775,7 @@ class Nd2Writer:
         """
         Parameters
         -----------
-        file : str | Path | int | typing.BinaryIO
+        file : str | Path | Store | typing.BinaryIO | memoryview
             Filename of the ND2 file.
         chunker_kwargs
             Additional parameters for chunker.
@@ -841,56 +844,41 @@ def _create_chunker(
     *,
     readonly: bool = True,
     append: bool | None = None,
+    uri: str | None = None,
+    lastModified: datetime.datetime | None = None,
     chunker_kwargs: dict = {},
 ) -> BaseChunker:
-    if isinstance(file, (str, Path)):
+
+    store: Store|None = None
+    if isinstance(file, Store):
+        store = file
+
+    elif isinstance(file, (str, Path)):
+        store = FileStore(file)
+
+    elif isinstance(file, memoryview):
+        assert readonly, "Writing memory store is not supported."
+        store = MemoryStore(file, uri=uri, lastModified=lastModified)
+
+    else:
+        raise ValueError(
+            f"argument 'file' expected to be 'str|Path|Store|typing.BinaryIO|memoryview' but was '{type(file).__name__}'"
+        )
+
+    # if the Store isn't open do it now
+    if not store.isOpen:
         if readonly:
             mode = "rb"
         else:
             if append is None:
-                append = os.path.isfile(file)
+                append = store.isFile
             mode = "rb+" if append else "wb"
+        store.open(mode)
 
-        # if mode == "rb+":
-        #    raise FileExistsError("This file already exists, can not open for writing.")
+    if is_legacy_jpeg2000_source(store):
+        if readonly:
+            return LimJpeg2000Chunker(store, **chunker_kwargs)
+        raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
 
-        fh = open(file, mode)
-        chunker_kwargs.update(dict(filename=str(file)))
-        if is_legacy_jpeg2000_source(fh):
-            if readonly:
-                fh.seek(0)
-                return LimJpeg2000Chunker(fh, **chunker_kwargs)
-            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
-        fh.seek(0)
-        return LimBinaryIOChunker(fh, **chunker_kwargs)
+    return LimBinaryIOChunker(store, **chunker_kwargs)
 
-    elif isinstance(file, memoryview):
-        if is_legacy_jpeg2000_source(file):
-            if readonly:
-                return LimJpeg2000Chunker(file, **chunker_kwargs)
-            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
-        return LimBinaryIOChunker(file, **chunker_kwargs)
-
-    elif (
-        (hasattr(file, "read") or hasattr(file, "write"))
-        and hasattr(file, "seek")
-        and hasattr(file, "tell")
-        and hasattr(file, "mode")
-    ):
-        if readonly and "rb" != file.mode:
-            raise ValueError('File handle passed to LimNd2Reader must have "rb" mode')
-        elif not readonly and file.mode not in ("rb+", "wb"):
-            raise ValueError(
-                'File handle passed to LimNd2Writer must have "rb+" or "wb" mode'
-            )
-        if is_legacy_jpeg2000_source(file):
-            if readonly:
-                file.seek(0)
-                return LimJpeg2000Chunker(file, **chunker_kwargs)
-            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
-        file.seek(0)
-        return LimBinaryIOChunker(file, **chunker_kwargs)
-
-    raise ValueError(
-        "Invalid chunker source, must be filename, file handle or memoryview."
-    )

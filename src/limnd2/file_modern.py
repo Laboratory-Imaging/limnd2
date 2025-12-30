@@ -1,4 +1,4 @@
-import collections, datetime, mmap, os, struct, typing
+import collections, datetime, mmap, os, struct, threading, typing
 #from contextlib import contextmanager
 from .base import *
 from .attributes import ImageAttributesCompression
@@ -30,50 +30,36 @@ def _ceil_align(x: int, alignment: int) -> int:
     return (x + (alignment - 1)) // alignment * alignment
 
 class LimBinaryIOChunker(BaseChunker):
-    def __init__(self, fh_or_memory: typing.BinaryIO|memoryview,
+    def __init__(self, store: Store,
                  *,
-                 nommap: bool = False,
-                 filename: str|None = None,
-                 last_modified: datetime.datetime|str|None = None,
                  with_image_attributes: ImageAttributes|None = None,
                  with_binary_raster_metadata: BinaryRasterMetadata|None = None,
                  **kwargs) -> None:
+
+        assert isinstance(store, Store), f"argument 'store' expected to be 'Store' but was '{type(file).__name__}'"
+        assert store.isOpen is not None, f"argument 'store' expected to be opened'"
+
         super().__init__(with_image_attributes=with_image_attributes, with_binary_raster_metadata=with_binary_raster_metadata)
-        self._filename: str|None = filename
-        self._last_modified: datetime.datetime|None = datetime.datetime.fromisoformat(last_modified) if isinstance(last_modified, str) else last_modified
-        self._fh: typing.BinaryIO|None = None if isinstance(fh_or_memory, memoryview) else fh_or_memory
-        self._mmap: mmap.mmap|None = None
-        self._memory: memoryview|None = None
+
+        self._store: Store = store
+        self._lock = threading.RLock()
         self._version: tuple[int, int]
         self._chunkmap: collections.OrderedDict|None = None
         self._chunkmap_is_dirty: bool = False
         self._original_chunkmap_offset: int = 0
         self._original_chunkmap_chunk: bytes|None = None
         if self.is_readonly:
-            if Nd2LoggerEnabled:
-                logger.info(f"Opening {self._filename} Chunker for READING.")
-            # 1. check if it is memoryview
-            if self._fh is None:
-                self._memory = typing.cast(memoryview, fh_or_memory)
-            # 2. try mmap the file for faster access
-            elif not nommap:
-                try:
-                    self._mmap = mmap.mmap(self._fh.fileno(), 0, access=mmap.ACCESS_READ)
-                except Exception as e:
-                    if Nd2LoggerEnabled:
-                        logger.debug(f"Debug: could not mmap file {e}")
-                    self._mmap = None
-            # 3. check the header and version
+            # 1. check the header and version
             ver = self.read_file_header()
             if ver is None:
                 raise RuntimeError("Not a valid ND2 file format")
             self._version = ver
-            # 3. read the chunk map
+            # 2. read the chunk map
             self._chunkmap = self._read_chunkmap()
         else:
             if self.is_appending:
                 if Nd2LoggerEnabled:
-                    logger.info(f"Opening {self._filename} Chunker for APPENDING.")
+                    logger.info(f"Opening {self._store.filename} Chunker for APPENDING.")
                 # 1. check the header and version
                 ver = self.read_file_header()
                 if ver is None:
@@ -84,7 +70,7 @@ class LimBinaryIOChunker(BaseChunker):
                 # 3. keep the file position at the end of the map as in NIS
             else: # truncating
                 if Nd2LoggerEnabled:
-                    logger.info(f"Opening {self._filename} Chunker for WRITING.")
+                    logger.info(f"Opening {self._store.filename} Chunker for WRITING.")
                 # 1. set the header and version
                 self._version = (3, 0)
                 self.write_file_header(self._version)
@@ -93,24 +79,15 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def filename(self) -> str|None:
-        return None if self._filename is None else os.path.abspath(self._filename)
+        return self._store.filename
 
     @property
     def size_on_disk(self) -> int:
-        return self._file_size()
+        return self._store.sizeOnDisk
 
     @property
     def last_modified(self) -> datetime.datetime:
-        if self._last_modified:
-            return self._last_modified
-
-        if self._filename:
-            try:
-                return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime)
-            except FileNotFoundError:
-                pass
-
-        return datetime.datetime.now()
+        return self._store.lastModified
 
     @property
     def format_version(self) -> tuple[int, int]:
@@ -122,53 +99,28 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def is_readonly(self):
-        return (self._fh is None) or ("rb" == self._fh.mode)
+        return self._store.io.mode == "rb"
 
     @property
     def is_appending(self):
-        return (self._fh is not None) and ("rb+" == self._fh.mode)
-
-    def _file_size(self) -> int:
-        if self._mmap is not None:
-            return self._mmap.size()
-        elif self._memory is not None:
-            return self._memory.nbytes
-        elif self._fh is not None:
-            curr = self._fh.tell()
-            size = self._fh.seek(0, os.SEEK_END)
-            self._fh.seek(curr)
-            return size
-        raise RuntimeError("No valid data source available")
-
-    def _currpos(self) -> int:
-        if self._mmap is not None:
-            return self._mmap.tell()
-        elif self._memory is not None:
-            return 0
-        elif self._fh is not None:
-            return self._fh.tell()
-        raise RuntimeError("No valid data source available")
+        return self._store.io.mode == "rb+"
 
     def _get_buffer_and_offset(self, start : int, len : int) -> tuple[typing.Union[bytes, mmap.mmap], int]:
-        if self._mmap:
-            return self._mmap, start
-        elif self._memory:
-            return self._memory[start:start+len].tobytes(), 0
-        elif self._fh:
-            self._fh.seek(start)
-            return self._fh.read(len), 0
-        raise RuntimeError("No valid data source available")
+        if self._store.mem:
+            return self._store.mem, start
+        else:
+            with self._lock:
+                self._store.io.seek(start)
+                return self._store.io.read(len), 0
 
 
     def _read_struct_at(self, s : struct.Struct, pos : int) -> bytes:
-        if self._mmap:
-            return self._mmap[pos:pos+s.size]
-        elif self._memory:
-            return self._memory[pos:pos+s.size].tobytes()
-        elif self._fh:
-            self._fh.seek(pos)
-            return self._fh.read(s.size)
-        raise RuntimeError("No valid data source available")
+        if self._store.mem:
+            return self._store.mem[pos:pos+s.size]
+        else:
+            with self._lock:
+                self._store.io.seek(pos)
+                return self._store.io.read(s.size)
 
     def _read_chunk(self, pos: int) -> bytes:
         magic, name_length, data_length = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, pos))
@@ -184,35 +136,36 @@ class LimBinaryIOChunker(BaseChunker):
         return self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
 
     def _write_chunk(self, pos: int, name: bytes, data1: bytes|bytearray|None, data2: bytes|bytearray|None = None) -> tuple[int, int]:
-        if self._fh is None:
-            raise PermissionError("Writable file handle required for _write_chunk (not mmap/memory).")
-        name_len = len(name)
-        data1_len = len(data1) if data1 is not None else 0
-        data2_len = len(data2) if data2 is not None else 0
-        header_len = STRUCT_CHUNK_HEADER.size + name_len + ND2_CHUNK_NAME_RESERVE
-        header_and_data1_len = header_len + data1_len
-        header_and_data1_4k_len = _ceil_align(header_and_data1_len, ND2_CHUNK_ALIGNMENT)
-        blank_len = header_and_data1_4k_len - header_and_data1_len + ND2_CHUNK_NAME_RESERVE
-        if 0 < data1_len and 0 < blank_len:
-            name_len += blank_len
-        # writing 1st part: Header, name, data1
-        data_written_len = 0
-        data_written_len += self._fh.write(STRUCT_CHUNK_HEADER.pack(ND2_CHUNK_MAGIC, name_len, data1_len + data2_len))
-        data_written_len += self._fh.write(name)
-        if 0 < data1_len and 0 < blank_len:
-            data_written_len += self._fh.write(b'\0' * blank_len)
-        if 0 < data1_len:
-            data_written_len += self._fh.write(typing.cast(bytes, data1))
-        data_written_4k_len = _ceil_align(data_written_len, ND2_CHUNK_ALIGNMENT)
-        if data_written_len < data_written_4k_len:
-            self._fh.write(b'\0' * (data_written_4k_len - data_written_len))
-        # writing 2nd part: data
-        if data2_len:
-            self._fh.write(typing.cast(bytes, data2))
-            data2_4k_len = _ceil_align(data2_len, ND2_CHUNK_ALIGNMENT)
-            if data2_len < data2_4k_len:
-                self._fh.write(b'\0' * (data2_4k_len - data2_len))
-        return (pos, data1_len + data2_len)
+        if not self._store.io.writable():
+            raise PermissionError("Writable file handle required for _write_chunk.")
+        with self._lock:
+            name_len = len(name)
+            data1_len = len(data1) if data1 is not None else 0
+            data2_len = len(data2) if data2 is not None else 0
+            header_len = STRUCT_CHUNK_HEADER.size + name_len + ND2_CHUNK_NAME_RESERVE
+            header_and_data1_len = header_len + data1_len
+            header_and_data1_4k_len = _ceil_align(header_and_data1_len, ND2_CHUNK_ALIGNMENT)
+            blank_len = header_and_data1_4k_len - header_and_data1_len + ND2_CHUNK_NAME_RESERVE
+            if 0 < data1_len and 0 < blank_len:
+                name_len += blank_len
+            # writing 1st part: Header, name, data1
+            data_written_len = 0
+            data_written_len += self._store.io.write(STRUCT_CHUNK_HEADER.pack(ND2_CHUNK_MAGIC, name_len, data1_len + data2_len))
+            data_written_len += self._store.io.write(name)
+            if 0 < data1_len and 0 < blank_len:
+                data_written_len += self._store.io.write(b'\0' * blank_len)
+            if 0 < data1_len:
+                data_written_len += self._store.io.write(typing.cast(bytes, data1))
+            data_written_4k_len = _ceil_align(data_written_len, ND2_CHUNK_ALIGNMENT)
+            if data_written_len < data_written_4k_len:
+                self._store.io.write(b'\0' * (data_written_4k_len - data_written_len))
+            # writing 2nd part: data
+            if data2_len:
+                self._store.io.write(typing.cast(bytes, data2))
+                data2_4k_len = _ceil_align(data2_len, ND2_CHUNK_ALIGNMENT)
+                if data2_len < data2_4k_len:
+                    self._store.io.write(b'\0' * (data2_4k_len - data2_len))
+            return (pos, data1_len + data2_len)
 
     def read_file_header(self) -> tuple[int, int]|None:
         magic, name_length, data_length, name, data = STRUCT_FILE_HEADER.unpack(self._read_struct_at(STRUCT_FILE_HEADER, 0))
@@ -230,23 +183,24 @@ class LimBinaryIOChunker(BaseChunker):
         return (int(chr(data[3])), int(chr(data[5])))
 
     def write_file_header(self, version: tuple[int, int]) -> None:
-        if self._fh is None:
-            raise PermissionError("Writable file handle required for _write_chunk (not mmap/memory).")
-        self._fh.seek(0)
-        data = f'Ver{version[0]}.{version[1]}'.encode('ascii')
-        chunk_data = STRUCT_FILE_HEADER.pack(ND2_CHUNK_MAGIC, 32, 64, ND2_FILE_SIGNATURE, data + (b'\0' * (64 - len(data))))
-        self._fh.write(chunk_data)
-        chunk_data_len = len(chunk_data)
-        chunk_data_4k_len = _ceil_align(chunk_data_len, ND2_CHUNK_ALIGNMENT)
-        if chunk_data_len < chunk_data_4k_len:
-            self._fh.write(b'\0' * (chunk_data_4k_len - chunk_data_len))
-        if Nd2LoggerEnabled:
-            aname = ND2_FILE_SIGNATURE.decode('ascii')
-            adata = data.decode('ascii')
-            logger.debug(f"HEADER written: magic={ND2_CHUNK_MAGIC:08x}, name={aname}, data={adata}")
+        if not self._store.io.writable():
+            raise PermissionError("Writable file handle required for _write_chunk.")
+        with self._lock:
+            self._store.io.seek(0)
+            data = f'Ver{version[0]}.{version[1]}'.encode('ascii')
+            chunk_data = STRUCT_FILE_HEADER.pack(ND2_CHUNK_MAGIC, 32, 64, ND2_FILE_SIGNATURE, data + (b'\0' * (64 - len(data))))
+            self._store.io.write(chunk_data)
+            chunk_data_len = len(chunk_data)
+            chunk_data_4k_len = _ceil_align(chunk_data_len, ND2_CHUNK_ALIGNMENT)
+            if chunk_data_len < chunk_data_4k_len:
+                self._store.io.write(b'\0' * (chunk_data_4k_len - chunk_data_len))
+            if Nd2LoggerEnabled:
+                aname = ND2_FILE_SIGNATURE.decode('ascii')
+                adata = data.decode('ascii')
+                logger.debug(f"HEADER written: magic={ND2_CHUNK_MAGIC:08x}, name={aname}, data={adata}")
 
     def _read_chunkmap(self) -> collections.OrderedDict:
-        sig, self._original_chunkmap_offset = STRUCT_SIG_CHUNKMAP_LOC.unpack(self._read_struct_at(STRUCT_SIG_CHUNKMAP_LOC, self._file_size() - 40))
+        sig, self._original_chunkmap_offset = STRUCT_SIG_CHUNKMAP_LOC.unpack(self._read_struct_at(STRUCT_SIG_CHUNKMAP_LOC, self._store.sizeOnDisk - 40))
         if sig != ND2_CHUNKMAP_SIGNATURE:
             raise UnsupportedChunkmapError(self._version, sig)
         self._original_chunkmap_chunk = self._read_chunk(self._original_chunkmap_offset)
@@ -327,8 +281,9 @@ class LimBinaryIOChunker(BaseChunker):
             raise UnexpectedCallError("setChunk", name)
         if isinstance(data, memoryview):
             data = data.tobytes()
-        self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
-        self._set_metadata(name, data)
+        with self._lock:
+            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
+            self._set_metadata(name, data)
 
     def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
@@ -388,87 +343,8 @@ class LimBinaryIOChunker(BaseChunker):
             np.copyto(tmp, target_array)
         else:
             np.copyto(tmp, image)
-        self._update_chunkmap(name, self._write_chunk(self._currpos(), name, struct.pack("d", acqtime), buffer))
-
-    '''
-    @contextmanager
-    def imageWriteArray(self, seqindex: int, *, acqtime: float = -1.0):
-        """
-        EXPERIMENTAL method to write an image into nd2 file directly to a file without an
-        intermediate numpy array object (useful for speed and for huge images).
-
-
-
-        Context manager that exposes a writable ndarray backed by the ND2 chunk.
-
-        Usage:
-            with chunker.imageWriteArray(0) as arr:
-                tifffile.TiffReader(...).asarray(out=arr)
-        """
-        if self.is_readonly or self._fh is None or not hasattr(self._fh, "name"):
-            raise PermissionError("Writable on-disk file handle required for streaming image writes.")
-
-        attrs = self.imageAttributes
-        data2_len = attrs.imageBytes
-        if data2_len <= 0:
-            raise ValueError("ImageAttributes.imageBytes must be positive.")
-
-        name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
-        if isinstance(name, str):
-            name = name.encode("ascii")
-
-        timestamp_bytes = struct.pack("d", acqtime)
-        data1_len = len(timestamp_bytes)
-
-        pos = self._currpos()
-        name_len = len(name)
-        header_len = STRUCT_CHUNK_HEADER.size + name_len + ND2_CHUNK_NAME_RESERVE
-        header_and_data1_len = header_len + data1_len
-        header_and_data1_4k_len = _ceil_align(header_and_data1_len, ND2_CHUNK_ALIGNMENT)
-        blank_len = header_and_data1_4k_len - header_and_data1_len + ND2_CHUNK_NAME_RESERVE
-        actual_name_len = name_len
-        if 0 < data1_len and 0 < blank_len:
-            actual_name_len += blank_len
-
-        total_data_len = data1_len + data2_len
-        data_written_len = 0
-        data_written_len += self._fh.write(STRUCT_CHUNK_HEADER.pack(ND2_CHUNK_MAGIC, actual_name_len, total_data_len))
-        data_written_len += self._fh.write(name)
-        if 0 < data1_len and 0 < blank_len:
-            data_written_len += self._fh.write(b'\0' * blank_len)
-        data_written_len += self._fh.write(timestamp_bytes)
-        data_written_4k_len = _ceil_align(data_written_len, ND2_CHUNK_ALIGNMENT)
-        if data_written_len < data_written_4k_len:
-            pad_len = data_written_4k_len - data_written_len
-            self._fh.write(b'\0' * pad_len)
-
-        data_start = self._fh.tell()
-        data2_4k_len = _ceil_align(data2_len, ND2_CHUNK_ALIGNMENT)
-        end_pos = data_start + data2_4k_len
-        self._fh.seek(end_pos)
-        self._fh.truncate(end_pos)
-        self._fh.seek(data_start)
-
-        array = np.memmap(self._fh.name, dtype=attrs.dtype, mode="r+", offset=data_start, shape=attrs.shape)
-        def _close_memmap(arr: np.memmap) -> None:
-            mmap_obj = getattr(arr, "_mmap", None)
-            if mmap_obj is not None:
-                mmap_obj.close()
-
-        try:
-            yield array
-        except Exception:
-            array.flush()
-            _close_memmap(array)
-            self._fh.truncate(pos)
-            self._fh.seek(pos)
-            raise
-        else:
-            array.flush()
-            _close_memmap(array)
-            self._fh.seek(end_pos)
-            self._update_chunkmap(name, (pos, total_data_len))
-    '''
+        with self._lock:
+            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, struct.pack("d", acqtime), buffer))
 
     def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
@@ -505,7 +381,8 @@ class LimBinaryIOChunker(BaseChunker):
             strides=attrs.strides
         )
         np.copyto(tmp, image)
-        self._update_chunkmap(name, self._write_chunk(self._currpos(), name, buffer))
+        with self._lock:
+            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, buffer))
 
     def readBinaryRleData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         binmeta = self.binaryRleMetadata.findItemById(binid)
@@ -598,7 +475,8 @@ class LimBinaryIOChunker(BaseChunker):
                 )
                 tile[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start] = binimage[y_slice, x_slice]
                 data = zlib.compress(buffer, binmeta.binCompressionLevel)
-                self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
+                with self._lock:
+                    self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
 
     def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         if self.binaryRasterMetadata is None:
@@ -658,45 +536,42 @@ class LimBinaryIOChunker(BaseChunker):
                 )
                 tile[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start] = binimage[y_slice, x_slice]
                 data = zlib.compress(buffer, binmeta.binCompressionLevel)
-                self._update_chunkmap(name, self._write_chunk(self._currpos(), name, data))
+                with self._lock:
+                    self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
 
 
     def finalize(self) -> None:
         if Nd2LoggerEnabled:
-            logger.info(f"Finalizing {self._filename}")
-        if not self.is_readonly and self._chunkmap_is_dirty and self._chunkmap is not None and self._fh is not None:
-            pos = self._currpos()
-            data = self._write_chunkmap(pos, self._chunkmap)
-            self._write_chunk(pos, ND2_FILEMAP_SIGNATURE, data)
-            if Nd2LoggerEnabled:
-                logger.debug(f"CHUNKMAP written: itemcount={len(self._chunkmap)}")
-            self._chunkmap_is_dirty = False
-            self._fh.truncate()
-        if self._mmap is not None:
-            self._mmap.close()
-        if self._fh:
-            self._fh.close()
+            logger.info(f"Finalizing {self._store.filename}")
+        with self._lock:
+            if not self.is_readonly and self._chunkmap_is_dirty and self._chunkmap is not None:
+                data = self._write_chunkmap(self._store.io.tell(), self._chunkmap)
+                self._write_chunk(self._store.io.tell(), ND2_FILEMAP_SIGNATURE, data)
+                if Nd2LoggerEnabled:
+                    logger.debug(f"CHUNKMAP written: itemcount={len(self._chunkmap)}")
+                self._chunkmap_is_dirty = False
+                self._store.io.truncate()
+            self._store.close()
 
     def rollback(self) -> None:
         if Nd2LoggerEnabled:
-            logger.info(f"Rolling back {self._filename}")
-        if self.is_readonly or self._fh is None:
+            logger.info(f"Rolling back {self._store.filename}")
+        if self.is_readonly:
             return
-        if 0 == self._original_chunkmap_offset:
-            fname = self._fh.name
-            self._fh.close()
+        with self._lock:
+            if 0 == self._original_chunkmap_offset:
+                self._store.close()
+                if Nd2LoggerEnabled:
+                    logger.debug(f"Deleting {self._store.filename}")
+                self._store.remove()
+                return
+            self._store.io.seek(self._original_chunkmap_offset)
+            self._write_chunk(self._store.io.tell(), ND2_FILEMAP_SIGNATURE, self._original_chunkmap_chunk)
             if Nd2LoggerEnabled:
-                logger.debug(f"Deleting {self._filename}")
-            os.unlink(fname)
-            return
-        self._fh.seek(self._original_chunkmap_offset)
-        pos = self._currpos()
-        self._write_chunk(pos, ND2_FILEMAP_SIGNATURE, self._original_chunkmap_chunk)
-        if Nd2LoggerEnabled:
-            logger.debug(f"ORIGINAL CHUNKMAP written")
-        self._chunkmap_is_dirty = False
-        self._fh.truncate()
-        self._fh.close()
+                logger.debug(f"ORIGINAL CHUNKMAP written")
+            self._chunkmap_is_dirty = False
+            self._store.io.truncate()
+            self._store.close()
 
 
 
