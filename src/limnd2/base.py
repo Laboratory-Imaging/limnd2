@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import abc, datetime, io, itertools, mmap, re, struct, typing, zlib
+import abc, datetime, io, itertools, mmap, os, re, struct, typing, zlib
 import numpy as np
 from typing import Any
 from .attributes import ImageAttributes, NumpyArrayLike
@@ -149,7 +149,7 @@ class Store(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def fh(self) -> typing.BinaryIO|None:
+    def io(self) -> typing.BinaryIO|None:
         pass
 
     @property
@@ -199,7 +199,7 @@ class FileStore(Store):
             self._fh.close()
 
     @property
-    def fh(self) -> typing.BinaryIO|None:
+    def io(self) -> typing.BinaryIO|None:
         return self._fh
 
     @property
@@ -208,9 +208,10 @@ class FileStore(Store):
 
 class _BytesView:
     """A tiny wrapper around memoryview where indexing/slicing returns bytes copies."""
-    __slots__ = ("_mv",)
+    __slots__ = ("_mv", "_pos")
 
     def __init__(self, obj):
+        self._pos: int = 0
         self._mv = obj if isinstance(obj, memoryview) else memoryview(obj)
 
     def __len__(self):
@@ -235,10 +236,43 @@ class _BytesView:
     def __repr__(self):
         return f"{self.__class__.__name__}({self._mv!r})"
 
+    @property
+    def closed(self) -> bool:
+        return False
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self) - self._pos
+        end = self._pos+size
+        data = self[self._pos:end]
+        self._pos = end
+        return data
+
+    def seek(self, offset: int, whence: int = os.SEEK_SET, /) -> None:
+        if whence == os.SEEK_CUR:
+            self._pos += offset
+        elif whence == os.SEEK_END:
+            self._pos = len(self) + offset
+        else:
+            self._pos = offset
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self._pos
+
+    def writable(self) -> bool:
+        return False
+
+
 class MemoryStore(Store):
     def __init__(self, mv, *, uri: str|None = None, lastModified: datetime.datetime|None = None) -> None:
-        self._mem: _BytesView = _BytesView(mv)
-        self._uri = f"memory://{id(self._mem._mv):#x}" if uri is None else uri
+        self._memio: _BytesView = _BytesView(mv)
+        self._uri = f"memory://{id(self._memio._mv):#x}" if uri is None else uri
         self._lastModified = datetime.datetime.now() if lastModified is None else lastModified
 
     @property
@@ -251,7 +285,7 @@ class MemoryStore(Store):
 
     @property
     def sizeOnDisk(self) -> int:
-        return len(self._mem)
+        return len(self._memio)
 
     @property
     def lastModified(self) -> datetime.datetime:
@@ -268,12 +302,12 @@ class MemoryStore(Store):
         pass
 
     @property
-    def fh(self) -> typing.BinaryIO|None:
-        return None
+    def io(self) -> typing.BinaryIO|None:
+        return self._memio # type: ignore
 
     @property
     def mem(self) -> bytes|None:
-        return self._mem # type: ignore
+        return self._memio # type: ignore
 
 class BaseChunker(abc.ABC):
     def __init__(self,

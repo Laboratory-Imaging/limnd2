@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 from datetime import datetime
 
@@ -14,7 +16,7 @@ def test_file_store(nd2_path: Path):
     assert fs.filename == nd2_path.as_posix()
 
     fs.open("rb")
-    assert fs.fh is not None
+    assert fs.io is not None
     assert fs.mem is not None
 
     data = fs.mem[0:8]
@@ -34,11 +36,25 @@ def test_memory_store():
     assert ms.filename == None
 
     ms.open("rb") # does nothing
-    assert ms.fh is None
+    assert ms.io is not None
     assert ms.mem is not None
 
     data = ms.mem[0:8]
     assert isinstance(data, bytes)
     assert data == b"00000000"
+
+    assert ms.io.closed == False
+    assert ms.io.readable() == True
+    assert ms.io.writable() == False
+    assert ms.io.tell() == 0
+    assert len(ms.io.read()) == SIZE
+    assert ms.io.tell() == SIZE
+    assert len(ms.io.read()) == 0
+
+    ms.io.seek(-SIZE, os.SEEK_END)
+    assert ms.io.tell() == 0
+    assert ms.io.read(8) == data
+    assert ms.io.tell() == 8
+    assert len(ms.io.read()) == SIZE-8
 
     ms.close() # does nothing
