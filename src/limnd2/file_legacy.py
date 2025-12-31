@@ -1169,7 +1169,7 @@ class LimJpeg2000Chunker(BaseChunker):
     # -------------------------------------------------------------------------
 
     def image(
-        self, seqindex: int, rect: tuple[int, int, int, int] | None = None
+        self, seqindex: int, *, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:
         self._ensure_frame_index(seqindex)
         if imagecodecs is None:  # pragma: no cover - dependency is part of install
@@ -1200,21 +1200,21 @@ class LimJpeg2000Chunker(BaseChunker):
             data = data.astype(target_dtype, copy=False)
         return data
 
-    def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
+    def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
     def readDownsampledImage(
-        self, seqindex: int, downsize: int, rect: tuple[int, int, int, int] | None = None
+        self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:
-        raise NameNotInChunkmapError(f"DownsampledColorData_{downsize}")
+        raise NameNotInChunkmapError(f"DownsampledColorData_{downsample_level}")
 
     def setDownsampledImage(
-        self, seqindex: int, downsize: int, image: NumpyArrayLike
+        self, seqindex: int, image: NumpyArrayLike, *, downsample_level: int
     ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
     def binaryRasterData(
-        self, binid: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
+        self, binid: int, seqindex: int, *, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:
         raise BinaryIdNotFountError(binid)
 
@@ -1227,13 +1227,14 @@ class LimJpeg2000Chunker(BaseChunker):
         self,
         binid: int,
         seqindex: int,
-        downsize: int,
+        *,
+        downsample_level: int,
         rect: tuple[int, int, int, int] | None = None,
     ) -> NumpyArrayLike:
-        raise NameNotInChunkmapError(f"DownsampledBinary_{downsize}")
+        raise NameNotInChunkmapError(f"DownsampledBinary_{downsample_level}")
 
     def setDownsampledBinaryRasterData(
-        self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike
+        self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int
     ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 

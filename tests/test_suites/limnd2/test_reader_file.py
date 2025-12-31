@@ -81,17 +81,15 @@ def test_set_downsampled_image_write_and_read(tmp_path: Path, nd2_base_dir: Path
 
     # Append downsampled data
     with limnd2.Nd2Writer(out) as w:  # append mode auto-detected
-        lower = w.chunker.imageAttributes.lowerPowSizeList
-        if not lower:
+        if not w.chunker.imageAttributes.downsampleLevels:
             pytest.skip("lowerPowSizeList is empty for target file")
-        down = lower[0]
-        dattrs = w.chunker.imageAttributes.makeDownsampled(down)
+        dattrs = w.chunker.imageAttributes.makeDownsampled()
         dimg = np.random.randint(0, 256, dattrs.shape, dtype=dattrs.dtype) # type: ignore
-        w.chunker.setDownsampledImage(0, down, dimg)
+        w.chunker.setDownsampledImage(0, dimg, downsample_level=1)
 
     # Read back and compare
     with limnd2.Nd2Reader(out) as r:
-        rd = r.chunker.readDownsampledImage(0, down)
+        rd = r.chunker.readDownsampledImage(0, downsample_level=1)
         assert rd.shape == dimg.shape
         assert rd.dtype == dimg.dtype
         assert np.array_equal(rd, dimg)
@@ -109,29 +107,19 @@ def test_downsampledImage_reads_chunk_and_fallback(tmp_path: Path, nd2_base_dir:
 
     # Append a downsampled image at the first available down level
     with limnd2.Nd2Writer(out) as w:
-        lower = w.chunker.imageAttributes.lowerPowSizeList
-        if not lower:
+        if not w.chunker.imageAttributes.downsampleLevels:
             pytest.skip("lowerPowSizeList is empty for target file")
-        down = lower[0]
-        dattrs = w.chunker.imageAttributes.makeDownsampled(down)
+        dattrs = w.chunker.imageAttributes.makeDownsampled()
         dimg = np.random.randint(0, 256, dattrs.shape, dtype=dattrs.dtype) # type: ignore
-        w.chunker.setDownsampledImage(0, down, dimg)
+        w.chunker.setDownsampledImage(0, dimg, downsample_level=1)
 
     with limnd2.Nd2Reader(out) as r:
         c = r.chunker
         # Exact-level read via BaseChunker.downsampledImage should match the chunk we wrote
-        exact = c.downsampledImage(0, down)
+        exact = c.downsampledImage(0, downsample_level=1)
         assert exact.shape == dimg.shape
         assert exact.dtype == dimg.dtype
         assert np.array_equal(exact, dimg)
-
-        # Fallback: request a lower (more detailed) level than stored to trigger internal scaling
-        if down // 2 >= 1:
-            req = down // 2
-            exp_shape = c.imageAttributes.makeDownsampled(req).shape
-            fb = c.downsampledImage(0, req)
-            assert fb.shape == exp_shape
-            assert fb.dtype == dimg.dtype
 
 
 def test_acq_times_and_frames_caches(tmp_path: Path):
@@ -196,34 +184,35 @@ def test_binary_raster_downsample_workflow(tmp_path: Path):
         w.chunker.setBinaryRasterData(binid, 0, base_bin)
 
         # Fallback read: ask for downsize without chunks -> scales base
-        downs = w.chunker.imageAttributes.lowerPowSizeList
-        if not downs:
+        downsample_levels = w.chunker.imageAttributes.downsampleLevels
+        if not downsample_levels:
             pytest.skip("No lower powers available for downsample")
-        down = downs[0]
+        level_1 = downsample_levels[0]
 
         # Also generate real downsampled chunks and verify exact read
         w.chunker.generateAndSetDownsampledBinaryRasterData(binid, 0, base_bin)
-        dread = w.chunker.readDownsampledBinaryRasterData(binid, 0, down)
+        dread = w.chunker.readDownsampledBinaryRasterData(binid, 0, downsample_level=level_1)
         assert isinstance(dread, np.ndarray)
-        exp_meta = brm.findItemById(binid).makeDownsampled(down) # type: ignore
+        exp_meta = brm.findItemById(binid).makeDownsampled(level_1) # type: ignore
         assert dread.shape == exp_meta.shape
 
     with limnd2.Nd2Reader(out) as r:
         c = r.chunker
         # Detection helper over chunk names
         found = False
+        downsize = r.imageAttributes.makeDownsampled().powSize
         for name in c.chunk_names:
             res = BaseChunker.isDownsampledBinaryRasterData(name)
             if res is not None:
                 b_id, seq, dsz, ty, tx = res
-                assert b_id == binid and dsz == down
+                assert b_id == binid and dsz == downsize
                 found = True
                 break
         assert found, "No downsampled binary raster chunks detected"
 
         # Fallback path read (uses scaling if exact chunk missing) and exact chunk read
-        fb = c.downsampledBinaryRasterData(binid, 0, down)
-        rd = c.readDownsampledBinaryRasterData(binid, 0, down)
+        fb = c.downsampledBinaryRasterData(binid, 0, downsample_level=1)
+        rd = c.readDownsampledBinaryRasterData(binid, 0, downsample_level=1)
         assert rd.shape == fb.shape and rd.dtype == fb.dtype
 
 

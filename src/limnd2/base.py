@@ -392,23 +392,23 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def image(self, seqindex: int, *, rect: tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
-    def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
+    def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
         pass
 
     @abc.abstractmethod
-    def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def readDownsampledImage(self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
-    def setDownsampledImage(self, seqindex: int, downsize: int, image: NumpyArrayLike) -> None:
+    def setDownsampledImage(self, seqindex: int, image: NumpyArrayLike, *, downsample_level: int) -> None:
         pass
 
     @abc.abstractmethod
-    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def binaryRasterData(self, binid: int, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
@@ -416,11 +416,11 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
-    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
+    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
         pass
 
     @abc.abstractmethod
@@ -529,11 +529,9 @@ class BaseChunker(abc.ABC):
     def hasDownsampledImages(self) -> bool:
         attrs = self.imageAttributes
         chnames = self.chunk_names
-        downsizes = attrs.lowerPowSizeList
-        if len(downsizes) == 0:
-            return False
-        for seqindex in range(attrs.frameCount):
-            for downsize in downsizes:
+        for level in attrs.downsampleLevels:
+            downsize = attrs.makeDownsampled(level).powSize
+            for seqindex in range(attrs.frameCount):
                 chname = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
                 if chname not in chnames:
                     return False
@@ -549,8 +547,9 @@ class BaseChunker(abc.ABC):
             h, w = binmetaitem.shape
             th, tw = binmetaitem.tileShape
             alltiles = itertools.product(list(range(0, h//th, 1)), list(range(0, w//tw, 1)))
-            for seqindex in range(attrs.frameCount):
-                for downsize in attrs.lowerPowSizeList:
+            for level in attrs.downsampleLevels:
+                downsize = attrs.makeDownsampled(level).powSize
+                for seqindex in range(attrs.frameCount):
                     chname = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_3p % (binmetaitem.id, downsize, seqindex)
                     if chname not in chnames:
                         for tile in alltiles:
@@ -559,57 +558,59 @@ class BaseChunker(abc.ABC):
                                 return False
         return True
 
-    def downsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def downsampledImage(self, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         img = None
-        denomPowBase = 0
-        while downsize < self.imageAttributes.powSize:
+        additional_downsample_level = 0
+        while 0 < downsample_level:
             try:
-                img = self.readDownsampledImage(seqindex, downsize, rect)
+                img = self.readDownsampledImage(seqindex, downsample_level=downsample_level, rect=rect)
                 break
             except NameNotInChunkmapError:
                 if Nd2LoggerEnabled:
-                    logger.debug(f"Downsampled (downsize={downsize}) image (index={seqindex}) not found!")
+                    logger.debug(f"Downsampled (downsample_level={downsample_level}) image (index={seqindex}) not found!")
                 if rect is not None:
                     rect = (2*rect[0], 2*rect[1], 2*rect[2], 2*rect[3])
-                denomPowBase += 1
-                downsize *= 2
-        img = self.image(seqindex, rect) if img is None else img
-        return self.scale_2xN_down_linear(img, denomPowBase) if img is not None else img
+                additional_downsample_level += 1
+                downsample_level -= 1
+        if img is None:
+            img = self.image(seqindex, rect=rect)
+        return self.scale_2xN_down_linear(img, additional_downsample_level) if img is not None else img
 
-    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def downsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         img = None
-        denomPowBase = 0
-        while downsize < self.imageAttributes.powSize:
+        additional_downsample_level = 0
+        while 0 < downsample_level:
             try:
-                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsize, rect)
+                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsample_level=downsample_level, rect=rect)
                 break
             except BinaryIdNotFountError or NameNotInChunkmapError:
                 if Nd2LoggerEnabled:
-                    logger.debug(f"Downsampled (downsize={downsize}) binary (binid={binid}) at (index={seqindex}) not found!")
+                    logger.debug(f"Downsampled (downsample_level={downsample_level}) binary (binid={binid}) at (index={seqindex}) not found!")
                 if rect is not None:
                     rect = (2*rect[0], 2*rect[1], 2*rect[2], 2*rect[3])
-                denomPowBase += 1
-                downsize *= 2
-        img = self.binaryRasterData(binid, seqindex, rect) if img is None else img
-        return self.scale_2xN_down_00(img, denomPowBase) if img is not None else img
+                additional_downsample_level += 1
+                downsample_level -= 1
+        if img is None:
+            img = self.binaryRasterData(binid, seqindex, rect=rect)
+        return self.scale_2xN_down_00(img, additional_downsample_level) if img is not None else img
 
     def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
-        src_attrs, src_image = self.imageAttributes, image
-        while ImageAttributes.MinDownsampledSize < src_attrs.powSize:
-            downsampled_attrs = src_attrs.makeDownsampled()
+        attrs, src_image = self.imageAttributes, image
+        for level in attrs.downsampleLevels:
+            downsampled_attrs = attrs.makeDownsampled(level)
             downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
             _downsample_2x_linear(downsampled_image, src_image)
-            self.setDownsampledImage(seqindex=seqindex, downsize=downsampled_attrs.powSize, image=downsampled_image.astype(dtype=downsampled_attrs.dtype))
-            src_attrs, src_image = downsampled_attrs, downsampled_image
+            self.setDownsampledImage(seqindex, downsampled_image.astype(dtype=downsampled_attrs.dtype), downsample_level=level)
+            src_image = downsampled_image
 
     def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
-        src_attrs, src_binimage = self.imageAttributes, binimage
-        while ImageAttributes.MinDownsampledSize < src_attrs.powSize:
-            downsampled_attrs = src_attrs.makeDownsampled()
+        attrs, src_binimage = self.imageAttributes, binimage
+        for level in attrs.downsampleLevels:
+            downsampled_attrs = attrs.makeDownsampled(level)
             downsampled_image = np.zeros(shape=downsampled_attrs.shape[:2], dtype=np.uint32)
             _downsample_2x_00(downsampled_image, src_binimage)
-            self.setDownsampledBinaryRasterData(binid=binid, seqindex=seqindex, downsize=downsampled_attrs.powSize, binimage=downsampled_image)
-            src_attrs, src_binimage = downsampled_attrs, downsampled_image
+            self.setDownsampledBinaryRasterData(binid, seqindex, downsampled_image, downsample_level=level)
+            src_binimage = downsampled_image
 
     def scale_2xN_down_linear(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
         src_safe_dtype = self.imageAttributes.safe_dtype

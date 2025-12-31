@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import collections, enum, json, re
+import collections, enum, functools, json, re
 from typing_extensions import Literal
 import numpy as np
 from dataclasses import dataclass, asdict
@@ -154,10 +154,26 @@ class BinaryRasterMetadataItem:
     def tileBytes(self):
         return self.binTileWidth * 4 * self.binTileHeight
 
-    def makeDownsampled(self, downsize : int) -> BinaryRasterMetadataItem:
-        fullsize = full_res_size(self.binWidth, self.binHeight)
-        w = self.binWidth * downsize // fullsize
-        h = self.binHeight * downsize // fullsize
+    @functools.cached_property
+    def powSize(self) -> int:
+        """
+        Returns next power of 2 for bigger dimension.
+        """
+        return full_res_size(self.binWidth, self.binHeight)
+
+    def makeDownsampled(self, downsample_level: int = 1) -> BinaryRasterMetadataItem:
+        """
+        Returns BinaryRasterMetadataItem for downsampled binary image.
+
+        downsample_level: int
+            Determines downsampling d = 2^downsample_level that produces
+            lower level frames of size (w // d, h // d).
+        """
+        assert 0 <= downsample_level, f"Downsample level must be positive non-negative but got {downsample_level}"
+        if 0 == downsample_level:
+            return self
+        w = self.binWidth // downsample_level
+        h = self.binHeight  // downsample_level
         return BinaryRasterMetadataItem(
             binWidth=w, binHeight=h, binTileWidth=self.binTileWidth, binTileHeight=self.binTileHeight,
             binCompressionId=self.binCompressionId, binCompressionLevel=self.binCompressionLevel,

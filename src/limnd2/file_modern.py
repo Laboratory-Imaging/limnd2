@@ -277,7 +277,7 @@ class LimBinaryIOChunker(BaseChunker):
             self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
             self._set_metadata(name, data)
 
-    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def image(self, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
         attrs = self.imageAttributes
         pos = None
@@ -320,7 +320,7 @@ class LimBinaryIOChunker(BaseChunker):
         )
 
 
-    def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
+    def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
         name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
         buffer = bytearray(self.imageAttributes.imageBytes)
         tmp = np.ndarray(
@@ -338,9 +338,9 @@ class LimBinaryIOChunker(BaseChunker):
         with self._lock:
             self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, struct.pack("d", acqtime), buffer))
 
-    def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
-        name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
-        attrs = self.imageAttributes.makeDownsampled(downsize)
+    def readDownsampledImage(self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+        attrs = self.imageAttributes.makeDownsampled(downsample_level)
+        name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (attrs.powSize, seqindex)
         pos = self._chunk_pos(name)
         buffer, offset = self._get_chunk_buffer_and_offset(pos)
 
@@ -362,9 +362,9 @@ class LimBinaryIOChunker(BaseChunker):
             strides=attrs.strides,
         )
 
-    def setDownsampledImage(self, seqindex: int, downsize: int, image: NumpyArrayLike) -> None:
-        attrs = self.imageAttributes.makeDownsampled(downsize)
-        name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
+    def setDownsampledImage(self, seqindex: int, image: NumpyArrayLike, *, downsample_level: int) -> None:
+        attrs = self.imageAttributes.makeDownsampled(downsample_level)
+        name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (attrs.powSize, seqindex)
         buffer = bytearray(attrs.imageBytes)
         tmp = np.ndarray(
             buffer=buffer,
@@ -430,7 +430,7 @@ class LimBinaryIOChunker(BaseChunker):
                     raise
         return ret
 
-    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def binaryRasterData(self, binid: int, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         try:
             return self.readBinaryRasterData(binid, seqindex, rect)
         except BinaryIdNotFountError or NameNotInChunkmapError:
@@ -470,14 +470,14 @@ class LimBinaryIOChunker(BaseChunker):
                 with self._lock:
                     self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
 
-    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         if self.binaryRasterMetadata is None:
             raise BinaryIdNotFountError(binid)
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
 
-        binmeta = binmeta.makeDownsampled(downsize)
+        binmeta = binmeta.makeDownsampled(downsample_level)
         h, w = binmeta.shape
         ty, tx = binmeta.tileShape
         y0, y1 = (rect[1], min(rect[1] + rect[3], h)) if rect is not None else (0, h)
@@ -485,7 +485,7 @@ class LimBinaryIOChunker(BaseChunker):
         ret = np.zeros(shape=(y1-y0, x1-x0), dtype=binmeta.dtype)
         for y in range(y0 // ty * ty, y1, ty):
             for x in range(x0 // tx * tx, x1, tx):
-                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, downsize, y // ty, x // tx, seqindex)
+                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, binmeta.powSize, y // ty, x // tx, seqindex)
                 pos = self._chunk_pos(name)
                 src_y_start = y0-y if y < y0 else 0
                 src_y_slice = slice(src_y_start, min(src_y_start + y1 - max(y0, y), ty))
@@ -507,16 +507,16 @@ class LimBinaryIOChunker(BaseChunker):
                     raise
         return ret
 
-    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
+    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
         if self.binaryRasterMetadata is None:
             raise BinaryIdNotFountError(binid)
         binmeta = self.binaryRasterMetadata.findItemById(binid)
         if binmeta is None:
             raise BinaryIdNotFountError(binid)
-        binmeta = binmeta.makeDownsampled(downsize)
+        binmeta = binmeta.makeDownsampled(downsample_level)
         for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
             for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
-                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, downsize, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
+                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, binmeta.powSize, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
                 y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
                 x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
                 buffer = bytearray(binmeta.tileBytes)

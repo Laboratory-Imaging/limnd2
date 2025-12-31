@@ -33,6 +33,7 @@ from .experiment import (
     ExperimentLoopType,
     WellplateDesc,
     WellplateFrameInfo,
+    ExperimentZStackLoop
 )
 from .file_modern import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
@@ -314,9 +315,10 @@ class Nd2Reader:
         return self._chunker.binaryRleMetadata
 
     @property
-    def binaryRasterMetadata(self) -> BinaryRasterMetadata | None:
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
         if self._chunker.binaryRasterMetadata is None:
-            return None
+            return BinaryRasterMetadata([])
+
         if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(
             self._chunker.binaryRleMetadata
         ):
@@ -325,6 +327,11 @@ class Nd2Reader:
             )
         else:
             return self._chunker.binaryRasterMetadata
+
+    @property
+    def experimentZStackLoop(self) -> ExperimentZStackLoop|None:
+        from .experiment import find_zstack
+        return find_zstack(self.experiment)
 
     def dimensionSizes(self, skipSpectralLoop=True) -> dict[str, int]:
         """
@@ -339,7 +346,7 @@ class Nd2Reader:
         names = self.experiment.dimnames(skipSpectralLoop=skipSpectralLoop)
         return dict(zip(names, shape))
 
-    def generateLoopIndexes(self, named: bool = False) -> list:
+    def generateLoopIndexes(self, *, named: bool = False, dimnames: list[str]|None = None) -> list:
         """
         Generates indexes for all loops in the experiment.
 
@@ -370,9 +377,13 @@ class Nd2Reader:
                 windex, lst[i] = lst[i] // true_mp_size, lst[i] % true_mp_size
                 lst = [windex] + lst
                 ret.append(dict(zip(names, lst)) if named else lst)
+            if dimnames is not None:
+                dimnames[:] = names[:]
             return ret
 
         else:
+            if dimnames is not None:
+                dimnames[:] = names[:]
             return exp.generateLoopIndexes(named=named)
 
     def chunk(self, name: bytes | str) -> bytes | memoryview | None:
@@ -411,11 +422,8 @@ class Nd2Reader:
         assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
         assert isinstance(downsample_level, int) and 0 <= downsample_level, "down_size must be non-negative integer"
         return (
-            self._chunker.image(seq_index, rect) if 0 == downsample_level else
-            self._chunker.downsampledImage(
-                seq_index,
-                self.imageAttributes.lowerPowSizeList[downsample_level-1],
-                rect)
+            self._chunker.image(seq_index, rect=rect) if 0 == downsample_level else
+            self._chunker.downsampledImage(seq_index, downsample_level=downsample_level, rect=rect)
         )
 
     def binaryRasterData(
@@ -445,12 +453,8 @@ class Nd2Reader:
         assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
         assert isinstance(downsample_level, int) and 0 <= downsample_level, "down_size must be non-negative integer"
         return (
-            self._chunker.binaryRasterData(bin_id, seq_index, rect) if 0 == downsample_level else
-            self._chunker.downsampledBinaryRasterData(
-                bin_id,
-                seq_index,
-                self.imageAttributes.lowerPowSizeList[downsample_level-1],
-                rect)
+            self._chunker.binaryRasterData(bin_id, seq_index, rect=rect) if 0 == downsample_level else
+            self._chunker.downsampledBinaryRasterData(bin_id, seq_index, downsample_level=downsample_level, rect=rect)
         )
 
     @functools.cached_property
@@ -468,7 +472,7 @@ class Nd2Reader:
     # ADDITIONAL PROPERTIES AND METHODS NOT IN THE PROTOCOL SPECIFIC TO ND2Reader, THOSE SHOULD BE DOCUMENTED HERE
 
     @functools.cached_property
-    def shape(self) -> tuple[int, int, int, int, int, int]:
+    def imageDataShape(self) -> tuple[int, int, int, int, int, int]:
         """
         Returns 6D canonical data shape (T, M, Z, Y, X, C).
         """
@@ -477,7 +481,7 @@ class Nd2Reader:
         return canonical_shape(self.experiment) + self.imageAttributes.shape
 
     @functools.cached_property
-    def calibration(self) -> tuple[float, float, float, float, float, float]:
+    def imageDataCalibration(self) -> tuple[float, float, float, float, float, float]:
         """
         Returns 6D canonical data calibration (T in ms, 0, Z in um, Y in um, X in um, 0) 0 is for uncalibrated.
         """
@@ -488,7 +492,7 @@ class Nd2Reader:
             xy = self.pictureMetadata.dCalibration
         return canonical_calibration(self.experiment) + (xy, xy, 0)
 
-    def delayedImageData(self, tiling: tuple[int, int] | None = None) -> Any:
+    def delayedImageData(self, *, tiling: tuple[int, int] | None = None) -> Any:
         """
         Returns 6D canonical data shape (T, M, Z, Y, X, C) dask array with
         delayed chunks.
@@ -520,7 +524,7 @@ class Nd2Reader:
                 return nd2.image(index, rect=rect)
 
             nf = self.imageAttributes.frameCount
-            nt, nm, nz, ny, nx, nc = self.shape
+            nt, nm, nz, ny, nx, nc = self.imageDataShape
 
             edges: tuple[list[int], list[int]] | None = None
             if tiling is not None:
