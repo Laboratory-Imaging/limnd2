@@ -13,7 +13,7 @@ def test_file_store(nd2_path: Path):
     assert fs.uri == nd2_path.as_uri()
     assert fs.sizeOnDisk == nd2_path.stat().st_size
     assert fs.lastModified == datetime.fromtimestamp(nd2_path.stat().st_mtime)
-    assert fs.filename == nd2_path.as_posix()
+    assert fs.filename == str(nd2_path)
 
     fs.open("rb")
     assert fs.io is not None
