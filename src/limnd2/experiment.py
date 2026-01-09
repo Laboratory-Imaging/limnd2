@@ -1085,11 +1085,11 @@ def canonical_experiment(e: ExperimentLevel|None) -> tuple[ExperimentLevel|None,
     t, m, z = None, None, None
     for level in e:
         if level.isTimeLapse:
-            t = e
+            t = level
         elif level.isMultipoint:
-            m = e
+            m = level
         elif level.isZStack:
-            z = e
+            z = level
     return t, m, z
 
 def canonical_shape(e: ExperimentLevel|None) -> tuple[int, int, int]:
