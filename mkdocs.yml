@@ -92,7 +92,6 @@ nav:
     - experiment_factory.py: experiment_factory.md
     - metadata.py: metadata.md
     - metadata_factory.py: metadata_factory.md
-    - protocols.py: protocols.md
 
     - Conversion tools:
       - Convert image to ND2: convert_image.md

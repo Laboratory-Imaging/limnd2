@@ -94,8 +94,6 @@ class Nd2Reader:
     def finalize(self) -> None:
         return self._chunker.finalize()
 
-    # METHODS AND PROPERTIES IMPLEMENTING Nd2ReaderProtocol -> those should be documented in protocols.py
-
     @property
     def version(self) -> tuple[int, int]:
         """
@@ -469,8 +467,6 @@ class Nd2Reader:
         if filename is None:
             return {}
         return read_results_from_h5(filename.replace(".nd2", ".h5"))
-
-    # ADDITIONAL PROPERTIES AND METHODS NOT IN THE PROTOCOL SPECIFIC TO ND2Reader, THOSE SHOULD BE DOCUMENTED HERE
 
     @functools.cached_property
     def imageDataShape(self) -> tuple[int, int, int, int, int, int]:
