@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import abc, datetime, io, itertools, mmap, os, re, struct, typing, zlib
+import abc, copy, datetime, io, itertools, mmap, os, re, struct, typing, zlib
 import numpy as np
 from typing import Any
 from .attributes import ImageAttributes, NumpyArrayLike
@@ -172,6 +172,12 @@ class FileStore(Store):
         self._fh: typing.BinaryIO|None = None
         self._mmap: mmap.mmap|None = None
 
+    def __copy__(self):
+        ret = type(self)(self._path)
+        if self._fh is not None:
+            ret.open(self._fh.mode)
+        return ret
+
     @property
     def isFile(self) -> bool:
         return self._path.exists()
@@ -228,6 +234,9 @@ class _BytesView:
     def __init__(self, obj):
         self._pos: int = 0
         self._mv = obj if isinstance(obj, memoryview) else memoryview(obj)
+
+    def __copy__(self):
+        return type(self)(self._mv)
 
     def __len__(self):
         return len(self._mv)
@@ -290,9 +299,16 @@ class _BytesView:
 
 class MemoryStore(Store):
     def __init__(self, mv, *, uri: str|None = None, lastModified: datetime.datetime|None = None) -> None:
-        self._memio: _BytesView = _BytesView(mv)
+        self._memio: _BytesView = mv if isinstance(mv, _BytesView) else _BytesView(mv)
         self._uri = f"memory://{id(self._memio._mv):#x}" if uri is None else uri
         self._lastModified = datetime.datetime.now() if lastModified is None else lastModified
+
+    def __copy__(self):
+        return type(self)(
+            copy.copy(self._memio),
+            uri=self._uri,
+            lastModified=self._lastModified
+        )
 
     @property
     def isFile(self) -> bool:

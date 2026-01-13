@@ -1,3 +1,4 @@
+import copy
 import datetime
 import functools
 import os
@@ -889,7 +890,7 @@ def _create_chunker(
 
     store: Store|None = None
     if isinstance(file, Store):
-        store = file
+        store = copy.copy(file)
 
     elif isinstance(file, (str, Path)):
         store = FileStore(file)
