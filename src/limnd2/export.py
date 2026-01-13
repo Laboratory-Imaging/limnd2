@@ -172,6 +172,8 @@ def generate_frame_list(
     if nd2_reader.imageAttributes.componentCount > 1 and not nd2_reader.isRgb and 'c' not in canon_dims:
         canon_dims.append('c')
 
+    dims_sizes = get_dim_sizes(nd2_reader)
+
     if dimension_order is None:
         dim_order = canon_dims
     else:
@@ -179,10 +181,14 @@ def generate_frame_list(
         if any(m is None for m in mapped_opt):
             raise ValueError(f"Invalid dimension name in {dimension_order!r}")
         dim_order = cast(list[str], mapped_opt)
-        if set(dim_order) != set(canon_dims):
-            raise ValueError(f"Dimensions mismatch: provided {dim_order} vs file dims {canon_dims}")
+        extra_dims = [d for d in dim_order if d not in canon_dims]
+        missing_dims = [d for d in canon_dims if d not in dim_order]
+        missing_with_data = [d for d in missing_dims if dims_sizes.get(d, 0) > 1]
+        if extra_dims or missing_with_data:
+            raise ValueError(
+                f"Dimensions mismatch: provided {dim_order} vs file dims {canon_dims}"
+            )
 
-    dims_sizes = nd2_reader.dimensionSizes()
     indices = nd2_reader.generateLoopIndexes(named=True)
 
     if all(isinstance(item, dict) and 'w' in item and 'm' in item for item in indices):

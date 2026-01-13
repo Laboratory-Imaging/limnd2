@@ -81,17 +81,24 @@ def test_generate_frame_list_and_dims(sample_nd2_path: Path):
         seen = {tuple(sorted(coords.items())) for _, coords in frames}
         assert len(seen) == expected
 
-        # If there are 2+ dims, removing one in order should raise
         canon = list(r.experiment.dimnames()) if r.experiment else []
         if r.imageAttributes.componentCount > 1 and not r.isRgb and 'c' not in canon:
             canon.append('c')
-        if len(canon) >= 2:
-            bad_order = [d for d in canon[:-1]]  # drop last dim
-            # Map to synonyms for variety
-            syn_map = dict(t="time", z="z", m="multipoint", c="channel")
-            bad_order = [syn_map.get(d, d) for d in bad_order]
+        syn_map = dict(t="time", z="z", m="multipoint", c="channel")
+
+        varying_dims = [d for d, v in dims.items() if v > 1]
+        if varying_dims:
+            drop = varying_dims[0]
+            bad_order = [syn_map.get(d, d) for d in canon if d != drop]
             with pytest.raises(ValueError):
                 export_mod.generate_frame_list(r, bad_order)
+
+        singleton_dims = [d for d, v in dims.items() if v == 1]
+        if singleton_dims:
+            drop = singleton_dims[0]
+            reduced_order = [syn_map.get(d, d) for d in canon if d != drop]
+            frames_no_singleton = export_mod.generate_frame_list(r, reduced_order)
+            assert len(frames_no_singleton) == expected
 
 
 def test_frame_export_and_series_export(sample_nd2_path: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]):
