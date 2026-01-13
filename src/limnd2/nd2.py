@@ -394,7 +394,9 @@ class Nd2Reader:
         name : bytes|str
             Name of the chunk to retrieve.
 
-        TODO: consider removing it from here too low-level
+        Notes
+        -----
+        This is a thin passthrough to the underlying chunker and may be removed in a future API cleanup.
         """
         return self._chunker.chunk(name)
 
@@ -410,8 +412,8 @@ class Nd2Reader:
 
         Parameters
         ----------
-        seqindex: int
-            Zero-base sequence index of the frame.
+        seq_index: int
+            Zero-based sequence index of the frame.
         rect: tuple[int, int, int, int]|None
             Rectangle (x, y, w, h) specifying a portion of the resulting image.
         downsample_level: int
@@ -440,8 +442,8 @@ class Nd2Reader:
         ----------
         bin_id: int
             Binary layer ID.
-        seqindex: int
-            Zero-base sequence index of the frame.
+        seq_index: int
+            Zero-based sequence index of the frame.
         rect: tuple[int, int, int, int]|None
             Rectangle (x, y, w, h) of the image (always in original resolution).
         downsample_level: int
