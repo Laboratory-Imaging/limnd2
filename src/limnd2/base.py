@@ -202,7 +202,7 @@ class FileStore(Store):
         self._path.unlink(missing_ok)
 
     def open(self, mode: str) -> None:
-        assert mode in ("rb", "wb", "rb+"), f"argument 'mode' expected to be one of ('rb', 'wb', 'rb+') but was '{mode}'"
+        assert mode in ("rb", "wb", "rb+", "w+b"), f"argument 'mode' expected to be one of ('rb', 'wb', 'rb+', 'w+b') but was '{mode}'"
         assert self._fh is None, f"file is already open"
         self._fh = typing.cast(typing.BinaryIO, open(self._path, mode))
         if self._fh and mode == "rb":
@@ -413,6 +413,10 @@ class BaseChunker(abc.ABC):
 
     @abc.abstractmethod
     def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
+        pass
+
+    @abc.abstractmethod
+    def setImageTile(self, seqindex: int, x: int, y: int, tile: NumpyArrayLike, *, acqtime: float | None = None) -> None:
         pass
 
     @abc.abstractmethod

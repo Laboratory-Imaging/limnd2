@@ -25,7 +25,7 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
 
     bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
     frame_res = f"{ia.width} x {ia.height}"
-    dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
+    dimension = f"{frame_res} ({ia.componentCount} {'comps' if 1 < ia.componentCount else 'comp'} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
     calibration = f"{reader.pictureMetadata.dCalibration:.3f} µm/px" if reader.pictureMetadata.bCalibrated else "Uncalibrated"
 
     mtime = f"{reader.store.lastModified.strftime('%x %X')}"
@@ -265,24 +265,24 @@ def maybe_wrap_field(value):
     if value is None:
         return ""
     if '\n' in value:
-        return f"{value.replace('\n', '\n\t')}"
+        return value.replace('\n', '\n\t')
     return value
 
 def export_main_image_info(image_info):
     gi = image_info.get('generalInfo', {})
     return "\n".join([
-        f"Filename:\t{maybe_wrap_field(gi.get('filename', ""))}",
-        f"Path:\t{maybe_wrap_field(gi.get('path', ""))}",
-        f"Dimension:\t{maybe_wrap_field(gi.get('dimension', ""))}",
-        f"Sizes:\t{maybe_wrap_field(gi.get('sizes', ""))}",
-        f"Modified time:\t{maybe_wrap_field(gi.get('mtime', ""))}",
-        f"Created by:\t{maybe_wrap_field(gi.get('app_created', ""))}"
+        f"Filename:\t{maybe_wrap_field(gi.get('filename', ''))}",
+        f"Path:\t{maybe_wrap_field(gi.get('path', ''))}",
+        f"Dimension:\t{maybe_wrap_field(gi.get('dimension', ''))}",
+        f"Sizes:\t{maybe_wrap_field(gi.get('sizes', ''))}",
+        f"Modified time:\t{maybe_wrap_field(gi.get('mtime', ''))}",
+        f"Created by:\t{maybe_wrap_field(gi.get('app_created', ''))}"
     ])
 
 def export_image_text_info(image_info):
     ret = []
     gi = image_info.get('generalInfo', {})
-    ret.append(f"Calibration:\t{maybe_wrap_field(gi.get('calibration', "Uncalibrated"))}")
+    ret.append(f"Calibration:\t{maybe_wrap_field(gi.get('calibration', 'Uncalibrated'))}")
 
     ti = image_info.get('imageTextInfo', {})
     ret.append(f"Optics:\t{maybe_wrap_field(ti.get('optics', ''))}")

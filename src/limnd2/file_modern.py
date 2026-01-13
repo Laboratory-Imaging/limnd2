@@ -1,7 +1,7 @@
 import collections, datetime, mmap, os, struct, threading, typing
 #from contextlib import contextmanager
 from .base import *
-from .attributes import ImageAttributesCompression
+from .attributes import ImageAttributesCompression, ImageAttributesPixelType
 
 if Nd2LoggerEnabled:
     import logging
@@ -28,6 +28,28 @@ STRUCT_FILE_HEADER = struct.Struct(f"{STRUCT_CHUNK_HEADER.format}32s64s")
 
 def _ceil_align(x: int, alignment: int) -> int:
     return (x + (alignment - 1)) // alignment * alignment
+
+def _validate_pixel_range(arr: np.ndarray, attrs: ImageAttributes) -> None:
+    bits = attrs.uiBpcSignificant
+    if bits <= 0:
+        return
+    if attrs.ePixelType == ImageAttributesPixelType.pxtUnsigned:
+        min_val, max_val = 0, (1 << bits) - 1
+    elif attrs.ePixelType == ImageAttributesPixelType.pxtSigned:
+        if bits <= 1:
+            min_val, max_val = 0, 0
+        else:
+            min_val, max_val = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    else:
+        return
+
+    arr_min = np.min(arr)
+    arr_max = np.max(arr)
+    if arr_min < min_val or arr_max > max_val:
+        raise ValueError(
+            f"Pixel values out of range for {bits}-bit data: "
+            f"min={arr_min}, max={arr_max}, expected [{min_val}, {max_val}]"
+        )
 
 class LimBinaryIOChunker(BaseChunker):
     def __init__(self, store: Store,
@@ -95,7 +117,12 @@ class LimBinaryIOChunker(BaseChunker):
 
     @property
     def is_appending(self):
-        return self._store.io.mode == "rb+"
+        if self._store.io.mode != "rb+":
+            return False
+        try:
+            return self._store.sizeOnDisk > 0
+        except (AttributeError, OSError):
+            return True
 
     def _get_buffer_and_offset(self, start : int, len : int) -> tuple[typing.Union[bytes, mmap.mmap], int]:
         if self._store.mem:
@@ -127,13 +154,13 @@ class LimBinaryIOChunker(BaseChunker):
             raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
         return self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
 
-    def _write_chunk(self, pos: int, name: bytes, data1: bytes|bytearray|None, data2: bytes|bytearray|None = None) -> tuple[int, int]:
+    def _write_chunk(self, pos: int, name: bytes, data1: bytes|bytearray|None, data2: bytes|bytearray|None = None, *, data2_len_override: int | None = None, sparse_data2: bool = False, zero_chunk_size: int = 1024 * 1024) -> tuple[int, int]:
         if not self._store.io.writable():
             raise PermissionError("Writable file handle required for _write_chunk.")
         with self._lock:
             name_len = len(name)
             data1_len = len(data1) if data1 is not None else 0
-            data2_len = len(data2) if data2 is not None else 0
+            data2_len = len(data2) if data2 is not None else (data2_len_override or 0)
             header_len = STRUCT_CHUNK_HEADER.size + name_len + ND2_CHUNK_NAME_RESERVE
             header_and_data1_len = header_len + data1_len
             header_and_data1_4k_len = _ceil_align(header_and_data1_len, ND2_CHUNK_ALIGNMENT)
@@ -153,10 +180,28 @@ class LimBinaryIOChunker(BaseChunker):
                 self._store.io.write(b'\0' * (data_written_4k_len - data_written_len))
             # writing 2nd part: data
             if data2_len:
-                self._store.io.write(typing.cast(bytes, data2))
+                if data2 is not None:
+                    self._store.io.write(typing.cast(bytes, data2))
+                elif sparse_data2:
+                    if 0 < data2_len:
+                        self._store.io.seek(data2_len - 1, os.SEEK_CUR)
+                        self._store.io.write(b'\0')
+                else:
+                    zero_block = b'\0' * max(1, min(zero_chunk_size, ND2_CHUNK_ALIGNMENT))
+                    remaining = data2_len
+                    while 0 < remaining:
+                        chunk = min(len(zero_block), remaining)
+                        self._store.io.write(zero_block[:chunk])
+                        remaining -= chunk
                 data2_4k_len = _ceil_align(data2_len, ND2_CHUNK_ALIGNMENT)
                 if data2_len < data2_4k_len:
-                    self._store.io.write(b'\0' * (data2_4k_len - data2_len))
+                    pad_len = data2_4k_len - data2_len
+                    if sparse_data2:
+                        if 0 < pad_len:
+                            self._store.io.seek(pad_len - 1, os.SEEK_CUR)
+                            self._store.io.write(b'\0')
+                    else:
+                        self._store.io.write(b'\0' * pad_len)
             return (pos, data1_len + data2_len)
 
     def read_file_header(self) -> tuple[int, int]|None:
@@ -330,13 +375,100 @@ class LimBinaryIOChunker(BaseChunker):
             strides=self.imageAttributes.strides,
         )
         if len(image.shape) == 2:
-            target_array = np.zeros(self.imageAttributes.shape, dtype=image.dtype)
-            target_array[:, :, 0] = image
+            img_arr = np.asarray(image, dtype=self.imageAttributes.dtype)
+            _validate_pixel_range(img_arr, self.imageAttributes)
+            target_array = np.zeros(self.imageAttributes.shape, dtype=img_arr.dtype)
+            target_array[:, :, 0] = img_arr
             np.copyto(tmp, target_array)
         else:
-            np.copyto(tmp, image)
+            img_arr = np.asarray(image, dtype=self.imageAttributes.dtype)
+            _validate_pixel_range(img_arr, self.imageAttributes)
+            np.copyto(tmp, img_arr)
         with self._lock:
             self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, struct.pack("d", acqtime), buffer))
+
+    def setImageTile(self, seqindex: int, x: int, y: int, tile: NumpyArrayLike, *, acqtime: float | None = None) -> None:
+        if self.is_readonly or not self._store.io.writable():
+            raise PermissionError("Writable file handle required for setImageTile.")
+
+        attrs = self.imageAttributes
+        if attrs.eCompression != ImageAttributesCompression.ictNone:
+            raise ValueError("Tile writes require ImageAttributesCompression.ictNone.")
+        if attrs.width <= 0 or attrs.height <= 0 or attrs.componentCount <= 0:
+            raise ValueError("Invalid ImageAttributes: width/height/componentCount must be > 0.")
+        if attrs.widthBytes <= 0 or attrs.pixelBytes <= 0 or attrs.componentBytes <= 0 or attrs.imageBytes <= 0:
+            raise ValueError("Invalid ImageAttributes: byte sizes must be > 0.")
+        if attrs.widthBytes < attrs.width * attrs.pixelBytes:
+            raise ValueError("Invalid ImageAttributes: widthBytes is smaller than a full row.")
+
+        tile_arr = np.asarray(tile)
+        if tile_arr.ndim == 2:
+            tile_h, tile_w = tile_arr.shape
+            if attrs.componentCount != 1:
+                raise ValueError("Tile must include component axis for multi-component images.")
+        elif tile_arr.ndim == 3:
+            tile_h, tile_w, tile_c = tile_arr.shape
+            if tile_c != attrs.componentCount:
+                raise ValueError("Tile component count does not match ImageAttributes.componentCount.")
+        else:
+            raise ValueError("Tile must be a 2D or 3D array.")
+
+        if tile_h <= 0 or tile_w <= 0:
+            raise ValueError("Tile width and height must be > 0.")
+        if x < 0 or y < 0 or (x + tile_w) > attrs.width or (y + tile_h) > attrs.height:
+            raise ValueError("Tile coordinates are out of bounds.")
+
+        tile_arr = np.ascontiguousarray(tile_arr, dtype=attrs.dtype)
+        _validate_pixel_range(tile_arr, attrs)
+
+        name = ND2_CHUNK_FORMAT_ImageDataSeq_1p % (seqindex)
+        if isinstance(name, str):
+            name = name.encode("ascii")
+
+        with self._lock:
+            data_start = None
+            try:
+                pos = self._chunk_pos(name)
+                magic, name_len, data_len = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, pos))
+                if magic != ND2_CHUNK_MAGIC:
+                    raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
+                expected_len = 8 + attrs.imageBytes
+                if data_len < expected_len:
+                    raise ValueError("Existing image chunk is smaller than expected.")
+                data_start = pos + STRUCT_CHUNK_HEADER.size + name_len
+            except NameNotInChunkmapError:
+                pos = self._store.io.tell()
+                timestamp_value = -1.0 if acqtime is None else acqtime
+                timestamp_bytes = struct.pack("d", timestamp_value)
+                write_pos, _ = self._write_chunk(
+                    pos,
+                    name,
+                    timestamp_bytes,
+                    data2=None,
+                    data2_len_override=attrs.imageBytes,
+                    sparse_data2=True,
+                )
+                # recompute start of data from written header
+                _, name_len, _ = STRUCT_CHUNK_HEADER.unpack(self._read_struct_at(STRUCT_CHUNK_HEADER, write_pos))
+                data_start = write_pos + STRUCT_CHUNK_HEADER.size + name_len
+                self._update_chunkmap(name, (write_pos, len(timestamp_bytes) + attrs.imageBytes))
+
+            if data_start is None:
+                raise RuntimeError("Failed to determine image data start.")
+
+            if acqtime is not None:
+                self._store.io.seek(data_start)
+                self._store.io.write(struct.pack("d", acqtime))
+
+            payload_start = data_start + 8
+            row_stride = attrs.widthBytes
+            pixel_stride = attrs.pixelBytes
+            for row in range(tile_h):
+                offset = payload_start + (y + row) * row_stride + x * pixel_stride
+                self._store.io.seek(offset)
+                self._store.io.write(tile_arr[row].tobytes(order="C"))
+            # ensure file position is at end so future chunk writes append correctly
+            self._store.io.seek(0, os.SEEK_END)
 
     def readDownsampledImage(self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         attrs = self.imageAttributes.makeDownsampled(downsample_level)

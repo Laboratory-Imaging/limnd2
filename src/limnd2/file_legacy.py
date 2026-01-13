@@ -1203,6 +1203,17 @@ class LimJpeg2000Chunker(BaseChunker):
     def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
+    def setImageTile(
+        self,
+        seqindex: int,
+        x: int,
+        y: int,
+        tile: NumpyArrayLike,
+        *,
+        acqtime: float | None = None,
+    ) -> None:
+        raise PermissionError("Legacy JPEG2000 chunker is read-only.")
+
     def readDownsampledImage(
         self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:

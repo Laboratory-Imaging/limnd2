@@ -1,10 +1,11 @@
 from __future__ import annotations
+from contextlib import contextmanager
 import copy
 import itertools
 import math
 from pathlib import Path
-
 import numpy as np
+import zarr
 
 _COMMON_FF_HINT = (
     '[commonff] extra not installed. Install it with `pip install "limnd2[commonff]"`.'
@@ -43,32 +44,84 @@ from limnd2.metadata_factory import MetadataFactory, Plane
 from .LimImageSource import LimImageSource, merge_four_fields
 from .LimConvertUtils import ConversionSettings, ConvertSequenceArgs, logprint
 
-
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import ome_types
 
+_SAMPLE_DIMS = (1, 2, 3, 4)
 
-CHUNKED_SWAP_PIXELS = 1_000_000
+def _height_width_from_shape(shape: tuple[int, ...]) -> tuple[int, int]:
+    if len(shape) == 2:
+        return shape[0], shape[1]
+    if len(shape) == 3:
+        if shape[-1] in _SAMPLE_DIMS:
+            return shape[0], shape[1]
+        if shape[0] in _SAMPLE_DIMS:
+            return shape[1], shape[2]
+        return shape[-2], shape[-1]
+    if shape[-1] in _SAMPLE_DIMS:
+        return shape[-3], shape[-2]
+    return shape[-2], shape[-1]
 
 
-def _swap_rgb_to_bgr_inplace(arr: np.ndarray, *, chunk_size: int = CHUNKED_SWAP_PIXELS) -> None:
+def _normalize_to_yxs(tile: np.ndarray) -> np.ndarray:
+    """Normalize to (Y,X) or (Y,X,S)."""
+    if tile.ndim == 2:
+        return tile
+    if tile.ndim == 3:
+        # planar (S,Y,X) -> (Y,X,S)
+        if tile.shape[0] in _SAMPLE_DIMS and tile.shape[-1] not in _SAMPLE_DIMS:
+            tile = np.moveaxis(tile, 0, -1)
+        return tile
+    raise ValueError(f"Unsupported ndim {tile.ndim} for shape {tile.shape}")
+
+
+def _tile_index(arr, xx0: int, xx1: int, yy0: int, yy1: int):
     """
-    Swap RGB -> BGR in-place without duplicating the whole array.
-    Works on arrays of shape (..., 3).
+    Index ROI without exploding leading dims:
+      - (Y,X)
+      - (Y,X,S)
+      - (S,Y,X)
+      - (...,Y,X) and (...,Y,X,S) -> pins leading dims to 0
     """
-    if arr.ndim < 3 or arr.shape[-1] != 3:
-        return
-    flat = arr.reshape(-1, 3)
-    for start in range(0, flat.shape[0], chunk_size):
-        end = min(flat.shape[0], start + chunk_size)
-        tmp = flat[start:end, 0].copy()
-        flat[start:end, 0] = flat[start:end, 2]
-        flat[start:end, 2] = tmp
+    shape = arr.shape
+    ndim = len(shape)
+
+    if ndim == 2:
+        return (slice(yy0, yy1), slice(xx0, xx1))
+
+    if ndim == 3:
+        # (Y,X,S)
+        if shape[-1] in _SAMPLE_DIMS:
+            return (slice(yy0, yy1), slice(xx0, xx1), slice(None))
+        # (S,Y,X)
+        if shape[0] in _SAMPLE_DIMS:
+            return (slice(None), slice(yy0, yy1), slice(xx0, xx1))
+        # fallback: treat as (Z,Y,X) and pick Z=0
+        return (0, slice(yy0, yy1), slice(xx0, xx1))
+
+    # ndim >= 4
+    if shape[-1] in _SAMPLE_DIMS:
+        # (..., Y, X, S)
+        lead = (0,) * (ndim - 4)
+        return lead + (slice(yy0, yy1), slice(xx0, xx1), slice(None))
+
+    # (..., Y, X)
+    lead = (0,) * (ndim - 3)
+    return lead + (slice(yy0, yy1), slice(xx0, xx1))
+
+
+def _slice_yx(arr, x0: int, x1: int, y0: int, y1: int) -> np.ndarray:
+    idx = _tile_index(arr, x0, x1, y0, y1)
+    tile = np.asarray(arr[idx])          # materialize only ROI
+    tile = _normalize_to_yxs(tile)       # planar -> interleaved
+    if tile.ndim == 3 and tile.shape[-1] == 3:
+        tile = tile[..., ::-1]           # RGB -> BGR
+    return tile
 
 
 class LimImageSourceTiff(LimImageSource):
-    """Class for reading images from TIFF files."""
+    """Image source reading from TIFF (supports ROI reads)."""
     idf: int
 
     def __init__(self, filename: str | Path, idf: int = 0):
@@ -78,19 +131,77 @@ class LimImageSourceTiff(LimImageSource):
     def __repr__(self):
         return f"LimImageSourceTiff({self.filename}, {self.idf})"
 
-    def read(self):
-        with tifffile.TiffReader(self.filename) as tiff:
-            arr = tiff.asarray(self.idf)
-        if arr.ndim == 3:
-            arr = arr[:, :, ::-1]
+    @property
+    def supports_tile_read(self) -> bool:
+        return True
+
+    def read(self) -> np.ndarray:
+        # Full read (will load whole frame); only used when you decide frame is small enough.
+        with tifffile.TiffFile(self.filename) as tif:
+            arr = tif.asarray(key=self.idf)
+
+        arr = _normalize_to_yxs(np.asarray(arr))
+        if arr.ndim == 3 and arr.shape[-1] == 3:
+            arr = arr[..., ::-1]  # RGB -> BGR
         return arr
 
-    @property
-    def additional_information(self) -> dict:
-        if self._additional_dimensions is None:
-            self._additional_dimensions = self._calculate_additional_information()
-        return self._additional_dimensions
+    def read_tile(self, x: int, y: int, w: int, h: int) -> np.ndarray:
+        # One-off tile read convenience. Your writer should prefer open_tile_reader().
+        with self.open_tile_reader() as r:
+            return np.array(r(x, y, w, h), copy=True)
 
+    @contextmanager
+    def open_tile_reader(self):
+        """
+        Open TIFF and return a callable read_tile(x,y,w,h)->ndarray
+        without reopening TIFF / rebuilding Zarr per tile.
+        """
+        tif = tifffile.TiffFile(self.filename)
+        store = None
+        try:
+            page = tif.pages[self.idf]
+
+            # Fast path: memmap when possible
+            try:
+                arr = tifffile.memmap(self.filename, page=self.idf)
+            except Exception:
+                store = page.aszarr(chunkmode="strile")
+                root = zarr.open(store, mode="r")
+                # unwrap groups
+                arr = root
+                while not hasattr(arr, "shape"):
+                    key = "0" if "0" in arr else sorted(arr.keys())[0]
+                    arr = arr[key]
+
+            H, W = _height_width_from_shape(arr.shape)
+
+            def _read_tile(x: int, y: int, w: int, h: int) -> np.ndarray:
+                x0, y0 = int(x), int(y)
+                x1, y1 = x0 + int(w), y0 + int(h)
+
+                xx0, xx1 = max(0, x0), min(W, x1)
+                yy0, yy1 = max(0, y0), min(H, y1)
+
+                if xx0 >= xx1 or yy0 >= yy1:
+                    # empty ROI
+                    if len(arr.shape) >= 3 and (arr.shape[-1] in _SAMPLE_DIMS or arr.shape[0] in _SAMPLE_DIMS):
+                        s = arr.shape[-1] if arr.shape[-1] in _SAMPLE_DIMS else arr.shape[0]
+                        return np.empty((0, 0, s), dtype=arr.dtype)
+                    return np.empty((0, 0), dtype=arr.dtype)
+
+                return _slice_yx(arr, xx0, xx1, yy0, yy1)
+
+            yield _read_tile
+
+        finally:
+            try:
+                tif.close()
+            finally:
+                if store is not None:
+                    try:
+                        store.close()
+                    except Exception:
+                        pass
 
     def get_file_dimensions(self) -> dict[str, int]:
         file_info = self.additional_information
@@ -330,6 +441,7 @@ class LimImageSourceTiff(LimImageSource):
             bpc_significant = LimImageSourceTiff.calculate_bpc_significant(numpy_bits, tiff_bits, max_value)
 
         bpc_memory = bpc_significant if bpc_significant % 8 == 0 else math.ceil(bpc_significant / 8) * 8
+        width_bytes = ImageAttributes.calcWidthBytes(shape[1], bpc_memory, components)
 
         if dtype in (np.int8, np.int16, np.int32):
             pixel_type = ImageAttributesPixelType.pxtSigned
@@ -342,7 +454,7 @@ class LimImageSourceTiff(LimImageSource):
 
         return ImageAttributes(
             uiWidth = shape[1],
-            uiWidthBytes = shape[1] * components * bpc_memory,
+            uiWidthBytes = width_bytes,
             uiHeight = shape[0],
             uiComp = components,
             uiBpcInMemory = bpc_memory,

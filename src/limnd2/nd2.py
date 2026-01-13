@@ -911,7 +911,7 @@ def _create_chunker(
         else:
             if append is None:
                 append = store.isFile
-            mode = "rb+" if append else "wb"
+            mode = "rb+" if append else "w+b"
         store.open(mode)
 
     if is_legacy_jpeg2000_source(store):
