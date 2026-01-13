@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-import abc, datetime, io, itertools, re, struct, typing, zlib
+import abc, copy, datetime, io, itertools, mmap, os, re, struct, typing, zlib
 import numpy as np
 from typing import Any
 from .attributes import ImageAttributes, NumpyArrayLike
@@ -10,7 +10,6 @@ from .experiment import ExperimentLevel, ExperimentLoopType, ExperimentSpectralL
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo
 
-FileLikeObject: typing.TypeAlias = str | Path | typing.BinaryIO | memoryview
 ChunkMap: typing.TypeAlias = typing.Mapping[bytes, tuple]
 
 Nd2LoggerEnabled = False
@@ -113,6 +112,247 @@ class UnexpectedCallError(Exception):
         self.message = f"Unexpected call ({self.function_name}): {self.chunk_name}"
         super().__init__(self.message)
 
+class Store(abc.ABC):
+    @property
+    @abc.abstractmethod
+    def isFile(self) -> bool:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def uri(self) -> str:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def sizeOnDisk(self) -> int:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def lastModified(self) -> datetime.datetime:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def filename(self) -> str|None:
+        pass
+
+    @abc.abstractmethod
+    def remove(self, missing_ok: bool = True) -> None:
+        pass
+
+    @abc.abstractmethod
+    def open(self, mode: str) -> None:
+        pass
+
+    @abc.abstractmethod
+    def close(self) -> None:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def isOpen(self) -> bool:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def io(self) -> typing.BinaryIO:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def mem(self) -> bytes|None:
+        pass
+
+class FileStore(Store):
+    def __init__(self, path: Path|str) -> None:
+        assert isinstance(path, (Path, str)), f"argument 'path' expected to be 'Path|str' but was '{type(path).__name__}'"
+        self._path: Path = Path(path) if isinstance(path, str) else path
+        self._fh: typing.BinaryIO|None = None
+        self._mmap: mmap.mmap|None = None
+
+    def __copy__(self):
+        ret = type(self)(self._path)
+        if self._fh is not None:
+            ret.open(self._fh.mode)
+        return ret
+
+    @property
+    def isFile(self) -> bool:
+        return self._path.exists()
+
+    @property
+    def uri(self) -> str:
+        return self._path.as_uri()
+
+    @property
+    def sizeOnDisk(self) -> int:
+        return self._path.stat().st_size
+
+    @property
+    def lastModified(self) -> datetime.datetime:
+        return datetime.datetime.fromtimestamp(self._path.stat().st_mtime)
+
+    @property
+    def filename(self) -> str|None:
+        return str(self._path)
+
+    def remove(self, missing_ok: bool = True) -> None:
+        self._path.unlink(missing_ok)
+
+    def open(self, mode: str) -> None:
+        assert mode in ("rb", "wb", "rb+", "w+b"), f"argument 'mode' expected to be one of ('rb', 'wb', 'rb+', 'w+b') but was '{mode}'"
+        assert self._fh is None, f"file is already open"
+        self._fh = typing.cast(typing.BinaryIO, open(self._path, mode))
+        if self._fh and mode == "rb":
+            assert self._mmap is None, f"file is already mapped into memory"
+            self._mmap = mmap.mmap(self._fh.fileno(), 0, access=mmap.ACCESS_READ)
+
+    def close(self) -> None:
+        if self._mmap is not None:
+            self._mmap.close()
+        if self._fh is not None:
+            self._fh.close()
+
+    @property
+    def isOpen(self) -> bool:
+        return self._fh is not None
+
+    @property
+    def io(self) -> typing.BinaryIO:
+        return self._fh # type: ignore
+
+    @property
+    def mem(self) -> bytes|None:
+        return self._mmap # type: ignore
+
+class _BytesView:
+    """A tiny wrapper around memoryview where indexing/slicing returns bytes copies."""
+    __slots__ = ("_mv", "_pos")
+
+    def __init__(self, obj):
+        self._pos: int = 0
+        self._mv = obj if isinstance(obj, memoryview) else memoryview(obj)
+
+    def __copy__(self):
+        return type(self)(self._mv)
+
+    def __len__(self):
+        return len(self._mv)
+
+    def __getitem__(self, key):
+        # memoryview indexing returns int; slicing returns memoryview
+        v = self._mv[key]
+        if isinstance(v, memoryview):
+            return v.tobytes()     # slice -> bytes copy
+        return v                   # single index -> int (same as memoryview)
+
+    def __iter__(self):
+        return iter(self._mv)      # yields ints, like memoryview
+
+    def tobytes(self):
+        return self._mv.tobytes()
+
+    def __bytes__(self):
+        return self._mv.tobytes()
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self._mv!r})"
+
+    @property
+    def closed(self) -> bool:
+        return False
+
+    @property
+    def mode(self) -> str:
+        return "rb"
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            size = len(self) - self._pos
+        end = self._pos+size
+        data = self[self._pos:end]
+        self._pos = end
+        return data
+
+    def seek(self, offset: int, whence: int = os.SEEK_SET, /) -> None:
+        if whence == os.SEEK_CUR:
+            self._pos += offset
+        elif whence == os.SEEK_END:
+            self._pos = len(self) + offset
+        else:
+            self._pos = offset
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self._pos
+
+    def writable(self) -> bool:
+        return False
+
+
+class MemoryStore(Store):
+    def __init__(self, mv, *, uri: str|None = None, lastModified: datetime.datetime|None = None) -> None:
+        self._memio: _BytesView = mv if isinstance(mv, _BytesView) else _BytesView(mv)
+        self._uri = f"memory://{id(self._memio._mv):#x}" if uri is None else uri
+        self._lastModified = datetime.datetime.now() if lastModified is None else lastModified
+
+    def __copy__(self):
+        return type(self)(
+            copy.copy(self._memio),
+            uri=self._uri,
+            lastModified=self._lastModified
+        )
+
+    @property
+    def isFile(self) -> bool:
+        return False
+
+    @property
+    def uri(self) -> str:
+        return self._uri
+
+    @property
+    def sizeOnDisk(self) -> int:
+        return len(self._memio)
+
+    @property
+    def lastModified(self) -> datetime.datetime:
+        return self._lastModified
+
+    @property
+    def filename(self) -> str|None:
+        return None
+
+    def remove(self, missing_ok: bool = True) -> None:
+        pass
+
+    def open(self, mode: str) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def isOpen(self) -> bool:
+        return True
+
+    @property
+    def io(self) -> typing.BinaryIO:
+        return self._memio # type: ignore
+
+    @property
+    def mem(self) -> bytes|None:
+        return self._memio # type: ignore
+
+FileLikeObject: typing.TypeAlias = str | Path | Store | typing.BinaryIO | memoryview
+
 class BaseChunker(abc.ABC):
     def __init__(self,
                  *,
@@ -136,17 +376,7 @@ class BaseChunker(abc.ABC):
 
     @property
     @abc.abstractmethod
-    def filename(self) -> str|None:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def size_on_disk(self) -> int:
-        pass
-
-    @property
-    @abc.abstractmethod
-    def last_modified(self) -> datetime.datetime:
+    def store(self) -> Store:
         pass
 
     @property
@@ -178,23 +408,27 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def image(self, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def image(self, seqindex: int, *, rect: tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
-    def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
+    def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
         pass
 
     @abc.abstractmethod
-    def readDownsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def setImageTile(self, seqindex: int, x: int, y: int, tile: NumpyArrayLike, *, acqtime: float | None = None) -> None:
         pass
 
     @abc.abstractmethod
-    def setDownsampledImage(self, seqindex: int, downsize: int, image: NumpyArrayLike) -> None:
+    def readDownsampledImage(self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
-    def binaryRasterData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def setDownsampledImage(self, seqindex: int, image: NumpyArrayLike, *, downsample_level: int) -> None:
+        pass
+
+    @abc.abstractmethod
+    def binaryRasterData(self, binid: int, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
@@ -202,11 +436,11 @@ class BaseChunker(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
     @abc.abstractmethod
-    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike) -> None:
+    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
         pass
 
     @abc.abstractmethod
@@ -315,11 +549,9 @@ class BaseChunker(abc.ABC):
     def hasDownsampledImages(self) -> bool:
         attrs = self.imageAttributes
         chnames = self.chunk_names
-        downsizes = attrs.lowerPowSizeList
-        if len(downsizes) == 0:
-            return False
-        for seqindex in range(attrs.frameCount):
-            for downsize in downsizes:
+        for level in attrs.downsampleLevels:
+            downsize = attrs.makeDownsampled(level).powSize
+            for seqindex in range(attrs.frameCount):
                 chname = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsize, seqindex)
                 if chname not in chnames:
                     return False
@@ -335,8 +567,9 @@ class BaseChunker(abc.ABC):
             h, w = binmetaitem.shape
             th, tw = binmetaitem.tileShape
             alltiles = itertools.product(list(range(0, h//th, 1)), list(range(0, w//tw, 1)))
-            for seqindex in range(attrs.frameCount):
-                for downsize in attrs.lowerPowSizeList:
+            for level in attrs.downsampleLevels:
+                downsize = attrs.makeDownsampled(level).powSize
+                for seqindex in range(attrs.frameCount):
                     chname = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_3p % (binmetaitem.id, downsize, seqindex)
                     if chname not in chnames:
                         for tile in alltiles:
@@ -345,57 +578,59 @@ class BaseChunker(abc.ABC):
                                 return False
         return True
 
-    def downsampledImage(self, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def downsampledImage(self, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         img = None
-        denomPowBase = 0
-        while downsize < self.imageAttributes.powSize:
+        additional_downsample_level = 0
+        while 0 < downsample_level:
             try:
-                img = self.readDownsampledImage(seqindex, downsize, rect)
+                img = self.readDownsampledImage(seqindex, downsample_level=downsample_level, rect=rect)
                 break
             except NameNotInChunkmapError:
                 if Nd2LoggerEnabled:
-                    logger.debug(f"Downsampled (downsize={downsize}) image (index={seqindex}) not found!")
+                    logger.debug(f"Downsampled (downsample_level={downsample_level}) image (index={seqindex}) not found!")
                 if rect is not None:
                     rect = (2*rect[0], 2*rect[1], 2*rect[2], 2*rect[3])
-                denomPowBase += 1
-                downsize *= 2
-        img = self.image(seqindex, rect) if img is None else img
-        return self.scale_2xN_down_linear(img, denomPowBase) if img is not None else img
+                additional_downsample_level += 1
+                downsample_level -= 1
+        if img is None:
+            img = self.image(seqindex, rect=rect)
+        return self.scale_2xN_down_linear(img, additional_downsample_level) if img is not None else img
 
-    def downsampledBinaryRasterData(self, binid: int, seqindex: int, downsize: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
+    def downsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         img = None
-        denomPowBase = 0
-        while downsize < self.imageAttributes.powSize:
+        additional_downsample_level = 0
+        while 0 < downsample_level:
             try:
-                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsize, rect)
+                img = self.readDownsampledBinaryRasterData(binid, seqindex, downsample_level=downsample_level, rect=rect)
                 break
             except BinaryIdNotFountError or NameNotInChunkmapError:
                 if Nd2LoggerEnabled:
-                    logger.debug(f"Downsampled (downsize={downsize}) binary (binid={binid}) at (index={seqindex}) not found!")
+                    logger.debug(f"Downsampled (downsample_level={downsample_level}) binary (binid={binid}) at (index={seqindex}) not found!")
                 if rect is not None:
                     rect = (2*rect[0], 2*rect[1], 2*rect[2], 2*rect[3])
-                denomPowBase += 1
-                downsize *= 2
-        img = self.binaryRasterData(binid, seqindex, rect) if img is None else img
-        return self.scale_2xN_down_00(img, denomPowBase) if img is not None else img
+                additional_downsample_level += 1
+                downsample_level -= 1
+        if img is None:
+            img = self.binaryRasterData(binid, seqindex, rect=rect)
+        return self.scale_2xN_down_00(img, additional_downsample_level) if img is not None else img
 
     def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
-        src_attrs, src_image = self.imageAttributes, image
-        while ImageAttributes.MinDownsampledSize < src_attrs.powSize:
-            downsampled_attrs = src_attrs.makeDownsampled()
+        attrs, src_image = self.imageAttributes, image
+        for level in attrs.downsampleLevels:
+            downsampled_attrs = attrs.makeDownsampled(level)
             downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
             _downsample_2x_linear(downsampled_image, src_image)
-            self.setDownsampledImage(seqindex=seqindex, downsize=downsampled_attrs.powSize, image=downsampled_image.astype(dtype=downsampled_attrs.dtype))
-            src_attrs, src_image = downsampled_attrs, downsampled_image
+            self.setDownsampledImage(seqindex, downsampled_image.astype(dtype=downsampled_attrs.dtype), downsample_level=level)
+            src_image = downsampled_image
 
     def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
-        src_attrs, src_binimage = self.imageAttributes, binimage
-        while ImageAttributes.MinDownsampledSize < src_attrs.powSize:
-            downsampled_attrs = src_attrs.makeDownsampled()
+        attrs, src_binimage = self.imageAttributes, binimage
+        for level in attrs.downsampleLevels:
+            downsampled_attrs = attrs.makeDownsampled(level)
             downsampled_image = np.zeros(shape=downsampled_attrs.shape[:2], dtype=np.uint32)
             _downsample_2x_00(downsampled_image, src_binimage)
-            self.setDownsampledBinaryRasterData(binid=binid, seqindex=seqindex, downsize=downsampled_attrs.powSize, binimage=downsampled_image)
-            src_attrs, src_binimage = downsampled_attrs, downsampled_image
+            self.setDownsampledBinaryRasterData(binid, seqindex, downsampled_image, downsample_level=level)
+            src_binimage = downsampled_image
 
     def scale_2xN_down_linear(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
         src_safe_dtype = self.imageAttributes.safe_dtype

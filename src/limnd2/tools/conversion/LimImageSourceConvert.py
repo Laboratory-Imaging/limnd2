@@ -4,6 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Lock
+import math
 
 import numpy as np
 
@@ -11,6 +12,7 @@ import limnd2
 from limnd2.experiment_factory import ExperimentFactory
 
 from limnd2.tools.conversion.LimConvertUtils import ConvertSequenceArgs, ProgressPrinter, logprint
+from contextlib import ExitStack
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -53,9 +55,31 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
     return LIMND2Utils.write_files_to_nd2(outfile, grouped_files, nd2_attributes, nd2_experiment, nd2_metadata, parsed_args.multiprocessing)
 
 
-class LIMND2Utils:
 
+class LIMND2Utils:
     STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = False
+    TILE_WRITE_THRESHOLD_BYTES = 256 * 1024 * 1024  # 256 MB
+    TILE_WRITE_TILE_SIZE = 2048  # default tile edge
+
+    @staticmethod
+    def _frame_work_units(frame_sources, attrs) -> int:
+        """
+        Estimate progress units for one frame: tile count when tiling, otherwise channel count.
+        """
+        frame_bytes = LIMND2Utils._frame_bytes(attrs)
+        can_tile_all = all(getattr(src, "supports_tile_read", False) for src in frame_sources)
+        if can_tile_all and frame_bytes >= LIMND2Utils.TILE_WRITE_THRESHOLD_BYTES:
+            tile_size = LIMND2Utils.TILE_WRITE_TILE_SIZE
+            H = int(getattr(attrs, "height", getattr(attrs, "uiHeight")))
+            W = int(getattr(attrs, "width", getattr(attrs, "uiWidth")))
+            tiles_y = math.ceil(H / tile_size)
+            tiles_x = math.ceil(W / tile_size)
+            return tiles_y * tiles_x
+        return len(frame_sources)
+
+    @staticmethod
+    def total_work_units(grouped_files: list[list["LimImageSource"]], attrs) -> int:
+        return sum(LIMND2Utils._frame_work_units(frame, attrs) for frame in grouped_files)
 
     @staticmethod
     def create_experiment(dims: dict[str, int], tstep, zstep):
@@ -72,48 +96,113 @@ class LIMND2Utils:
         return exp.createExperiment()
 
     @staticmethod
-    def store_frame_or_frames(
-        nd2: limnd2.Nd2Writer,
-        image_seq_index: int,
-        frame_sources: list[LimImageSource],
-        progress: ProgressPrinter = None,
-        nd2_file_lock: Lock = None
-    ):
-
-        stacked_mismatch = None
-
-        # If we have multiple files together, this is a multi-channel case
-        if len(frame_sources) > 1:
-            arrays = tuple(file.read() for file in frame_sources)
-            array = np.stack(arrays, axis=-1)
-
-            # Check if arrays have the same shape
-            if not LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED:
-                dtypes = [arr.dtype for arr in arrays]
-                if len(set(dtypes)) > 1:
-                    stacked_mismatch = dtypes
-
-
-        # Single channel case
-        else:
-            tiff_file = frame_sources[0]
-            array = tiff_file.read()
-
+    def _frame_bytes(attrs) -> int:
         """
-        if getattr(tiff_file, "supports_streaming_read", False):
-            def _write_direct():
-                with nd2.chunker.imageWriteArray(image_seq_index) as out_array:
-                    tiff_file.read(out=out_array)
+        Prefer widthBytes * height if available (typical for imaging formats).
+        Fallback to width * height * comps * dtype.itemsize.
+        """
+        h = int(getattr(attrs, "height", getattr(attrs, "uiHeight", 0)))
+        w = int(getattr(attrs, "width", getattr(attrs, "uiWidth", 0)))
 
-            if nd2_file_lock:
-                with nd2_file_lock:
-                    _write_direct()
-            else:
-                _write_direct()
-            wrote_directly = True
+        width_bytes = getattr(attrs, "widthBytes", None)
+        if width_bytes is None:
+            width_bytes = getattr(attrs, "uiWidthBytes", None)
+
+        if width_bytes is not None and h > 0:
+            return int(width_bytes) * h
+
+        # last resort
+        dtype = getattr(attrs, "dtype", None)
+        itemsize = np.dtype(dtype).itemsize if dtype is not None else 1
+        comps = int(getattr(attrs, "components", getattr(attrs, "uiComp", 1)))
+        return w * h * comps * itemsize
+
+    @staticmethod
+    def store_frame_or_frames(nd2, image_seq_index, frame_sources, progress=None, nd2_file_lock=None):
+        attrs = nd2.imageAttributes
+
+        frame_bytes = LIMND2Utils._frame_bytes(attrs)
+        can_tile_all = all(getattr(src, "supports_tile_read", False) for src in frame_sources)
+        do_tile = can_tile_all and frame_bytes >= LIMND2Utils.TILE_WRITE_THRESHOLD_BYTES
+
+        tile_size = LIMND2Utils.TILE_WRITE_TILE_SIZE
+
+        # --- Tile path ---
+        if do_tile:
+            H = int(getattr(attrs, "height", getattr(attrs, "uiHeight")))
+            W = int(getattr(attrs, "width", getattr(attrs, "uiWidth")))
+            out_dtype = np.dtype(getattr(attrs, "dtype", np.uint16))
+
+            tiles_y = math.ceil(H / tile_size)
+            tiles_x = math.ceil(W / tile_size)
+            total_tiles = tiles_y * tiles_x
+
+            logprint(
+                f"Tiling frame {image_seq_index}: {W}x{H}px "
+                f"({frame_bytes/1e6:.1f} MB) using {tile_size}px tiles "
+                f"({total_tiles} tiles)"
+            )
+
+            with ExitStack() as stack:
+                readers = [stack.enter_context(src.open_tile_reader()) for src in frame_sources]
+                nsrc = len(readers)
+
+                tile_idx = 0
+                for y in range(0, H, tile_size):
+                    tile_h = min(tile_size, H - y)
+                    for x in range(0, W, tile_size):
+                        tile_w = min(tile_size, W - x)
+
+                        if nsrc == 1:
+                            tile = readers[0](x, y, tile_w, tile_h)
+                            if tile.size == 0:
+                                continue
+                            if tile.dtype != out_dtype:
+                                tile = tile.astype(out_dtype, copy=False)
+
+                        else:
+                            # Preallocate to avoid np.stack allocations
+                            # Expected per-source tile shape: (tile_h, tile_w)
+                            tile = np.empty((tile_h, tile_w, nsrc), dtype=out_dtype)
+                            for c, r in enumerate(readers):
+                                t = r(x, y, tile_w, tile_h)
+                                if t.size == 0:
+                                    # If one channel is missing, keep it zero-filled for this tile
+                                    continue
+                                if t.ndim != 2:
+                                    raise ValueError(
+                                        f"Multi-source stacking expects 2D tiles per source; got shape {t.shape}"
+                                    )
+                                if t.dtype != out_dtype:
+                                    t = t.astype(out_dtype, copy=False)
+                                # guard for edge cases where reader clamps (should match tile_h/tile_w)
+                                th, tw = t.shape[:2]
+                                tile[:th, :tw, c] = t
+
+                        tile_idx += 1
+
+                        # Write (lock only around writer call)
+                        if nd2_file_lock:
+                            with nd2_file_lock:
+                                nd2.chunker.setImageTile(image_seq_index, x, y, tile)
+                        else:
+                            nd2.chunker.setImageTile(image_seq_index, x, y, tile)
+
+                        if progress:
+                            progress.increase(1)
+
+            return
+
+        # --- Non-tile path ---
+        if len(frame_sources) > 1:
+            arrays = tuple(src.read() for src in frame_sources)
+            # Optional: sanity check to avoid massive stack blowups
+            base_shape = arrays[0].shape
+            if any(a.shape != base_shape for a in arrays[1:]):
+                raise ValueError(f"Cannot stack channels; shapes differ: {[a.shape for a in arrays]}")
+            array = np.stack(arrays, axis=-1)
         else:
-            array = tiff_file.read()
-            """
+            array = frame_sources[0].read()
 
         if nd2_file_lock:
             with nd2_file_lock:
@@ -121,56 +210,66 @@ class LIMND2Utils:
         else:
             nd2.setImage(image_seq_index, array)
 
-
-        if stacked_mismatch and not LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED:
-            with nd2_file_lock:
-                logprint(f"WARNING: Stacked channels have different dtypes: {stacked_mismatch}. This may lead to data loss. This message will only be shown once", type="warning")
-                LIMND2Utils.STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = True
-
         if progress:
             progress.increase(len(frame_sources))
 
     @staticmethod
-    def write_files_to_nd2(nd2_path: Path,
-                           grouped_files: list[list[LimImageSource]],
-                           attr: limnd2.ImageAttributes,
-                           exp: limnd2.ExperimentLevel,
-                           metadata: limnd2.PictureMetadata,
-                           multiprocessing: bool = True) -> bool:
+    def write_files_to_nd2(
+        nd2_path: Path,
+        grouped_files: list[list["LimImageSource"]],
+        attr,
+        exp,
+        metadata,
+        multiprocessing: bool = True,
+    ) -> bool:
 
         if nd2_path.is_file():
             try:
                 nd2_path.unlink()
             except PermissionError:
-                #logprint(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.", type="error")
-                raise PermissionError(f"ND2 file {nd2_path} is open in this or another program. Please close it and try again.") from None
+                raise PermissionError(
+                    f"ND2 file {nd2_path} is open in this or another program. Please close it and try again."
+                ) from None
 
         with limnd2.Nd2Writer(nd2_path) as nd2:
             nd2.imageAttributes = attr
             nd2.experiment = exp
             nd2.pictureMetadata = metadata
 
-            progress = ProgressPrinter(nd2_path, len(grouped_files) * len(grouped_files[0]))
+            # Avoid assuming grouped_files[0] exists
+            total = LIMND2Utils.total_work_units(grouped_files, attr) if grouped_files else 0
+            expected_size_bytes = (attr.imageBytes + 4096) * len(grouped_files) + 512 * 1024 if grouped_files else None
+            progress = ProgressPrinter(nd2_path, total, expected_size_bytes=expected_size_bytes)
 
+            # Keep multiprocessing off unless you have verified limnd2 is thread-safe for writes
             if multiprocessing:
                 nd2_file_lock = Lock()
-                with ThreadPoolExecutor(max_workers=100) as executor:
+                with ThreadPoolExecutor() as executor:
                     futures = []
-                    for image_seq_index, frames in enumerate(grouped_files):
-                        futures.append(executor.submit(LIMND2Utils.store_frame_or_frames, nd2, image_seq_index, frames, progress, nd2_file_lock))
-
-                wait(futures)
-
+                    for image_seq_index, frame in enumerate(grouped_files):
+                        futures.append(
+                            executor.submit(
+                                LIMND2Utils.store_frame_or_frames,
+                                nd2,
+                                image_seq_index,
+                                frame,
+                                progress,
+                                nd2_file_lock,
+                            )
+                        )
+                    wait(futures)
             else:
                 for image_seq_index, frame in enumerate(grouped_files):
                     LIMND2Utils.store_frame_or_frames(
                         nd2,
                         image_seq_index,
                         frame,
-                        progress
+                        progress,
+                        nd2_file_lock=None,
                     )
 
         return True
+
 
 class ConvertUtils:
     @staticmethod

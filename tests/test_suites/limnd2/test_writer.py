@@ -55,7 +55,7 @@ def test_write_basic_nd2(tmp_path: Path):
         expf.t.step = timeloop_step
         expf.z.count = zstack_count
         expf.z.step = zstack_step
-        nd2.experiment = expf.createExperiment()
+        nd2.experiment = expf.createExperiment() # type: ignore
 
         # metadata
         mdf = limnd2.metadata_factory.MetadataFactory(
@@ -87,8 +87,8 @@ def test_write_basic_nd2(tmp_path: Path):
         assert exp is not None
         t_loop = exp.findLevel(limnd2.ExperimentLoopType.eEtTimeLoop)
         z_loop = exp.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
-        assert t_loop is not None and t_loop.count == timeloop_count and t_loop.uLoopPars.dPeriod == float(timeloop_step)
-        assert z_loop is not None and z_loop.count == zstack_count and z_loop.uLoopPars.dZStep == float(zstack_step)
+        assert t_loop is not None and t_loop.count == timeloop_count and t_loop.uLoopPars.dPeriod == float(timeloop_step) # type: ignore
+        assert z_loop is not None and z_loop.count == zstack_count and z_loop.uLoopPars.dZStep == float(zstack_step) # type: ignore
 
         md = r.pictureMetadata
         assert len(md.channels) == components

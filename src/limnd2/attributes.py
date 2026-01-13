@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import math
-import enum, typing
+import enum, functools, math, typing
 import numpy as np
 from dataclasses import dataclass
 
@@ -81,6 +80,7 @@ class ImageAttributes(LVSerializable):
     def __post_init__(self):
         object.__setattr__(self, 'eCompression', ImageAttributesCompression(self.eCompression))
         object.__setattr__(self, 'ePixelType', ImageAttributesPixelType(self.ePixelType))
+
 
     @staticmethod
     def calcWidthBytes(width: int, bits: int, comps: int) -> int:
@@ -232,48 +232,58 @@ class ImageAttributes(LVSerializable):
         """
         return self.uiSequenceCount
 
-    @property
+    @functools.cached_property
     def powSize(self) -> int:
         """
         Returns next power of 2 for bigger dimension.
         """
         return full_res_size(self.uiWidth, self.uiHeight)
 
-    @property
+    @functools.cached_property
     def powSizeBase(self) -> int:
         """
         Returns exponent used in powSize() function.
         """
         return _full_res_base_pow2(self.uiWidth, self.uiHeight)
 
-    @property
-    def lowerPowSizeList(self) -> list[int]:
+    @functools.cached_property
+    def downsampleLevels(self) -> list[int]:
         """
-        Returns list of powers of 2 between ND2_MIN_DOWNSAMPLED_SIZE and image resolution.
+        Returns list containing levels of downsampled images up to ND2_MIN_DOWNSAMPLED_SIZE.
         """
-        ret, size = [], full_res_size(self.uiWidth, self.uiHeight)
-        while ND2_MIN_DOWNSAMPLED_SIZE < size:
-            size //= 2
-            ret.append(size)
+        i = 1
+        p = self.powSize // 2
+        ret = []
+        while ND2_MIN_DOWNSAMPLED_SIZE < p:
+            ret.append(i)
+            p = p // 2
+            i += 1
         return ret
 
-    def makeDownsampledFromPowBase(self, powBase: int) -> ImageAttributes:
+    def findDownsampledLevelFor(self, size: int) -> int:
         """
-        Returns ImageAttributes for downsampled image using power of 2 exponent.
+        Returns downsample level for given size.
         """
-        return self.makeDownsampled(2 ** powBase)
+        l = 0
+        s = max(self.uiWidth, self.uiHeight)
+        while size < s:
+            s = s // 2
+            l += 1
+        return max(0, l - 1)
 
-    def makeDownsampled(self, downsize : int|None = None) -> ImageAttributes:
+    def makeDownsampled(self, downsample_level: int = 1) -> ImageAttributes:
         """
-        Returns ImageAttributes for downsampled image using power of 2 image size.
+        Returns ImageAttributes for downsampled image.
+
+        downsample_level: int
+            Determines downsampling d = 2^downsample_level that produces
+            lower level frames of size (w // d, h // d).
         """
-        full_size = full_res_size(self.uiWidth, self.uiHeight)
-        if downsize is None:
-            downsize = full_size // 2
-        if downsize <= 2:
-            raise ValueError(f"Unexpected downsize: {downsize}")
-        w = self.uiWidth * downsize // full_size
-        h = self.uiHeight * downsize // full_size
+        assert 0 <= downsample_level, f"Downsample level must be positive non-negative but got {downsample_level}"
+        if 0 == downsample_level:
+            return self
+        w = self.uiWidth // (1 << downsample_level)
+        h = self.uiHeight // (1 << downsample_level)
         wb = ((self.uiBpcInMemory // 8) * self.uiComp * w + 3) // 4 * 4
         return ImageAttributes(uiWidth=w, uiWidthBytes=wb, uiHeight=h, uiComp=self.uiComp,
                                uiBpcInMemory=self.uiBpcInMemory, uiBpcSignificant=self.uiBpcSignificant,

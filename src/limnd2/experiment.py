@@ -1067,6 +1067,15 @@ class ExperimentLevel(LVSerializable):
         all = self._allLevels()
         return ", ".join([str(x.uLoopPars) for x in all])
 
+def find_zstack(e: ExperimentLevel|None) -> ExperimentZStackLoop|None:
+    if e is None:
+        return None
+    exp = e.findLevel(ExperimentLoopType.eEtZStackLoop)
+    return (
+        cast(ExperimentZStackLoop, exp.uLoopPars) if exp is not None else
+        None
+    )
+
 def canonical_experiment(e: ExperimentLevel|None) -> tuple[ExperimentLevel|None, ExperimentLevel|None, ExperimentLevel|None]:
     """
     Returns experiment levels in canonical TMZ order.
@@ -1076,11 +1085,11 @@ def canonical_experiment(e: ExperimentLevel|None) -> tuple[ExperimentLevel|None,
     t, m, z = None, None, None
     for level in e:
         if level.isTimeLapse:
-            t = e
+            t = level
         elif level.isMultipoint:
-            m = e
+            m = level
         elif level.isZStack:
-            z = e
+            z = level
     return t, m, z
 
 def canonical_shape(e: ExperimentLevel|None) -> tuple[int, int, int]:

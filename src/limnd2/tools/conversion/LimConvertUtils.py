@@ -104,7 +104,7 @@ class ProgressPrinter:
     MINIMUM: int = 20
     last_detected: int
 
-    def __init__(self, path: Path, total: int = 100):
+    def __init__(self, path: Path, total: int = 100, expected_size_bytes: int | None = None):
         self.done = 0
         self.done_lock = Lock()
         self.total = total
@@ -112,6 +112,7 @@ class ProgressPrinter:
 
         self.nd2_path = path
         self.last_detected = 0
+        self.expected_size_bytes = expected_size_bytes
 
     def increase(self, increment: int = 1):
         with self.done_lock:
@@ -128,17 +129,24 @@ class ProgressPrinter:
 
 
     def update_and_print(self):
-        self.done_percentage = self.done / self.total
+        self.done_percentage = self.done / self.total if self.total else 0
         if LOG_TYPE == LogType.CONSOLE:
-            print(f"{sys.argv[0].split("\\")[-1]} [{datetime.now():%H:%M:%S.%f}] {self.done} / {self.total} ({self.done_percentage * 100:.1f} %)", end="")
+            print(f"{sys.argv[0].split('\\')[-1]} [{datetime.now():%H:%M:%S.%f}] {self.done} / {self.total} ({self.done_percentage * 100:.1f} %)", end="")
 
         self.elapsed = datetime.now() - self.start_time
-        total_time_estimated = self.elapsed / self.done_percentage
+        total_time_estimated = self.elapsed / self.done_percentage if self.done_percentage else self.elapsed
         self.remaining = datetime(1, 1, 1, 0, 0, 0) + total_time_estimated - self.elapsed
         if LOG_TYPE == LogType.CONSOLE:
             print(f", time left: {self.remaining:%H:%M:%S}", end="")
 
-        self.filesize = (self.nd2_path.stat().st_size / self.done_percentage ) / (1024 ** 2)
+        current_size = self.nd2_path.stat().st_size if self.nd2_path.exists() else 0
+        if self.expected_size_bytes is not None:
+            self.filesize = self.expected_size_bytes / (1024 ** 2)
+        elif current_size > 0:
+            # When frames are preallocated, the on-disk size is already close to final; use it directly.
+            self.filesize = current_size / (1024 ** 2)
+        else:
+            self.filesize = 0
         if LOG_TYPE == LogType.CONSOLE:
             print(f", estimated file size: {self.filesize:.2f} MB", end="")
             print("\r", end="")

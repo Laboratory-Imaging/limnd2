@@ -1,3 +1,4 @@
+import copy
 import datetime
 import functools
 import os
@@ -17,6 +18,9 @@ from .base import (
     ImageAttributes,
     Nd2LoggerEnabled,
     NumpyArrayLike,
+    Store,
+    FileStore,
+    MemoryStore
 )
 from .custom_data import (
     CustomDescription,
@@ -30,8 +34,9 @@ from .experiment import (
     ExperimentLoopType,
     WellplateDesc,
     WellplateFrameInfo,
+    ExperimentZStackLoop
 )
-from .file import LimBinaryIOChunker
+from .file_modern import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
 from .results import (
@@ -46,48 +51,21 @@ from .variant import decode_var
 
 if Nd2LoggerEnabled:
     import logging
-
     logger = logging.getLogger("limnd2")
 
-
-class StorageInfo:
-    def __init__(
-        self,
-        filename: str | None,
-        url: str | None,
-        size_on_disk: int,
-        last_modified: datetime.datetime,
-    ):
-        self._filename = filename
-        self._url = url
-        self._size_on_disk = size_on_disk
-        self._last_modified = last_modified
-
-    @property
-    def filename(self) -> str | None:
-        return self._filename
-
-    @property
-    def url(self) -> str | None:
-        return self._url
-
-    @property
-    def sizeOnDisk(self) -> int:
-        return self._size_on_disk
-
-    @property
-    def lastModified(self) -> datetime.datetime:
-        return self._last_modified
 
 
 class Nd2Reader:
     """
-    Specific implementation of `Nd2ReaderProtocol` specific to `.nd2` files, implementing additional methods.
+    High-level class for accessing `.nd2` data format. Especially attributes, metadata, properties, image, binary
+    data as in NIS-Elements. This class relies on chunker classes (legacy JPEG2000 and modern ND2).
+    The chunker classes are backed by stores abstracting the storage media (disk, memory).
 
-    See [`Nd2ReaderProtocol`](protocols.md#limnd2.protocols.Nd2ReaderProtocol) for more information.
+    Also see [Quickstart](index.md#reading-nd2-files) for an
+    example of how to use this class and how to read individual chunks, attributes, metadata and so on.
     """
 
-    def create_chunker(self, *args, **kwargs) -> BaseChunker:
+    def _create_chunker(self, *args, **kwargs) -> BaseChunker:
         kwargs["readonly"] = True
         return _create_chunker(*args, **kwargs)
 
@@ -99,13 +77,13 @@ class Nd2Reader:
         """
         Parameters
         -----------
-        file : str | Path | int | typing.BinaryIO
+        file : str | Path | Store | typing.BinaryIO | memoryview
             Filename of the ND2 file.
         chunker_kwargs
             Additional parameters for chunker.
         """
         super().__init__()
-        self._chunker = self.create_chunker(file, chunker_kwargs=chunker_kwargs)
+        self._chunker = self._create_chunker(file, chunker_kwargs=chunker_kwargs)
 
     def __enter__(self):
         return self
@@ -116,165 +94,31 @@ class Nd2Reader:
     def finalize(self) -> None:
         return self._chunker.finalize()
 
-    # Static methods
-
-    @staticmethod
-    def fileSizeOnDisk(filename: str | Path | None) -> int:
-        if filename is None:
-            raise ValueError()
-
-        if isinstance(filename, str):
-            filename = Path(filename)
-        size = filename.stat().st_size
-        filename = filename.with_suffix(".h5")
-        try:
-            size += filename.stat().st_size
-        except (FileNotFoundError, PermissionError):
-            pass
-
-        return size
-
-    @staticmethod
-    def fileLastModified(filename: str | Path | None) -> datetime.datetime:
-        if filename is None:
-            raise ValueError()
-
-        if isinstance(filename, str):
-            filename = Path(filename)
-        mtime = filename.stat().st_mtime
-
-        filename = filename.with_suffix(".h5")
-        try:
-            h5_mtime = filename.stat().st_mtime
-            if mtime < h5_mtime:
-                mtime = h5_mtime
-        except (FileNotFoundError, PermissionError):
-            pass
-
-        return datetime.datetime.fromtimestamp(mtime)
-
-    # DEPRECATED properties and methods, will be removed in future versions
-
-    @property
-    def filename(self) -> str | None:
-        warnings.warn(
-            "Nd2Reader.filename is deprecated; use Nd2Reader.storageInfo.filename instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.chunker.filename
-
-    @property
-    def url(self) -> str | None:
-        warnings.warn(
-            "Nd2Reader.url is deprecated; use Nd2Reader.storageInfo.url instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        filename = self.chunker.filename
-        if filename is None:
-            return None
-        return Path(filename).absolute().as_uri()
-
-    @property
-    def size_on_disk(self) -> int:
-        warnings.warn(
-            "Nd2Reader.size_on_disk is deprecated; use Nd2Reader.storageInfo.sizeOnDisk instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        try:
-            return Nd2Reader.fileSizeOnDisk(self.filename)
-        except ValueError or FileNotFoundError or PermissionError:
-            return self.chunker.size_on_disk
-
-    @property
-    def last_modified(self) -> datetime.datetime:
-        warnings.warn(
-            "Nd2Reader.last_modified is deprecated; use Nd2Reader.storageInfo.lastModified instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        try:
-            return Nd2Reader.fileLastModified(self.filename)
-        except ValueError or FileNotFoundError or PermissionError:
-            return self.chunker.last_modified
-
-    def series_export(
-        self,
-        folder: str | Path | None = None,
-        prefix: str | None = None,
-        dimension_order: list[str] | None = None,
-        bits: int | None = None,
-        *,
-        progress_to_json: bool = False,
-    ) -> None:
-        warnings.warn(
-            "Nd2Reader.series_export is deprecated and will be removed in future versions; use limnd2.seriesExport() function instead.",
-            DeprecationWarning,
-        )
-        limnd2.seriesExport(
-            self,
-            folder=folder,
-            prefix=prefix,
-            dimension_order=dimension_order,
-            bits=bits,
-            progress_to_json=progress_to_json,
-        )
-
-    def frame_export(
-        self,
-        frame_index: int = 0,
-        output_path: str | Path | None = None,
-        target_bit_depth: int | None = None,
-        *,
-        progress_to_json: bool = False,
-    ):
-        warnings.warn(
-            "Nd2Reader.frame_export is deprecated and will be removed in future versions; use limnd2.frameExport() function instead.",
-            DeprecationWarning,
-        )
-        limnd2.frameExport(
-            self,
-            frame_index=frame_index,
-            output_path=output_path,
-            target_bit_depth=target_bit_depth,
-            progress_to_json=progress_to_json,
-        )
-
-    @functools.cached_property
-    def generalImageInfo(self) -> dict[str, Any]:
-        warnings.warn(
-            "Nd2Reader.generalImageInfo is deprecated and will be removed in future versions. Use limnd2.generalImageInfo() function instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return limnd2.generalImageInfo(self)
-
     # METHODS AND PROPERTIES IMPLEMENTING Nd2ReaderProtocol -> those should be documented in protocols.py
 
     @property
     def version(self) -> tuple[int, int]:
+        """
+        Returns the version of the `.nd2` file as a tuple of two integers.
+
+        (1, 0) - JPEG2000 legacy file format
+        (2, 0) - ND2 metadata stored in Variant as xml
+        (3, 0) - ND2 metadata stored in LiteVariant as proprietary binary format
+        """
         return self.chunker.format_version
 
     @property
-    def storageInfo(self) -> StorageInfo:
-        try:
-            filename = self.chunker.filename
-            url = Path(filename).absolute().as_uri() if filename else None
-            size_on_disk = Nd2Reader.fileSizeOnDisk(filename)
-            last_modified = Nd2Reader.fileLastModified(filename)
-        except (ValueError, FileNotFoundError, PermissionError):
-            filename = getattr(self.chunker, "filename", None)
-            url = Path(filename).absolute().as_uri() if filename else None
-            size_on_disk = getattr(self.chunker, "size_on_disk", 0)
-            last_modified = getattr(
-                self.chunker, "last_modified", datetime.datetime.fromtimestamp(0)
-            )
-        return StorageInfo(filename, url, size_on_disk, last_modified)
+    def store(self) -> Store:
+        """
+        Returns the backing store (abstraction of the storage medium).
+        """
+        return self.chunker.store
 
     @functools.cached_property
     def is3d(self) -> bool:
+        """
+        Returns `True` if the file contains valid z-stack, otherwise `False`.
+        """
         exp = self.experiment
         if exp is None:
             return False
@@ -285,30 +129,63 @@ class Nd2Reader:
 
     @functools.cached_property
     def isMono(self) -> bool:
+        """
+        Returns `True` if the file contains only one component, otherwise `False`.
+        """
         return 1 == self.imageAttributes.componentCount
 
     @functools.cached_property
     def isRgb(self) -> bool:
+        """
+        Returns `True` if the file contains RGB data, otherwise `False`.
+        """
         return self.pictureMetadata.isRgb
 
     @functools.cached_property
     def is8bitRgb(self) -> bool:
+        """
+        Returns `True` if the file contains 8-bit RGB data, otherwise `False`.
+        """
         return 8 == self.imageAttributes.uiBpcSignificant and self.isRgb
 
     @functools.cached_property
     def isFloat(self) -> bool:
+        """
+        Returns `True` if the file data is 32-bit float, otherwise `False`.
+        """
         return 32 == self.imageAttributes.uiBpcSignificant
 
     @property
     def imageAttributes(self) -> ImageAttributes:
+        """
+        Attribute to get attributes of an `.nd2` file.
+
+        See [`ImageAttributes`](attributes.md#limnd2.attributes.ImageAttributes) class for more information.
+
+        In order to create an instance of `ImageAttributes` class from simple parameters, use [`ImageAttributes.create`](attributes.md#limnd2.attributes.ImageAttributes.create) method.
+        """
         return self._chunker.imageAttributes
 
     @property
     def pictureMetadata(self) -> PictureMetadata:
+        """
+        Attribute to get metadata of an `.nd2` file.
+
+        See [`PictureMetadata`](metadata.md#limnd2.metadata.PictureMetadata) class for more information.
+
+        In order to create an instance of `PictureMetadata` class, use [`MetadataFactory`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory) class.
+        """
         return self._chunker.pictureMetadata
 
     @property
     def experiment(self) -> ExperimentLevel | None:
+        """
+        Attribute to get experiments in an `.nd2` file.
+
+        See [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel) class for more information.
+
+        In order to create an instance of `ExperimentLevel` class, use [`ExperimentFactory`](experiment_factory.md#limnd2.experiment_factory.ExperimentFactory) class.
+        """
         return self._chunker.experiment
 
     @property
@@ -439,9 +316,10 @@ class Nd2Reader:
         return self._chunker.binaryRleMetadata
 
     @property
-    def binaryRasterMetadata(self) -> BinaryRasterMetadata | None:
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
         if self._chunker.binaryRasterMetadata is None:
-            return None
+            return BinaryRasterMetadata([])
+
         if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(
             self._chunker.binaryRleMetadata
         ):
@@ -451,7 +329,17 @@ class Nd2Reader:
         else:
             return self._chunker.binaryRasterMetadata
 
+    @property
+    def experimentZStackLoop(self) -> ExperimentZStackLoop|None:
+        from .experiment import find_zstack
+        return find_zstack(self.experiment)
+
     def dimensionSizes(self, skipSpectralLoop=True) -> dict[str, int]:
+        """
+        Returns a dictionary with dimension names as keys and their sizes as values.
+
+        TODO: consider replacing it with fixed order tuple
+        """
         if self.experiment is None:
             return {}
 
@@ -459,7 +347,12 @@ class Nd2Reader:
         names = self.experiment.dimnames(skipSpectralLoop=skipSpectralLoop)
         return dict(zip(names, shape))
 
-    def generateLoopIndexes(self, named: bool = False) -> list:
+    def generateLoopIndexes(self, *, named: bool = False, dimnames: list[str]|None = None) -> list:
+        """
+        Generates indexes for all loops in the experiment.
+
+        TODO: consider using fixed order tuples [T, M, Z]
+        """
         exp = self.experiment
         if exp is None:
             return []
@@ -485,41 +378,84 @@ class Nd2Reader:
                 windex, lst[i] = lst[i] // true_mp_size, lst[i] % true_mp_size
                 lst = [windex] + lst
                 ret.append(dict(zip(names, lst)) if named else lst)
+            if dimnames is not None:
+                dimnames[:] = names[:]
             return ret
 
         else:
+            if dimnames is not None:
+                dimnames[:] = names[:]
             return exp.generateLoopIndexes(named=named)
 
     def chunk(self, name: bytes | str) -> bytes | memoryview | None:
+        """
+        Returns data for specific chunk name
+
+        Parameters
+        ----------
+        name : bytes|str
+            Name of the chunk to retrieve.
+
+        TODO: consider removing it from here too low-level
+        """
         return self._chunker.chunk(name)
 
     def image(
-        self, seqindex: int, rect: tuple[int, int, int, int] | None = None
-    ) -> NumpyArrayLike:
-        return self._chunker.image(seqindex, rect)
-
-    def downsampledImage(
         self,
-        seqindex: int,
-        downsize: int,
+        seq_index: int,
+        *,
         rect: tuple[int, int, int, int] | None = None,
+        downsample_level: int = 0
     ) -> NumpyArrayLike:
-        return self._chunker.downsampledImage(seqindex, downsize, rect)
+        """
+        Returns specific 2D image frame as numpy.ndarray.
+
+        Parameters
+        ----------
+        seqindex: int
+            Zero-base sequence index of the frame.
+        rect: tuple[int, int, int, int]|None
+            Rectangle (x, y, w, h) specifying a portion of the resulting image.
+        downsample_level: int
+            Determines downsampling d = 2^downsample_level that produces
+            lower level frames of size (w // d, h // d).
+        """
+        assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
+        assert isinstance(downsample_level, int) and 0 <= downsample_level, "down_size must be non-negative integer"
+        return (
+            self._chunker.image(seq_index, rect=rect) if 0 == downsample_level else
+            self._chunker.downsampledImage(seq_index, downsample_level=downsample_level, rect=rect)
+        )
 
     def binaryRasterData(
-        self, bin_id: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
-    ) -> NumpyArrayLike:
-        return self._chunker.binaryRasterData(bin_id, seqindex, rect)
-
-    def downsampledBinaryRasterData(
         self,
         bin_id: int,
-        seqindex: int,
-        downsize: int,
+        seq_index: int,
+        *,
         rect: tuple[int, int, int, int] | None = None,
+        downsample_level: int = 0
     ) -> NumpyArrayLike:
-        return self._chunker.downsampledBinaryRasterData(
-            bin_id, seqindex, downsize, rect
+        """
+        Returns specific 2D binary data as numpy.ndarray.
+
+        Parameters
+        ----------
+        bin_id: int
+            Binary layer ID.
+        seqindex: int
+            Zero-base sequence index of the frame.
+        rect: tuple[int, int, int, int]|None
+            Rectangle (x, y, w, h) of the image (always in original resolution).
+        downsample_level: int
+            Determines downsampling d = 2^downsample_level that produces
+            lower level frames of size (w // d, h // d).
+        """
+        assert isinstance(bin_id, int) and 0 < bin_id, "bin_id must be positive integer"
+        assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
+        assert isinstance(downsample_level, int) and 0 <= downsample_level, "down_size must be non-negative integer"
+        return (
+            self._chunker.binaryRasterData(bin_id, seq_index, rect=rect) if 0 == downsample_level else
+            self._chunker.downsampledBinaryRasterData(bin_id, seq_index, downsample_level=downsample_level, rect=rect)
         )
 
     @functools.cached_property
@@ -529,7 +465,7 @@ class Nd2Reader:
 
         Each result potentially contains tabular results (tables, graphs, ...) and binary layers.
         """
-        filename = self.storageInfo.filename
+        filename = self.store.filename
         if filename is None:
             return {}
         return read_results_from_h5(filename.replace(".nd2", ".h5"))
@@ -537,7 +473,7 @@ class Nd2Reader:
     # ADDITIONAL PROPERTIES AND METHODS NOT IN THE PROTOCOL SPECIFIC TO ND2Reader, THOSE SHOULD BE DOCUMENTED HERE
 
     @functools.cached_property
-    def shape(self) -> tuple[int, int, int, int, int, int]:
+    def imageDataShape(self) -> tuple[int, int, int, int, int, int]:
         """
         Returns 6D canonical data shape (T, M, Z, Y, X, C).
         """
@@ -546,7 +482,7 @@ class Nd2Reader:
         return canonical_shape(self.experiment) + self.imageAttributes.shape
 
     @functools.cached_property
-    def calibration(self) -> tuple[float, float, float, float, float, float]:
+    def imageDataCalibration(self) -> tuple[float, float, float, float, float, float]:
         """
         Returns 6D canonical data calibration (T in ms, 0, Z in um, Y in um, X in um, 0) 0 is for uncalibrated.
         """
@@ -557,7 +493,7 @@ class Nd2Reader:
             xy = self.pictureMetadata.dCalibration
         return canonical_calibration(self.experiment) + (xy, xy, 0)
 
-    def delayedImageData(self, tiling: tuple[int, int] | None = None) -> Any:
+    def delayedImageData(self, *, tiling: tuple[int, int] | None = None) -> Any:
         """
         Returns 6D canonical data shape (T, M, Z, Y, X, C) dask array with
         delayed chunks.
@@ -586,16 +522,14 @@ class Nd2Reader:
                     print(Rf"Reading frame {index} with rect {rect}.")
                 else:
                     print(Rf"Reading frame {index}.")
-                return nd2.image(index, rect)
+                return nd2.image(index, rect=rect)
 
             nf = self.imageAttributes.frameCount
-            nt, nm, nz, ny, nx, nc = self.shape
+            nt, nm, nz, ny, nx, nc = self.imageDataShape
 
             edges: tuple[list[int], list[int]] | None = None
             if tiling is not None:
                 edges = (make_edges(ny, tiling[1]), make_edges(nx, tiling[0]))
-                # y_chunks = tuple(y_edges[i+1] - y_edges[i] for i in range(len(y_edges) - 1))
-                # x_chunks = tuple(x_edges[i+1] - x_edges[i] for i in range(len(x_edges) - 1))
 
             def build_frame(i: int) -> da.Array:
                 if edges is not None:
@@ -790,7 +724,7 @@ class Nd2Reader:
                 f"Table name {table_name} not found in H5 {result_name}/{pane} ."
             )
 
-        filename = self.storageInfo.filename
+        filename = self.store.filename
         if filename is None:
             raise ValueError("Cannot read private table data, ND2 filename is None.")
 
@@ -804,13 +738,42 @@ class Nd2Reader:
 
 class Nd2Writer:
     """
-    Writer class for writing `.nd2` files.
+    ND2 file writer.
 
-    See [`Nd2WriterProtocol`](protocols.md#limnd2.protocols.Nd2WriterProtocol) for more information.
+    Supports encoding of all image attributes, most commonly used experiments and most of image metadata.
+    Currently does not support encoding of Well-plates, binary layers, ROIs and any custom data and text into chunk.
 
+    !!! info
+        Data is written in chunks, so you can write data in any order you want, image data however can
+        only be written after image attributes are set, if you write same chunk multiple times, all chunks will be saved,
+        however only the last one will be used.
+
+    !!! tip
+        As explained in [Quickstart](index.md#writing-to-nd2-file), image data can only be written **after**
+        image attributes are set, but if you want to write image data into `.nd2` file without knowing how many frames there is
+        (for example with continuous writing),
+        you can pass `ImageAttributes` instance when creating `.nd2` using custom chunker argument as shown below.
+
+        Setting `ImageAttributes` this way **will not store them in `.nd2` file** and you still **have to store them at some point**,
+        however you can do so after you know how many frames there is.
+
+        ```py title="Example os using chunker arguments to set image attributes"
+        attributes = limnd2.attributes.ImageAttributes.create(
+            width = WIDTH,
+            height = HEIGHT,
+            component_count = COMPONENT_COUNT,
+            bits = BITS,
+            sequence_count = ...  # will be set later
+        )
+
+        with limnd2.Nd2Writer("outfile.nd2", chunker_kwargs={"with_image_attributes": attributes}) as nd2:
+            # you can now set image data without setting attributes
+        ```
+
+    See [Quickstart](index.md#writing-to-nd2-file) for an example of how to use this class and how to write individual chunks.
     """
 
-    def create_chunker(self, *args, **kwargs) -> BaseChunker:
+    def _create_chunker(self, *args, **kwargs) -> BaseChunker:
         kwargs["readonly"] = False
         return _create_chunker(*args, **kwargs)
 
@@ -824,13 +787,13 @@ class Nd2Writer:
         """
         Parameters
         -----------
-        file : str | Path | int | typing.BinaryIO
+        file : str | Path | Store | typing.BinaryIO | memoryview
             Filename of the ND2 file.
         chunker_kwargs
             Additional parameters for chunker.
         """
         super().__init__()
-        self._chunker = self.create_chunker(
+        self._chunker = self._create_chunker(
             file, append=append, chunker_kwargs=chunker_kwargs
         )
 
@@ -841,11 +804,14 @@ class Nd2Writer:
         self.finalize()
 
     @property
-    def filename(self) -> str | None:
-        return self.chunker.filename
-
-    @property
     def imageAttributes(self) -> ImageAttributes:
+        """
+        Attribute to get or set attributes of an `.nd2` file.
+
+        See [`ImageAttributes`](attributes.md#limnd2.attributes.ImageAttributes) class for more information.
+
+        In order to create an instance of `ImageAttributes` class from simple parameters, use [`ImageAttributes.create`](attributes.md#limnd2.attributes.ImageAttributes.create) method.
+        """
         return self._chunker.imageAttributes
 
     @imageAttributes.setter
@@ -855,6 +821,13 @@ class Nd2Writer:
 
     @property
     def experiment(self) -> ExperimentLevel | None:
+        """
+        Attribute to get or set experiments in an `.nd2` file.
+
+        See [`ExperimentLevel`](experiment.md#limnd2.experiment.ExperimentLevel) class for more information.
+
+        In order to create an instance of `ExperimentLevel` class, use [`ExperimentFactory`](experiment_factory.md#limnd2.experiment_factory.ExperimentFactory) class.
+        """
         return self._chunker.experiment
 
     @experiment.setter
@@ -864,6 +837,13 @@ class Nd2Writer:
 
     @property
     def pictureMetadata(self) -> PictureMetadata:
+        """
+        Attribute to get or set metadata of an `.nd2` file.
+
+        See [`PictureMetadata`](metadata.md#limnd2.metadata.PictureMetadata) class for more information.
+
+        In order to create an instance of `PictureMetadata` class, use [`MetadataFactory`](metadata_factory.md#limnd2.metadata_factory.MetadataFactory) class.
+        """
         return self._chunker.pictureMetadata
 
     @pictureMetadata.setter
@@ -879,9 +859,19 @@ class Nd2Writer:
         return self._chunker.setChunk(name, data)
 
     def setImage(self, seq_index: int, data: NumpyArrayLike) -> None:
+        """
+        Set image data using specified frame index.
+
+        !!! warning
+            You must manually keep track of the frame index and make sure that you are not
+            overwriting the same frame multiple times and that images are written sequentially.
+        """
         return self._chunker.setImage(seq_index, data)
 
     def finalize(self) -> None:
+        """
+        Explicitly finalize the file, this is not needed if you use `with` statement.
+        """
         return self._chunker.finalize()
 
     def rollback(self) -> None:
@@ -893,56 +883,41 @@ def _create_chunker(
     *,
     readonly: bool = True,
     append: bool | None = None,
+    uri: str | None = None,
+    lastModified: datetime.datetime | None = None,
     chunker_kwargs: dict = {},
 ) -> BaseChunker:
-    if isinstance(file, (str, Path)):
+
+    store: Store|None = None
+    if isinstance(file, Store):
+        store = copy.copy(file)
+
+    elif isinstance(file, (str, Path)):
+        store = FileStore(file)
+
+    elif isinstance(file, memoryview):
+        assert readonly, "Writing memory store is not supported."
+        store = MemoryStore(file, uri=uri, lastModified=lastModified)
+
+    else:
+        raise ValueError(
+            f"argument 'file' expected to be 'str|Path|Store|typing.BinaryIO|memoryview' but was '{type(file).__name__}'"
+        )
+
+    # if the Store isn't open do it now
+    if not store.isOpen:
         if readonly:
             mode = "rb"
         else:
             if append is None:
-                append = os.path.isfile(file)
-            mode = "rb+" if append else "wb"
+                append = store.isFile
+            mode = "rb+" if append else "w+b"
+        store.open(mode)
 
-        # if mode == "rb+":
-        #    raise FileExistsError("This file already exists, can not open for writing.")
+    if is_legacy_jpeg2000_source(store):
+        if readonly:
+            return LimJpeg2000Chunker(store, **chunker_kwargs)
+        raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
 
-        fh = open(file, mode)
-        chunker_kwargs.update(dict(filename=str(file)))
-        if is_legacy_jpeg2000_source(fh):
-            if readonly:
-                fh.seek(0)
-                return LimJpeg2000Chunker(fh, **chunker_kwargs)
-            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
-        fh.seek(0)
-        return LimBinaryIOChunker(fh, **chunker_kwargs)
+    return LimBinaryIOChunker(store, **chunker_kwargs)
 
-    elif isinstance(file, memoryview):
-        if is_legacy_jpeg2000_source(file):
-            if readonly:
-                return LimJpeg2000Chunker(file, **chunker_kwargs)
-            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
-        return LimBinaryIOChunker(file, **chunker_kwargs)
-
-    elif (
-        (hasattr(file, "read") or hasattr(file, "write"))
-        and hasattr(file, "seek")
-        and hasattr(file, "tell")
-        and hasattr(file, "mode")
-    ):
-        if readonly and "rb" != file.mode:
-            raise ValueError('File handle passed to LimNd2Reader must have "rb" mode')
-        elif not readonly and file.mode not in ("rb+", "wb"):
-            raise ValueError(
-                'File handle passed to LimNd2Writer must have "rb+" or "wb" mode'
-            )
-        if is_legacy_jpeg2000_source(file):
-            if readonly:
-                file.seek(0)
-                return LimJpeg2000Chunker(file, **chunker_kwargs)
-            raise RuntimeError("Writing legacy JPEG2000 ND2 files is not supported.")
-        file.seek(0)
-        return LimBinaryIOChunker(file, **chunker_kwargs)
-
-    raise ValueError(
-        "Invalid chunker source, must be filename, file handle or memoryview."
-    )

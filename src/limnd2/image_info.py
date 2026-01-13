@@ -17,21 +17,21 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in reader.experiment if 0 < exp_level.count ]) if reader.experiment else ""
     path = ""
     filename = ""
-    if reader.storageInfo.filename:
-        path, filename = os.path.split(reader.storageInfo.filename)
-    elif reader.storageInfo.url:
-        path, filename = os.path.split(reader.storageInfo.url.rstrip("/"))
+    if reader.store.filename:
+        path, filename = os.path.split(reader.store.filename)
+    elif reader.store.uri:
+        path, filename = os.path.split(reader.store.uri.rstrip("/"))
     path += os.sep
 
     bit_depth = f"{ia.uiBpcSignificant}bit {ImageAttributesPixelType.short_name(ia.ePixelType)}"
     frame_res = f"{ia.width} x {ia.height}"
-    dimension = f"{frame_res} ({ia.componentCount} {"comps" if 1 < ia.componentCount else "comp"} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
+    dimension = f"{frame_res} ({ia.componentCount} {'comps' if 1 < ia.componentCount else 'comp'} {bit_depth})" + (f" x {ia.uiSequenceCount} frames" if 1 < ia.uiSequenceCount else "") +(f": {loops}" if loops else "")
     calibration = f"{reader.pictureMetadata.dCalibration:.3f} µm/px" if reader.pictureMetadata.bCalibrated else "Uncalibrated"
 
-    mtime = f"{reader.chunker.last_modified.strftime('%x %X')}"
+    mtime = f"{reader.store.lastModified.strftime('%x %X')}"
     app_created = reader.appInfo.software
 
-    sizes = format_general_info_sizes(reader.chunker.size_on_disk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*reader.experiment.dims.get('z', 0) if reader.experiment is not None else 0)
+    sizes = format_general_info_sizes(reader.store.sizeOnDisk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*reader.experiment.dims.get('z', 0) if reader.experiment is not None else 0)
 
     return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
 
@@ -44,7 +44,7 @@ def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = No
 
 def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, Any]:
     ret = {}
-    ret["generalInfo"] = file_object.generalImageInfo
+    ret["generalInfo"] = generalImageInfo(file_object)
     ret["imageTextInfo"] = file_object.imageTextInfo.to_dict() if file_object.imageTextInfo is not None else {}
 
     exp_data = []
@@ -265,24 +265,24 @@ def maybe_wrap_field(value):
     if value is None:
         return ""
     if '\n' in value:
-        return f"{value.replace('\n', '\n\t')}"
+        return value.replace('\n', '\n\t')
     return value
 
 def export_main_image_info(image_info):
     gi = image_info.get('generalInfo', {})
     return "\n".join([
-        f"Filename:\t{maybe_wrap_field(gi.get('filename', ""))}",
-        f"Path:\t{maybe_wrap_field(gi.get('path', ""))}",
-        f"Dimension:\t{maybe_wrap_field(gi.get('dimension', ""))}",
-        f"Sizes:\t{maybe_wrap_field(gi.get('sizes', ""))}",
-        f"Modified time:\t{maybe_wrap_field(gi.get('mtime', ""))}",
-        f"Created by:\t{maybe_wrap_field(gi.get('app_created', ""))}"
+        f"Filename:\t{maybe_wrap_field(gi.get('filename', ''))}",
+        f"Path:\t{maybe_wrap_field(gi.get('path', ''))}",
+        f"Dimension:\t{maybe_wrap_field(gi.get('dimension', ''))}",
+        f"Sizes:\t{maybe_wrap_field(gi.get('sizes', ''))}",
+        f"Modified time:\t{maybe_wrap_field(gi.get('mtime', ''))}",
+        f"Created by:\t{maybe_wrap_field(gi.get('app_created', ''))}"
     ])
 
 def export_image_text_info(image_info):
     ret = []
     gi = image_info.get('generalInfo', {})
-    ret.append(f"Calibration:\t{maybe_wrap_field(gi.get('calibration', "Uncalibrated"))}")
+    ret.append(f"Calibration:\t{maybe_wrap_field(gi.get('calibration', 'Uncalibrated'))}")
 
     ti = image_info.get('imageTextInfo', {})
     ret.append(f"Optics:\t{maybe_wrap_field(ti.get('optics', ''))}")

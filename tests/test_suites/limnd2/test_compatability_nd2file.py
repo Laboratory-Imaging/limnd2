@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
+import pytest, typing
 
 import limnd2
 from limnd2.nd2file import ND2File
+from limnd2.nd2file_types import TimeLoopParams, ZStackLoopParams, XYPosLoopParams
 from limnd2.attributes import ImageAttributesCompression, ImageAttributesPixelType
 from limnd2.experiment import ExperimentLoopType
 
@@ -123,11 +124,11 @@ def test_experiment_mapping_if_present(nd2_path: Path):
             assert m.count >= 0
             if et == "TimeLoop":
                 assert hasattr(m.parameters, "periodMs")
-                assert m.parameters.periodMs == pytest.approx(exp.uLoopPars.dPeriod)
+                assert typing.cast(TimeLoopParams, m.parameters).periodMs == pytest.approx(exp.uLoopPars.dPeriod)
             elif et == "ZStackLoop":
                 assert hasattr(m.parameters, "stepUm")
-                assert m.parameters.stepUm == pytest.approx(exp.uLoopPars.dZStep)
+                assert typing.cast(ZStackLoopParams, m.parameters).stepUm == pytest.approx(exp.uLoopPars.dZStep)
             elif et == "XYPosLoop":
                 assert hasattr(m.parameters, "points")
                 # points count should be <= raw points
-                assert len(m.parameters.points) <= len(getattr(exp.uLoopPars, "Points", []))
+                assert len(typing.cast(XYPosLoopParams, m.parameters).points) <= len(getattr(exp.uLoopPars, "Points", []))

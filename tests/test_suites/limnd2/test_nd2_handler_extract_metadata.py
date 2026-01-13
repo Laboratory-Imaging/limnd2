@@ -9,6 +9,8 @@ import pytest
 
 import limnd2
 
+from typing import cast
+
 
 def extract_exposure_patch(reader: limnd2.Nd2Reader) -> float | np.floating:
     planes = getattr(reader.pictureMetadata, "sPicturePlanes", None)
@@ -83,11 +85,11 @@ def extract_metadata(reader: limnd2.Nd2Reader, filename: Path) -> dict[str, obje
         "software": reader.software,
         "size z": reader.imageAttributes.frameCount if reader.is3d else 1,
         "z frame distance (µm)": (
-            f"{z_level.uLoopPars.dZStep:.3f}" if z_level is not None else np.nan
+            f"{cast(limnd2.experiment.ExperimentZStackLoop, z_level.uLoopPars).dZStep:.3f}" if z_level is not None else np.nan
         ),
         "size t": reader.imageAttributes.frameCount if reader.is3d else 1,
-        "calibration (µm/px)": reader.generalImageInfo["calibration"],
-        "bit_depth": reader.generalImageInfo["bit_depth"].split(" ")[0],
+        "calibration (µm/px)": limnd2.generalImageInfo(reader)["calibration"],
+        "bit_depth": limnd2.generalImageInfo(reader)["bit_depth"].split(" ")[0],
     }
     return {key: value for key, value in row.items() if value}
 
@@ -110,4 +112,4 @@ def test_extract_metadata_matches_schema_across_samples(nd2_files: list[Path]) -
             if not isinstance(value, str) or not value:
                 warnings.warn(f"{key} missing for {nd2_path}", UserWarning)
                 continue
-    assert isinstance(metadata["modality"], list)
+        assert isinstance(metadata["modality"], list)

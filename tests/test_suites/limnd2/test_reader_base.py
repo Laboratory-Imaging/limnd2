@@ -20,7 +20,7 @@ def test_chunk_name_helpers_roundtrip():
     # Downsampled image formatting and detection
     name_ds = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (4, 0)
     assert ND2_CHUNK_RE_DownsampledColorData_2p.fullmatch(name_ds)
-    idx, down = BaseChunker.isDownsampledImageChunk(name_ds)
+    idx, down = BaseChunker.isDownsampledImageChunk(name_ds) # type: ignore
     assert idx == 0 and down == 4
 
     # Binary raster names are recognized by helper (no real bin id needed here)

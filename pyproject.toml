@@ -27,6 +27,7 @@ commonff = [                    # shared file-format deps
     "Pillow",
     "tifffile",
     "ome_types",
+    "zarr",
 ]
 legacy = [                      # Jpeg2000 chanker
     "imagecodecs",

@@ -122,7 +122,7 @@ class CustomDescriptionItem:
         elif self.type == CustomDescriptionItemType.Number:
             object.__setattr__(self, 'value', kwargs.get('dValue', kwargs.get('dDefault', 0.0)))
             object.__setattr__(self, 'unit', kwargs.get('sUnit', ""))
-            object.__setattr__(self, 'format', kwargs.get('eFormat', 0)) # 0 - float, 1 - scientic
+            object.__setattr__(self, 'format', kwargs.get('eFormat', 0)) # 0 - float, 1 - scientific
             object.__setattr__(self, 'digits', kwargs.get('uiPlaces', 3))
         elif self.type == CustomDescriptionItemType.Text:
             object.__setattr__(self, 'text', kwargs.get('sText', kwargs.get('sDefault', "")))

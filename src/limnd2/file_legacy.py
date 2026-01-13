@@ -21,6 +21,7 @@ from .base import (
     JP2_MAGIC,
     NameNotInChunkmapError,
     UnexpectedCallError,
+    Store
 )
 from .metadata import PictureMetadata, PictureMetadataPicturePlanes
 from .metadata_factory import MetadataFactory
@@ -407,37 +408,15 @@ class LimJpeg2000Chunker(BaseChunker):
     supported; writing back to the legacy format is intentionally not implemented.
     """
 
-    def __init__(
-        self,
-        fh_or_memory: typing.BinaryIO | memoryview,
-        *,
-        filename: str | None = None,
-        last_modified: datetime.datetime | str | None = None,
-        **kwargs,
-    ) -> None:
-        if isinstance(fh_or_memory, memoryview):
-            self._fh: typing.BinaryIO = io.BytesIO(fh_or_memory.tobytes())
-            self._owns_handle = True
-        elif (
-            hasattr(fh_or_memory, "read")
-            and hasattr(fh_or_memory, "seek")
-            and hasattr(fh_or_memory, "tell")
-        ):
-            self._fh = typing.cast(typing.BinaryIO, fh_or_memory)
-            self._owns_handle = False
-        else:
-            raise TypeError("LimJpeg2000Chunker requires a seekable binary source.")
+    def __init__(self, store: Store, **kwargs) -> None:
+        assert isinstance(store, Store), f"argument 'store' expected to be 'Store' but was '{type(file).__name__}'"
+        assert store.isOpen is not None, f"argument 'store' expected to be opened'"
 
-        self._filename: str | None = (
-            os.path.abspath(filename) if filename else getattr(self._fh, "name", None)
-        )
-        supplied_mtime = _coerce_datetime(last_modified)
-        self._last_modified = supplied_mtime or self._probe_mtime()
-        self._size_on_disk = self._probe_size()
+        self._store: Store = store
         self._lock = threading.RLock()
 
         # Load and freeze the chunk map
-        self._chunkmap = _read_legacy_chunkmap(self._fh)
+        self._chunkmap = _read_legacy_chunkmap(self._store.io)
         self._chunkmap_offsets = {
             name: tuple(offsets) for name, offsets in self._chunkmap.items()
         }
@@ -489,7 +468,7 @@ class LimJpeg2000Chunker(BaseChunker):
         self._experiment: typing.Any = None
 
         # Ensure we start reading from the beginning for subsequent operations.
-        self._fh.seek(0, os.SEEK_SET)
+        self._store.io.seek(0)
 
     # -------------------------------------------------------------------------
     # Small helpers to read legacy XML blocks (VIMD, ARTT, …) the same way the
@@ -546,28 +525,6 @@ class LimJpeg2000Chunker(BaseChunker):
         meta = self._decode_legacy_xml(b"VIMD")
         return meta if isinstance(meta, dict) else {}
 
-    # -------------------------------------------------------------------------
-
-    def _probe_size(self) -> int:
-        try:
-            fileno = self._fh.fileno()  # type: ignore[attr-defined]
-        except (OSError, AttributeError):
-            current = self._fh.tell()
-            self._fh.seek(0, os.SEEK_END)
-            size = self._fh.tell()
-            self._fh.seek(current)
-            return size
-        else:
-            return os.fstat(fileno).st_size
-
-    def _probe_mtime(self) -> datetime.datetime:
-        if self._filename:
-            try:
-                return datetime.datetime.fromtimestamp(os.stat(self._filename).st_mtime)
-            except (FileNotFoundError, PermissionError):
-                pass
-        return datetime.datetime.fromtimestamp(0)
-
     def _read_header(self) -> dict[str, int]:
         """
         Read basic header information (rows, columns, channels, bits_per_component).
@@ -584,8 +541,8 @@ class LimJpeg2000Chunker(BaseChunker):
             jp2h_offset = offsets[0]
             with self._lock:
                 # Read jp2h box header
-                self._fh.seek(jp2h_offset, os.SEEK_SET)
-                header = self._fh.read(STRUCT_BOX_HEADER.size)
+                self._store.io.seek(jp2h_offset)
+                header = self._store.io.read(STRUCT_BOX_HEADER.size)
                 if len(header) != STRUCT_BOX_HEADER.size:
                     raise RuntimeError("Legacy ND2 jp2h box header is truncated.")
                 length, box_type = STRUCT_BOX_HEADER.unpack(header)
@@ -593,14 +550,14 @@ class LimJpeg2000Chunker(BaseChunker):
                     raise RuntimeError("Chunk map jp2h entry does not point to jp2h box.")
 
                 # Read first child box of jp2h, which should be IHDR
-                ihdr_header = self._fh.read(STRUCT_BOX_HEADER.size)
+                ihdr_header = self._store.io.read(STRUCT_BOX_HEADER.size)
                 if len(ihdr_header) != STRUCT_BOX_HEADER.size:
                     raise RuntimeError("Legacy ND2 ihdr box header is truncated.")
                 ihdr_length, ihdr_type = STRUCT_BOX_HEADER.unpack(ihdr_header)
                 if ihdr_type != b"ihdr":
                     raise RuntimeError("Legacy ND2 file does not contain ihdr chunk.")
 
-                data = self._fh.read(STRUCT_IHDR.size)
+                data = self._store.io.read(STRUCT_IHDR.size)
 
             if len(data) != STRUCT_IHDR.size:
                 raise RuntimeError("Legacy ND2 ihdr chunk is truncated.")
@@ -628,13 +585,13 @@ class LimJpeg2000Chunker(BaseChunker):
         first_offset = lunk_offsets[0]
         with self._lock:
             # Read entire box payload for simplicity; payload is the JPEG2000 codestream.
-            self._fh.seek(first_offset, os.SEEK_SET)
-            box_header = self._fh.read(STRUCT_BOX_HEADER.size)
+            self._store.io.seek(first_offset, os.SEEK_SET)
+            box_header = self._store.io.read(STRUCT_BOX_HEADER.size)
             if len(box_header) != STRUCT_BOX_HEADER.size:
                 raise RuntimeError("Legacy ND2 LUNK box header is truncated.")
             length, box_type = STRUCT_BOX_HEADER.unpack(box_header)
             payload_length = max(0, length - STRUCT_BOX_HEADER.size)
-            payload = self._fh.read(payload_length)
+            payload = self._store.io.read(payload_length)
 
         if len(payload) != payload_length:
             raise RuntimeError("Legacy ND2 LUNK codestream payload is truncated.")
@@ -722,16 +679,8 @@ class LimJpeg2000Chunker(BaseChunker):
     # -------------------------------------------------------------------------
 
     @property
-    def filename(self) -> str | None:
-        return self._filename
-
-    @property
-    def size_on_disk(self) -> int:
-        return self._size_on_disk
-
-    @property
-    def last_modified(self) -> datetime.datetime:
-        return self._last_modified
+    def store(self) -> Store:
+        return self._store
 
     @property
     def format_version(self) -> tuple[int, int]:
@@ -773,12 +722,12 @@ class LimJpeg2000Chunker(BaseChunker):
 
     def _read_box_payload(self, offset: int) -> bytes:
         with self._lock:
-            self._fh.seek(offset, os.SEEK_SET)
-            header = self._fh.read(STRUCT_BOX_HEADER.size)
+            self._store.io.seek(offset, os.SEEK_SET)
+            header = self._store.io.read(STRUCT_BOX_HEADER.size)
             if len(header) != STRUCT_BOX_HEADER.size:
                 raise RuntimeError("Legacy ND2 chunk header is truncated.")
             length, _box_type = STRUCT_BOX_HEADER.unpack(header)
-            payload = self._fh.read(length - STRUCT_BOX_HEADER.size)
+            payload = self._store.io.read(length - STRUCT_BOX_HEADER.size)
         if len(payload) != length - STRUCT_BOX_HEADER.size:
             raise RuntimeError("Legacy ND2 chunk payload is truncated.")
         return payload
@@ -1220,7 +1169,7 @@ class LimJpeg2000Chunker(BaseChunker):
     # -------------------------------------------------------------------------
 
     def image(
-        self, seqindex: int, rect: tuple[int, int, int, int] | None = None
+        self, seqindex: int, *, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:
         self._ensure_frame_index(seqindex)
         if imagecodecs is None:  # pragma: no cover - dependency is part of install
@@ -1251,21 +1200,32 @@ class LimJpeg2000Chunker(BaseChunker):
             data = data.astype(target_dtype, copy=False)
         return data
 
-    def setImage(self, seqindex: int, image: NumpyArrayLike, acqtime: float = -1.0) -> None:
+    def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
+        raise PermissionError("Legacy JPEG2000 chunker is read-only.")
+
+    def setImageTile(
+        self,
+        seqindex: int,
+        x: int,
+        y: int,
+        tile: NumpyArrayLike,
+        *,
+        acqtime: float | None = None,
+    ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
     def readDownsampledImage(
-        self, seqindex: int, downsize: int, rect: tuple[int, int, int, int] | None = None
+        self, seqindex: int, *, downsample_level: int, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:
-        raise NameNotInChunkmapError(f"DownsampledColorData_{downsize}")
+        raise NameNotInChunkmapError(f"DownsampledColorData_{downsample_level}")
 
     def setDownsampledImage(
-        self, seqindex: int, downsize: int, image: NumpyArrayLike
+        self, seqindex: int, image: NumpyArrayLike, *, downsample_level: int
     ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
     def binaryRasterData(
-        self, binid: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
+        self, binid: int, seqindex: int, *, rect: tuple[int, int, int, int] | None = None
     ) -> NumpyArrayLike:
         raise BinaryIdNotFountError(binid)
 
@@ -1278,49 +1238,45 @@ class LimJpeg2000Chunker(BaseChunker):
         self,
         binid: int,
         seqindex: int,
-        downsize: int,
+        *,
+        downsample_level: int,
         rect: tuple[int, int, int, int] | None = None,
     ) -> NumpyArrayLike:
-        raise NameNotInChunkmapError(f"DownsampledBinary_{downsize}")
+        raise NameNotInChunkmapError(f"DownsampledBinary_{downsample_level}")
 
     def setDownsampledBinaryRasterData(
-        self, binid: int, seqindex: int, downsize: int, binimage: NumpyArrayLike
+        self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int
     ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
     def finalize(self) -> None:
-        if self._fh and hasattr(self._fh, "close"):
-            try:
-                self._fh.close()
-            except Exception:
-                pass
+        self._store.close()
 
     def rollback(self) -> None:
         # Legacy files are read-only – there is nothing to roll back.
         return
 
 
-def is_legacy_jpeg2000_source(source: typing.BinaryIO | memoryview) -> bool:
+def is_legacy_jpeg2000_source(store: Store) -> bool:
     """
     Return True if the provided binary source appears to be a legacy JPEG2000 ND2 file.
 
     The detection logic matches the JP2 magic used by Nikon's legacy ND2 container.
     """
 
-    if isinstance(source, memoryview):
-        if source.nbytes < 4:
-            return False
-        magic = int.from_bytes(source[:4].tobytes(), "little", signed=False)
+    if store.mem is not None and 4 <= len(store.mem):
+        magic = int.from_bytes(store.mem[:4], "little", signed=False)
         return magic == JP2_MAGIC
 
-    try:
-        current = source.tell()
-        source.seek(0, os.SEEK_SET)
-        head = source.read(4)
-        source.seek(current, os.SEEK_SET)
-    except (OSError, AttributeError):
+    elif store.io is not None:
+        try:
+            pos = store.io.tell()
+            store.io.seek(0)
+            header = store.io.read(4)
+            store.io.seek(pos)
+        except (OSError, AttributeError):
+            return False
+        return struct.unpack("<I", header)[0] == JP2_MAGIC if len(header) == 4 else False
+
+    else:
         return False
-    if len(head) != 4:
-        return False
-    magic = struct.unpack("<I", head)[0]
-    return magic == JP2_MAGIC
