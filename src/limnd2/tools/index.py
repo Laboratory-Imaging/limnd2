@@ -28,6 +28,7 @@ from typing import (
 )
 
 import limnd2
+from limnd2.base import ND2_CHUNK_FORMAT_DownsampledColorData_2p
 
 original_print = print
 
@@ -50,36 +51,48 @@ class Record(TypedDict):
     Frames: int
     Dtype: str
     Bits: int
+    Compression: str
     Resolution: str
     Channels: int
     Binary: str
+    Downsampled: str
     Software: str
     Grabber: str
 
 
 HEADERS = list(Record.__annotations__)
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # YYYY-MM-DD HH:MM:SS
+DEFAULT_EXCLUDE_COLUMNS = ["Downsampled", "Compression", "Software", "Grabber"]
+HEADER_LOOKUP = {header.lower(): header for header in HEADERS}
+DEFAULT_COLUMNS = [h for h in HEADERS if h not in DEFAULT_EXCLUDE_COLUMNS]
+
+
+def _normalize_columns_arg(
+    arg: str | Sequence[str] | None,
+) -> tuple[list[str], list[str]]:
+    if arg is None:
+        return [], []
+    raw = (
+        [x.strip() for x in arg.split(",")]
+        if isinstance(arg, str)
+        else [str(x).strip() for x in arg]
+    )
+    recognized: list[str] = []
+    unrecognized: list[str] = []
+    for col in raw:
+        if not col:
+            continue
+        normalized = HEADER_LOOKUP.get(col.lower())
+        if normalized:
+            if normalized not in recognized:
+                recognized.append(normalized)
+        else:
+            unrecognized.append(col)
+    return recognized, unrecognized
 
 
 def index_file(path: Path) -> Record:
     """Return a dict with the index file data."""
-
-    file_version = None
-    file_obj = None
-    bin_info = ""
-    try:
-        file_obj = limnd2.Nd2Reader(str(path.resolve()))
-        bins = file_obj.chunker.binaryRasterMetadata
-        if bins is not None:
-            raster_bin_count = len(bins)
-            if 0 < raster_bin_count:
-                bin_info = f"{raster_bin_count}x BIN"
-            else:
-                rle_bin_count = len(file_obj.chunker.binaryRleMetadata)
-                if 0 < rle_bin_count:
-                    bin_info = f"{rle_bin_count}x RLEv{file_obj.chunker.rleBinaryVersion()}"
-    except limnd2.UnsupportedChunkmapError as e:
-        file_version = e.file_version
 
     def size_fmt(size):
         kB = 1024
@@ -95,6 +108,71 @@ def index_file(path: Path) -> Record:
         if kB < size:
             return f"{size/kB:.1f} kB"
         return f"{size} B"
+    file_version = None
+    bin_info = ""
+    try:
+        with limnd2.Nd2Reader(str(path.resolve())) as file_obj:
+            bins = file_obj.chunker.binaryRasterMetadata
+            if bins is not None:
+                raster_bin_count = len(bins)
+                if 0 < raster_bin_count:
+                    bin_info = f"{raster_bin_count}x BIN"
+                else:
+                    rle_bin_count = len(file_obj.chunker.binaryRleMetadata)
+                    if 0 < rle_bin_count:
+                        bin_info = f"{rle_bin_count}x RLEv{file_obj.chunker.rleBinaryVersion()}"
+            downsampled_info = []
+            attrs = file_obj.imageAttributes
+            chunk_names = set(file_obj.chunker.chunk_names)
+            for level in attrs.downsampleLevels:
+                down_attrs = attrs.makeDownsampled(level)
+                chunk_name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (
+                    down_attrs.powSize,
+                    0,
+                )
+                if chunk_name in chunk_names:
+                    downsampled_info.append(
+                        f"L{level}:{down_attrs.uiWidth}x{down_attrs.uiHeight}"
+                    )
+            if not attrs.downsampleLevels:
+                downsampled_value = "-"
+            elif not downsampled_info:
+                downsampled_value = "not generated"
+            else:
+                downsampled_value = ", ".join(downsampled_info)
+            compression_label = "none"
+            if attrs.eCompression == limnd2.ImageAttributesCompression.ictLossy:
+                compression_label = "lossy"
+            elif attrs.eCompression == limnd2.ImageAttributesCompression.ictLossLess:
+                compression_label = "lossless"
+            elif attrs.eCompression == limnd2.ImageAttributesCompression.ictNone:
+                compression_label = "none"
+            else:
+                compression_label = str(attrs.eCompression)
+            if compression_label != "none":
+                comp_param = attrs.dCompressionParam
+                if comp_param not in (0, 0.0):
+                    compression_label = f"{compression_label} ({comp_param})"
+            return Record({
+                "Path": str(path.parent),
+                "Name": path.name,
+                "Version": f"{file_obj.version[0]}.{file_obj.version[1]}",
+                "Size": size_fmt(path.stat().st_size),
+                "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
+                "Experiment": ", ".join([f"{e.shortName} ({e.count})" for e in file_obj.experiment]) if file_obj.experiment else "",
+                "Frames": max(1, file_obj.imageAttributes.frameCount),
+                "Dtype": file_obj.imageAttributes.dtype.__name__,
+                "Bits": file_obj.imageAttributes.uiBpcSignificant,
+                "Compression": compression_label,
+                "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
+                "Channels": file_obj.imageAttributes.componentCount,
+                "Binary": bin_info,
+                "Downsampled": downsampled_value,
+                "Software": f'{file_obj.appInfo.m_SWNameString} {file_obj.appInfo.m_VersionString}',
+                "Grabber": file_obj.appInfo.m_GrabberString
+            })
+    except limnd2.UnsupportedChunkmapError as e:
+        file_version = e.file_version
 
     #if(file_obj.imageAttributes.uiWidth != file_obj.imageAttributes.uiTileWidth):
     #    print(path.name, "\n", file_obj.imageAttributes)
@@ -110,40 +188,24 @@ def index_file(path: Path) -> Record:
     """
     #print(path.name, "\n", "\n\n".join([f"{e}" for e in file_obj.experiment]), "\n\n\n")
 
-    if file_obj is not None:
-        return Record({
-            "Path": str(path.parent),
-            "Name": path.name,
-            "Version": f"{file_obj.version[0]}.{file_obj.version[1]}",
-            "Size": size_fmt(path.stat().st_size),
-            "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
-            "Experiment": ", ".join([f"{e.shortName} ({e.count})" for e in file_obj.experiment]) if file_obj.experiment else "",
-            "Frames": max(1, file_obj.imageAttributes.frameCount),
-            "Dtype": file_obj.imageAttributes.dtype.__name__,
-            "Bits": file_obj.imageAttributes.uiBpcSignificant,
-            "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
-            "Channels": file_obj.imageAttributes.componentCount,
-            "Binary": bin_info,
-            "Software": f'{file_obj.appInfo.m_SWNameString} {file_obj.appInfo.m_VersionString}',
-            "Grabber": file_obj.appInfo.m_GrabberString
-        })
-    else:
-        return Record({
-            "Path": str(path.parent),
-            "Name": path.name,
-            "Version": f"{file_version[0]}.{file_version[1]}" if file_version is not None else "",
-            "Size": size_fmt(path.stat().st_size),
-            "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
-            "Frames": 1,
-            "Experiment": "",
-            "Dtype": "",
-            "Bits": 0,
-            "Resolution": "",
-            "Channels": 1,
-            "Binary": "",
-            "Software": "",
-            "Grabber": "",
-        })
+    return Record({
+        "Path": str(path.parent),
+        "Name": path.name,
+        "Version": f"{file_version[0]}.{file_version[1]}" if file_version is not None else "",
+        "Size": size_fmt(path.stat().st_size),
+        "Modified": datetime.fromtimestamp(path.stat().st_mtime).strftime('%x %X'),
+        "Frames": 1,
+        "Experiment": "",
+        "Dtype": "",
+        "Bits": 0,
+        "Compression": "",
+        "Resolution": "",
+        "Channels": 1,
+        "Binary": "",
+        "Downsampled": "",
+        "Software": "",
+        "Grabber": "",
+    })
 
 
 def _gather_files(
@@ -237,7 +299,9 @@ def _parse_args(argv: Sequence[str] = ()) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         formatter_class=RawTextHelpFormatter,
         description="Create an index of important metadata in ND2 files."
-        f"\n\nValid column names are:\n{HEADERS!r}",
+        f"\n\nValid column names are:\n{HEADERS!r}"
+        f"\n\nDefault columns:\n{DEFAULT_COLUMNS!r}"
+        f"\nHidden by default (can be included):\n{DEFAULT_EXCLUDE_COLUMNS!r}",
     )
     parser.add_argument(
         "paths",
@@ -280,13 +344,25 @@ def _parse_args(argv: Sequence[str] = ()) -> argparse.Namespace:
         "--include",
         "-i",
         type=str,
-        help="Comma-separated columns to include in the output",
+        help="Comma-separated columns to add to the default output",
+    )
+    parser.add_argument(
+        "--columns",
+        "-c",
+        type=str,
+        help="Exact comma-separated list of columns to output",
     )
     parser.add_argument(
         "--exclude",
         "-e",
         type=str,
-        help="Comma-separated columns to exclude in the output",
+        help="Comma-separated columns to remove from the default output",
+    )
+    parser.add_argument(
+        "--all-columns",
+        action="store_true",
+        default=False,
+        help="Show all columns (disables default column exclusions)",
     )
     parser.add_argument(
         "--no-header",
@@ -313,8 +389,8 @@ def _parse_args(argv: Sequence[str] = ()) -> argparse.Namespace:
 def _filter_data(
     data: list[Record],
     sort_by: str | None = None,
-    include: str | None = None,
-    exclude: str | None = None,
+    include: str | Sequence[str] | None = None,
+    exclude: str | Sequence[str] | None = None,
     filters: Sequence[str] = (),
 ) -> list[Record]:
     """Filter and sort the data.
@@ -337,11 +413,7 @@ def _filter_data(
     list[Record]
         _description_
     """
-    includes = include.split(",") if include else []
-    unrecognized = set(includes) - set(HEADERS)
-    if unrecognized:  # pragma: no cover
-        print(f"Unrecognized columns: {', '.join(unrecognized)}", file=sys.stderr)
-        includes = [x for x in includes if x not in unrecognized]
+    includes, include_unrecognized = _normalize_columns_arg(include)
 
     if sort_by in ["Size", "Size-"]:
 
@@ -381,10 +453,13 @@ def _filter_data(
         # preserve order of to_include
         data = [{h: row[h] for h in includes} for row in data]
 
-    to_exclude = cast("list[str]", exclude.split(",") if exclude else [])
+    to_exclude, exclude_unrecognized = _normalize_columns_arg(exclude)
+    unrecognized = include_unrecognized + exclude_unrecognized
+    if unrecognized:  # pragma: no cover
+        print(f"Unrecognized columns: {', '.join(unrecognized)}", file=sys.stderr)
 
     if to_exclude:
-        data = [{h: row[h] for h in HEADERS if h not in to_exclude} for row in data]
+        data = [{h: row[h] for h in row.keys() if h not in to_exclude} for row in data]
 
     if filters:
         # filters are in the form of a string expression, to be evaluated
@@ -409,11 +484,29 @@ def main(argv: Sequence[str] = ()) -> None:
         print("[red]No ND2 files found.[/red]")
         return
 
+    include_list, include_unrec = _normalize_columns_arg(args.include)
+    exclude_list, exclude_unrec = _normalize_columns_arg(args.exclude)
+    columns_list, columns_unrec = _normalize_columns_arg(args.columns)
+    unrecognized = include_unrec + exclude_unrec + columns_unrec
+    if unrecognized:  # pragma: no cover
+        print(f"Unrecognized columns: {', '.join(unrecognized)}", file=sys.stderr)
+
+    if args.columns:
+        include_final = columns_list
+        exclude_final = None
+    else:
+        base_columns = HEADERS if args.all_columns else DEFAULT_COLUMNS
+        include_final = list(base_columns)
+        for col in include_list:
+            if col not in include_final:
+                include_final.append(col)
+        exclude_final = exclude_list
+
     data = _filter_data(
         data,
         sort_by=args.sort_by,
-        include=args.include,
-        exclude=args.exclude,
+        include=include_final,
+        exclude=exclude_final,
         filters=args.filter,
     )
 
