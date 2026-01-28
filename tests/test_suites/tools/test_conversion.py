@@ -65,6 +65,12 @@ FAST_CASES = [
         rf"--channel-setting 5|five|Undefined|0|0|Cyan",
         id="simple_into_channels",
     ),
+    pytest.param(
+        "nd2_timeloop",
+        rf"{ROOT}/nd2_seq .*cluster_cropT(.+?)\.nd2 --timeloop 1 -tstep 0 "
+        rf"--extension nd2 -n output.nd2 -o {OUT}",
+        id="nd2_timeloop",
+    ),
 ]
 
 SLOW_CASES = [

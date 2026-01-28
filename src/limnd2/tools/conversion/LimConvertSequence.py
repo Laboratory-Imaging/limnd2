@@ -38,7 +38,7 @@ def _convert_sequence_to_nd2(args: list[str] | None = None):
     files: dict[Path, list[str]] = crawler.run(get_group_values, {"regexp" : filename_regexp}, True)
 
     if len(files) == 0:
-        raise ValueError("ERROR: No tiff files matching given criteria were found.")
+        raise ValueError("ERROR: No files matching given criteria were found.")
 
     file_sources: dict[LimImageSource, tuple] = {READER_CLASS_MAP[parsed_args.extension](path): dims for path, dims in files.items()}
     sample_file: LimImageSource = next(iter(file_sources.keys()))

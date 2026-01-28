@@ -53,4 +53,5 @@ def test_index_main_include_columns(nd2_directory: Path, capsys: pytest.CaptureF
     payload = json.loads(out)
     assert payload
     for entry in payload:
-        assert set(entry.keys()) == {"Name", "Frames"}
+        # --include augments defaults, it does not restrict output
+        assert set(entry.keys()) == set(index.DEFAULT_COLUMNS)
