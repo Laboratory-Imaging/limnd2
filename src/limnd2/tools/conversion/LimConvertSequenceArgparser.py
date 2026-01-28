@@ -82,10 +82,10 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("-" + M.SHORT, "--" + M.LONG, type=int, help="Capture group index for multipoint.")
 
     parser.add_argument("-" + Z.SHORT, "--" + Z.LONG, type=int, help="Capture group index for Z-stack.")
-    parser.add_argument("-" + ZSTEP.SHORT, "--" + ZSTEP.LONG, type=int, default=100, help="Z-stack step in micrometers.")
+    parser.add_argument("-" + ZSTEP.SHORT, "--" + ZSTEP.LONG, type=int, default=None, help="Z-stack step in micrometers.")
 
     parser.add_argument("-" + T.SHORT, "--" + T.LONG, type=int, help="Capture group index for time index.")
-    parser.add_argument("-" + TSTEP.SHORT, "--" + TSTEP.LONG, type=int, default=100, help="Time step in miliseconds")
+    parser.add_argument("-" + TSTEP.SHORT, "--" + TSTEP.LONG, type=int, default=None, help="Time step in miliseconds")
 
     parser.add_argument("-" + C.SHORT, "--" + C.LONG, type=int, help="Capture group index for channels.")
 
@@ -108,14 +108,14 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logs_to_json", action="store_true", help=argparse.SUPPRESS)      # used to print log messages as JSON over strings for parsing is NIS Express
 
 
-    parser.add_argument("--pixel_calibration", type=float, default=0.0, help=argparse.SUPPRESS)
+    parser.add_argument("--pixel_calibration", type=float, default=None, help=argparse.SUPPRESS)
 
     # OPTIONAL MICROSCOPE SETTINGS
-    parser.add_argument("--ms-objective_magnification", type=float, default=-1.0, help=argparse.SUPPRESS)
-    parser.add_argument("--ms-objective_numerical_aperture", type=float, default=-1.0, help=argparse.SUPPRESS)
-    parser.add_argument("--ms-zoom_magnification", type=float, default=-1.0, help=argparse.SUPPRESS)
-    parser.add_argument("--ms-immersion_refractive_index", type=float, default=-1.0, help=argparse.SUPPRESS)
-    parser.add_argument("--ms-pinhole_diameter", type=float, default=-1.0, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-objective_magnification", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-objective_numerical_aperture", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-zoom_magnification", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-immersion_refractive_index", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--ms-pinhole_diameter", type=float, default=None, help=argparse.SUPPRESS)
 
     #OPTIONAL CHANNEL SETTINGS
     parser.add_argument(
@@ -349,8 +349,8 @@ def convert_sequence_parse(args: list[str] | None = None) -> LimConvertUtils.Con
                           regexp = regexp,
                           extension = extensionType,
                           groups = groups,
-                          time_step = float(parsed_args.__dict__[TSTEP.LONG]),
-                          z_step = float(parsed_args.__dict__[ZSTEP.LONG]),
+                          time_step = float(parsed_args.__dict__[TSTEP.LONG]) if parsed_args.__dict__[TSTEP.LONG] else parsed_args.__dict__[TSTEP.LONG],
+                          z_step = float(parsed_args.__dict__[ZSTEP.LONG]) if parsed_args.__dict__[ZSTEP.LONG] else parsed_args.__dict__[ZSTEP.LONG],
                           json_output = parsed_args.__dict__[J.LONG],
                           nd2_output =  parsed_args.__dict__[N.LONG],
                           output_dir = output_dir,

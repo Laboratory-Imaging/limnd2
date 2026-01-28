@@ -240,8 +240,6 @@ class LIMND2Utils:
             total = LIMND2Utils.total_work_units(grouped_files, attr) if grouped_files else 0
             expected_size_bytes = (attr.imageBytes + 4096) * len(grouped_files) + 512 * 1024 if grouped_files else None
             progress = ProgressPrinter(nd2_path, total, expected_size_bytes=expected_size_bytes)
-
-            # Keep multiprocessing off unless you have verified limnd2 is thread-safe for writes
             if multiprocessing:
                 nd2_file_lock = Lock()
                 with ThreadPoolExecutor() as executor:

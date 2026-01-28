@@ -14,6 +14,7 @@ class ImageFormat(enum.Enum):
     TIFF = enum.auto()
     PNG = enum.auto()
     JPEG = enum.auto()
+    ND2 = enum.auto()
 
 _FORMAT_REGISTRY: dict[ImageFormat, dict[str, object]] = {
     ImageFormat.TIFF: {
@@ -34,6 +35,12 @@ _FORMAT_REGISTRY: dict[ImageFormat, dict[str, object]] = {
         "extensions": [".jpeg", ".jpg"],
         "extra": "commonff",
     },
+    ImageFormat.ND2: {
+        "module": ".LimImageSourceNd2",
+        "class": "LimImageSourceNd2",
+        "extensions": [".nd2"],
+        "extra": None,
+    },
 }
 
 EXTENSION_MAP: dict[ImageFormat, list[str]] = {}
@@ -43,8 +50,9 @@ _OPTIONAL_EXTENSION_TO_EXTRA: dict[str, str] = {}
 for fmt, config in _FORMAT_REGISTRY.items():
     extensions = config["extensions"]  # type: ignore[assignment]
     extra = config["extra"]  # type: ignore[assignment]
-    for ext in extensions:
-        _OPTIONAL_EXTENSION_TO_EXTRA[ext] = extra
+    if extra:
+        for ext in extensions:
+            _OPTIONAL_EXTENSION_TO_EXTRA[ext] = extra
 
     try:
         module = importlib.import_module(config["module"], package=__package__)
@@ -86,9 +94,13 @@ def open_lim_image_source(filename: str | Path) -> LimImageSource:
         image_source_class = READER_CLASS_MAP[image_format]
     except KeyError:
         extra = _FORMAT_REGISTRY[image_format]["extra"]
+        if extra:
+            raise ImportError(
+                f'The reader for "{image_format.name}" is unavailable. Install '
+                f'`limnd2[{extra}]` to enable it.'
+            ) from None
         raise ImportError(
-            f'The reader for "{image_format.name}" is unavailable. Install '
-            f'`limnd2[{extra}]` to enable it.'
+            f'The reader for "{image_format.name}" is unavailable.'
         ) from None
 
     return image_source_class(filename)
