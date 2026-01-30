@@ -46,12 +46,13 @@ def logprint(msg: str, type = "log", log_type_override = None):
                                "message": f"ERROR: {msg}" }))
 
     elif selected_log_type == LogType.CONSOLE:
+        script_name = sys.argv[0].split('\\')[-1]
         if type == "warning":
-            print(f"{sys.argv[0].split('\\')[-1]} [{datetime.now():%H:%M:%S.%f}] WARNING: {msg}", flush=True)
+            print(f"{script_name} [{datetime.now():%H:%M:%S.%f}] WARNING: {msg}", flush=True)
         elif type == "error":
-            print(f"{sys.argv[0].split('\\')[-1]} [{datetime.now():%H:%M:%S.%f}] ERROR: {msg}", flush=True)
+            print(f"{script_name} [{datetime.now():%H:%M:%S.%f}] ERROR: {msg}", flush=True)
         else:
-            print(f"{sys.argv[0].split('\\')[-1]} [{datetime.now():%H:%M:%S.%f}] {msg}", flush=True)
+            print(f"{script_name} [{datetime.now():%H:%M:%S.%f}] {msg}", flush=True)
 
 
 #simplified settings for conversion of one image
@@ -131,7 +132,8 @@ class ProgressPrinter:
     def update_and_print(self):
         self.done_percentage = self.done / self.total if self.total else 0
         if LOG_TYPE == LogType.CONSOLE:
-            print(f"{sys.argv[0].split('\\')[-1]} [{datetime.now():%H:%M:%S.%f}] {self.done} / {self.total} ({self.done_percentage * 100:.1f} %)", end="")
+            script_name = sys.argv[0].split('\\')[-1]
+            print(f"{script_name} [{datetime.now():%H:%M:%S.%f}] {self.done} / {self.total} ({self.done_percentage * 100:.1f} %)", end="")
 
         self.elapsed = datetime.now() - self.start_time
         total_time_estimated = self.elapsed / self.done_percentage if self.done_percentage else self.elapsed
