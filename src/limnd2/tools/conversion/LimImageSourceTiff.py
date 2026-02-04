@@ -132,6 +132,12 @@ class LimImageSourceTiff(LimImageSource):
         return f"LimImageSourceTiff({self.filename}, {self.idf})"
 
     @property
+    def additional_information(self) -> dict:
+        if self._additional_dimensions is None:
+            self._additional_dimensions = self._calculate_additional_information()
+        return copy.deepcopy(self._additional_dimensions)
+
+    @property
     def supports_tile_read(self) -> bool:
         return True
 

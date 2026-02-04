@@ -119,9 +119,10 @@ class LimImageSourcePng(LimImageSource):
                 bpc = 8
                 pixel_type = ImageAttributesPixelType.pxtUnsigned
 
+        width_bytes = ImageAttributes.calcWidthBytes(img.width, bpc, comps)
         return ImageAttributes(
             uiWidth = img.width,
-            uiWidthBytes = img.width * comps * bpc,
+            uiWidthBytes = width_bytes,
             uiHeight = img.height,
             uiComp = comps,
             uiBpcInMemory = bpc,
