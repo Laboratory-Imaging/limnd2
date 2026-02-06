@@ -88,6 +88,9 @@ addopts = "--cov=limnd2 --cov-report=term-missing"
 markers = [
     "slow: tests that take too long and should only be run locally (not on CI)",
 ]
+norecursedirs = [
+  "tests_compatability",
+]
 
 [tool.coverage.run]
 source = ["src/limnd2"]

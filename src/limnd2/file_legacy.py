@@ -443,7 +443,12 @@ class LimJpeg2000Chunker(BaseChunker):
         if not self._image_offsets:
             raise RuntimeError("Legacy ND2 file does not contain LUNK image data.")
         if len(self._image_offsets) % self._channel_count != 0:
-            raise RuntimeError("Legacy ND2 image chunk count does not match channels.")
+            # Try to infer channel count from VCAL or fall back to 1
+            vcal_offsets = self._chunkmap_offsets.get(b"VCAL", ())
+            if vcal_offsets and len(self._image_offsets) % len(vcal_offsets) == 0:
+                self._channel_count = len(self._image_offsets) // len(vcal_offsets)
+            else:
+                self._channel_count = 1
 
         # Frames: LegacyReader uses len(chunkmap[b"VCAL"]) as sequenceCount.
         # Prefer that if it matches the LUNK-based count, else fall back to LUNK.

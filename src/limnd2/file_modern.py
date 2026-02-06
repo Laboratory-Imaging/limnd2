@@ -1,6 +1,7 @@
 import collections, datetime, mmap, os, struct, threading, typing
 #from contextlib import contextmanager
 from .base import *
+from .base import _BytesView
 from .attributes import ImageAttributesCompression, ImageAttributesPixelType
 
 if Nd2LoggerEnabled:
@@ -356,6 +357,8 @@ class LimBinaryIOChunker(BaseChunker):
             offset += y0*attrs.widthBytes+x0*attrs.pixelBytes
             shape = (y1-y0, x1-x0, attrs.shape[2])
 
+        if isinstance(buffer, _BytesView):
+            buffer = buffer._mv
         return np.ndarray(
             buffer = buffer,
             offset = offset,
@@ -486,6 +489,8 @@ class LimBinaryIOChunker(BaseChunker):
             offset += y0*attrs.widthBytes+x0*attrs.pixelBytes
             shape = (y1-y0, x1-x0, attrs.shape[2])
 
+        if isinstance(buffer, _BytesView):
+            buffer = buffer._mv
         return np.ndarray(
             buffer=buffer,
             offset=offset,

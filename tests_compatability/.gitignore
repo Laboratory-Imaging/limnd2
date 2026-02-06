@@ -1,0 +1,14 @@
+# Downloaded ND2 sample data
+/data/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Pytest cache
+.pytest_cache/
+
+# Local coverage/output artifacts (if generated under this folder)
+.coverage
+htmlcov/
+test_report/

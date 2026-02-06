@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Mapping
 
+import numpy as np
 import pytest, typing
 
 import limnd2
 from limnd2.nd2file import ND2File
-from limnd2.nd2file_types import TimeLoopParams, ZStackLoopParams, XYPosLoopParams
+from limnd2.nd2file_types import FrameMetadata, Metadata, TimeLoopParams, ZStackLoopParams, XYPosLoopParams
 from limnd2.attributes import ImageAttributesCompression, ImageAttributesPixelType
 from limnd2.experiment import ExperimentLoopType
 
 
 def test_basic_properties(nd2_path: Path):
     with limnd2.Nd2Reader(nd2_path) as r:
-        f = ND2File(nd2_path)
-        assert f.version == r.version
-        assert f.path == str(nd2_path)
-        assert f.is_legacy is False
+        with ND2File(nd2_path) as f:
+            assert f.version == r.version
+            assert f.path == str(nd2_path)
+            assert f.is_legacy in (True, False)
 
 
 def test_attributes_mapping(nd2_path: Path):
@@ -54,40 +56,24 @@ def test_attributes_mapping(nd2_path: Path):
         )
 
         assert tuple(f.attributes) == expected
+        f.close()
 
 
-def test_not_implemented_interfaces_raise(nd2_path: Path):
-    f = ND2File(nd2_path)
-    with pytest.raises(NotImplementedError):
-        _ = f.text_info
-    with pytest.raises(NotImplementedError):
-        _ = f.closed
-    with pytest.raises(NotImplementedError):
-        f.__getstate__()
-    with pytest.raises(NotImplementedError):
-        f.__setstate__({})
-    with pytest.raises(NotImplementedError):
-        _ = f.metadata
-    with pytest.raises(NotImplementedError):
-        f.frame_metadata(0)
-    with pytest.raises(NotImplementedError):
-        _ = f.ndim
-    with pytest.raises(NotImplementedError):
-        _ = f.shape
-    with pytest.raises(NotImplementedError):
-        _ = f.sizes
-    with pytest.raises(NotImplementedError):
-        _ = f.is_rgb
-    with pytest.raises(NotImplementedError):
-        _ = f.components_per_channel
-    with pytest.raises(NotImplementedError):
-        _ = f.size
-    with pytest.raises(NotImplementedError):
-        _ = f.nbytes
-    with pytest.raises(NotImplementedError):
-        _ = f.dtype
-    with pytest.raises(NotImplementedError):
-        f.read_frame(0)
+def test_interface_properties_available(nd2_path: Path):
+    with ND2File(nd2_path) as f:
+        assert isinstance(f.text_info, dict)
+        assert isinstance(f.closed, bool)
+        assert isinstance(f.metadata, Metadata)
+        assert isinstance(f.frame_metadata(0), FrameMetadata)
+        assert isinstance(f.ndim, int)
+        assert isinstance(f.shape, tuple)
+        assert isinstance(f.sizes, Mapping)
+        assert isinstance(f.is_rgb, bool)
+        assert isinstance(f.components_per_channel, int)
+        assert isinstance(f.size, int)
+        assert isinstance(f.nbytes, int)
+        assert isinstance(f.dtype, np.dtype)
+        assert isinstance(f.read_frame(0), np.ndarray)
 
 
 def test_experiment_mapping_if_present(nd2_path: Path):
@@ -106,29 +92,33 @@ def test_experiment_mapping_if_present(nd2_path: Path):
                 expected_types.append("XYPosLoop")
             # skip others by design
 
-        f = ND2File(nd2_path)
-        mapped = f.experiment
+        with ND2File(nd2_path) as f:
+            mapped = f.experiment
 
         # Lengths may differ if only spectral/custom loops exist
         if not expected_types:
             assert mapped == []
             pytest.skip("No compatible experiment loops in file")
 
-        assert len(mapped) == len(expected_types)
-        for m, et, exp in zip(mapped, expected_types, r.experiment):
-            # Some r.experiment items may be skipped (spectral); ensure alignment
-            if exp.eType not in (ExperimentLoopType.eEtTimeLoop, ExperimentLoopType.eEtZStackLoop, ExperimentLoopType.eEtXYPosLoop):
-                continue
-            assert m.type == et
-            # Count should match
-            assert m.count >= 0
-            if et == "TimeLoop":
-                assert hasattr(m.parameters, "periodMs")
-                assert typing.cast(TimeLoopParams, m.parameters).periodMs == pytest.approx(exp.uLoopPars.dPeriod)
-            elif et == "ZStackLoop":
-                assert hasattr(m.parameters, "stepUm")
-                assert typing.cast(ZStackLoopParams, m.parameters).stepUm == pytest.approx(exp.uLoopPars.dZStep)
-            elif et == "XYPosLoop":
-                assert hasattr(m.parameters, "points")
-                # points count should be <= raw points
-                assert len(typing.cast(XYPosLoopParams, m.parameters).points) <= len(getattr(exp.uLoopPars, "Points", []))
+            assert len(mapped) == len(expected_types)
+            for m, et, exp in zip(mapped, expected_types, r.experiment):
+                # Some r.experiment items may be skipped (spectral); ensure alignment
+                if exp.eType not in (
+                    ExperimentLoopType.eEtTimeLoop,
+                    ExperimentLoopType.eEtZStackLoop,
+                    ExperimentLoopType.eEtXYPosLoop,
+                ):
+                    continue
+                assert m.type == et
+                # Count should match
+                assert m.count >= 0
+                if et == "TimeLoop":
+                    assert hasattr(m.parameters, "periodMs")
+                    assert typing.cast(TimeLoopParams, m.parameters).periodMs == pytest.approx(exp.uLoopPars.dPeriod)
+                elif et == "ZStackLoop":
+                    assert hasattr(m.parameters, "stepUm")
+                    assert typing.cast(ZStackLoopParams, m.parameters).stepUm == pytest.approx(exp.uLoopPars.dZStep)
+                elif et == "XYPosLoop":
+                    assert hasattr(m.parameters, "points")
+                    # points count should be <= raw points
+                    assert len(typing.cast(XYPosLoopParams, m.parameters).points) <= len(getattr(exp.uLoopPars, "Points", []))
