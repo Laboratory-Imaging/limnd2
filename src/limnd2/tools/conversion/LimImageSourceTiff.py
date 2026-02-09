@@ -514,7 +514,7 @@ class LimImageSourceTiff(LimImageSource):
         Keys:
         - tstep, zstep, pixel_calibration, pinhole_diameter, objective_magnification,
             objective_numerical_aperture, immersion_refractive_index, zoom_magnification : strings
-        - channels: list of [nameFromFile, customName, modalityString, ex, em, colorName]
+        - channels: list of [nameFromFile, customName, modalityString, ex, em, colorString]
 
         Any missing value is returned as an empty string "".
         """
@@ -526,66 +526,28 @@ class LimImageSourceTiff(LimImageSource):
             "SFC pinhole", "SFC slit", "Spinning Disc", "DSD", "NSIM", "iSim",
             "RCM", "CSU W1-SoRa", "NSPARC"
         ]
-        COLOR_NAMES = [
-            "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta",
-            "Orange", "Pink", "Purple", "Brown", "Gray",
-            "Black", "White"
-        ]
-
-        def _color_name_from_rgb(rgb):
+        def _color_to_hex(rgb):
             if not rgb or len(rgb) < 3:
                 return ""
             r, g, b = rgb[:3]
 
-            # --- Strict checks for vivid colors ---
-            if r > 200 and g < 80 and b < 80:
-                return "Red"
-            if g > 200 and r < 80 and b < 80:
-                return "Green"
-            if b > 200 and r < 80 and g < 80:
-                return "Blue"
+            def _norm(v):
+                try:
+                    v = float(v)
+                except Exception:
+                    return None
+                if 0.0 <= v <= 1.0:
+                    v = round(v * 255.0)
+                else:
+                    v = round(v)
+                return int(min(255, max(0, v)))
 
-            # Orange: strong red + moderate green, low blue
-            if r > 200 and 100 < g < 180 and b < 80:
-                return "Orange"
-
-            # Pink: strong red + moderate blue, low green
-            if r > 200 and g < 150 and b > 150:
-                return "Pink"
-
-            # Purple/Violet: red + blue both strong, green low
-            if r > 120 and b > 120 and g < 100:
-                return "Purple"
-
-            # Yellow: high red + green, low blue
-            if r > 200 and g > 200 and b < 100:
-                return "Yellow"
-
-            # Cyan: high green + blue, low red
-            if g > 200 and b > 200 and r < 100:
-                return "Cyan"
-
-            # Magenta: high red + blue, low green
-            if r > 200 and b > 200 and g < 100:
-                return "Magenta"
-
-            # Brown: moderate red + green, very low blue
-            if r > 120 and g > 80 and b < 60:
-                return "Brown"
-
-            # Gray: all channels balanced, mid intensity
-            if abs(r - g) < 20 and abs(g - b) < 20 and 50 < r < 200:
-                return "Gray"
-
-            # Black/White extremes
-            if r < 40 and g < 40 and b < 40:
-                return "Black"
-            if r > 220 and g > 220 and b > 220:
-                return "White"
-
-            # --- Fallback heuristic: max component ---
-            mx = max((r, "Red"), (g, "Green"), (b, "Blue"), key=lambda x: x[0])[1]
-            return mx
+            r = _norm(r)
+            g = _norm(g)
+            b = _norm(b)
+            if r is None or g is None or b is None:
+                return ""
+            return f"#{r:02X}{g:02X}{b:02X}"
 
         def _modality_from(acq_mode, contrast_method):
             # Normalize to strings
@@ -613,6 +575,28 @@ class LimImageSourceTiff(LimImageSource):
 
             # As a safe default
             return "Undefined"
+
+        def _pinhole_um_from_channel(ch):
+            val = getattr(ch, "pinhole_size", None)
+            if val is None:
+                return None
+            unit = getattr(ch, "pinhole_size_unit", None)
+            # OME default is micrometers when unit is omitted
+            unit_value = "µm" if unit is None else getattr(unit, "value", str(unit))
+            if unit_value in ("µm", "um"):
+                scale = 1.0
+            elif unit_value == "nm":
+                scale = 1e-3
+            elif unit_value == "mm":
+                scale = 1e3
+            elif unit_value == "m":
+                scale = 1e6
+            else:
+                return None
+            try:
+                return float(val) * scale
+            except Exception:
+                return None
 
         # Defaults for the final shape
         result = {
@@ -657,6 +641,7 @@ class LimImageSourceTiff(LimImageSource):
 
         # --- pixel size / NA / RI ---
         objective_na = None
+        objective_mag = None
         refractive_index = None
         pixel_size_x = None
 
@@ -677,6 +662,9 @@ class LimImageSourceTiff(LimImageSource):
 
         if used_objective:
             objective_na = getattr(used_objective, "lens_na", None)
+            objective_mag = getattr(used_objective, "nominal_magnification", None)
+            if objective_mag is None:
+                objective_mag = getattr(used_objective, "calibrated_magnification", None)
 
         if getattr(image, "objective_settings", None):
             refractive_index = getattr(image.objective_settings, "refractive_index", None)
@@ -689,6 +677,8 @@ class LimImageSourceTiff(LimImageSource):
             result["pixel_calibration"] = f"{float(pixel_size_x)}"
         if objective_na is not None:
             result["objective_numerical_aperture"] = f"{float(objective_na)}"
+        if objective_mag is not None:
+            result["objective_magnification"] = f"{float(objective_mag)}"
         if refractive_index is not None:
             result["immersion_refractive_index"] = f"{float(refractive_index)}"
 
@@ -697,6 +687,17 @@ class LimImageSourceTiff(LimImageSource):
         if getattr(image, "pixels", None) and getattr(image.pixels, "channels", None):
             # Sort by channel.id (same as your earlier logic)
             chs = sorted(image.pixels.channels, key=lambda x: x.id)
+            # --- pinhole diameter (only if all channels share the same value) ---
+            pinhole_vals = []
+            for ch in chs:
+                v = _pinhole_um_from_channel(ch)
+                if v is None:
+                    pinhole_vals = []
+                    break
+                pinhole_vals.append(v)
+            if pinhole_vals and (max(pinhole_vals) - min(pinhole_vals) <= 1e-6):
+                result["pinhole_diameter"] = f"{float(pinhole_vals[0])}"
+
             for idx, ch in enumerate(chs):
                 name_from_file = ch.name or f"Channel_{idx}"
                 custom_name = name_from_file  # default custom = same as file name
@@ -717,11 +718,9 @@ class LimImageSourceTiff(LimImageSource):
                 ex_str = str(int(round(ex))) if ex is not None else "0"
                 em_str = str(int(round(em))) if em is not None else "0"
 
-                # color -> closest UI color name
+                # color -> hex string (preferred by QML)
                 rgb = ch.color.as_rgb_tuple(alpha=False) if getattr(ch, "color", None) else None
-                color_name = _color_name_from_rgb(rgb)
-                if color_name not in COLOR_NAMES:
-                    color_name = "Red"  # stable fallback
+                color_name = _color_to_hex(rgb)
 
                 channels.append([name_from_file, custom_name, modality, ex_str, em_str, color_name])
 
@@ -810,9 +809,22 @@ class OMEUtils:
             provided_settings = {}
             base_pixel_cal = None
 
+        def _is_missing(val):
+            if val is None:
+                return True
+            if isinstance(val, (int, float)):
+                return val <= 0
+            if isinstance(val, str):
+                return val.strip() == ""
+            return False
+
+        def _pick(provided, detected):
+            return provided if not _is_missing(provided) else detected
+
         image = ome.images[0]
 
         objective_numerical_aperture = None
+        objective_magnification = None
         immersion_refractive_index = None
         pixel_calibration = None
 
@@ -833,18 +845,73 @@ class OMEUtils:
 
         if used_objective:
             objective_numerical_aperture = used_objective.lens_na
+            objective_magnification = (
+                used_objective.nominal_magnification
+                if getattr(used_objective, "nominal_magnification", None) is not None
+                else getattr(used_objective, "calibrated_magnification", None)
+            )
 
         immersion_refractive_index = image.objective_settings.refractive_index if getattr(image, "objective_settings", None) else None
         pixel_calibration = image.pixels.physical_size_x if getattr(image, "pixels", None) else None
 
+        def _pinhole_um_from_channel(ch):
+            val = getattr(ch, "pinhole_size", None)
+            if val is None:
+                return None
+            unit = getattr(ch, "pinhole_size_unit", None)
+            unit_value = "µm" if unit is None else getattr(unit, "value", str(unit))
+            if unit_value in ("µm", "um"):
+                scale = 1.0
+            elif unit_value == "nm":
+                scale = 1e-3
+            elif unit_value == "mm":
+                scale = 1e3
+            elif unit_value == "m":
+                scale = 1e6
+            else:
+                return None
+            try:
+                return float(val) * scale
+            except Exception:
+                return None
+
+        pinhole_diameter = None
+        if getattr(image, "pixels", None) and getattr(image.pixels, "channels", None):
+            vals = []
+            for ch in image.pixels.channels:
+                v = _pinhole_um_from_channel(ch)
+                if v is None:
+                    vals = []
+                    break
+                vals.append(v)
+            if vals and (max(vals) - min(vals) <= 1e-6):
+                pinhole_diameter = vals[0]
+
+        pixel_calibration = _pick(base_pixel_cal, pixel_calibration)
+        if _is_missing(pixel_calibration):
+            pixel_calibration = -1.0
+
+        new_factory_kwargs = {}
+        imm_val = _pick(provided_settings.get("immersion_refractive_index"), immersion_refractive_index)
+        if not _is_missing(imm_val):
+            new_factory_kwargs["immersion_refractive_index"] = imm_val
+        na_val = _pick(provided_settings.get("objective_numerical_aperture"), objective_numerical_aperture)
+        if not _is_missing(na_val):
+            new_factory_kwargs["objective_numerical_aperture"] = na_val
+        mag_val = _pick(provided_settings.get("objective_magnification"), objective_magnification)
+        if not _is_missing(mag_val):
+            new_factory_kwargs["objective_magnification"] = mag_val
+        pin_val = _pick(provided_settings.get("pinhole_diameter"), pinhole_diameter)
+        if not _is_missing(pin_val):
+            new_factory_kwargs["pinhole_diameter"] = pin_val
+
         new_factory = MetadataFactory(
-            pixel_calibration = base_pixel_cal if base_pixel_cal else pixel_calibration,
-            immersion_refractive_index = provided_settings.get("immersion_refractive_index", immersion_refractive_index),
-            objective_numerical_aperture = provided_settings.get("objective_numerical_aperture", objective_numerical_aperture),
+            pixel_calibration = pixel_calibration,
+            **new_factory_kwargs,
         )
 
         for key, value in provided_settings.items():
-            if key not in new_factory._other_settings:
+            if key not in new_factory._other_settings and not _is_missing(value):
                 new_factory._other_settings[key] = value
 
         channels: dict[int, Plane] = {}

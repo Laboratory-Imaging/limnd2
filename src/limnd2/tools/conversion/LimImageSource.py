@@ -199,12 +199,22 @@ def _coalesce_number(a_val, b_val):
 def _plane_name(plane):
     return getattr(plane, "name", "") or ""
 
-def _merge_metadata_factory(a_meta, b_meta):
+def _is_missing_setting(val):
+    if val is None:
+        return True
+    if isinstance(val, (int, float)):
+        return val <= 0
+    if isinstance(val, str):
+        return val.strip() == ""
+    return False
+
+def _merge_metadata_factory(a_meta, b_meta, *, keep_planes: bool = True):
     """
     Conservative merge for MetadataFactory:
       - If A.metadata is None → take B.metadata
       - Else (both exist):
           * pixel_calibration: fill from B if A is unset (-1.0/None) and B has a real value
+          * other_settings: fill missing/empty values in A from B
           * planes: if A has none → copy all from B
                     else append only planes from B whose names don't exist in A
     """
@@ -219,17 +229,31 @@ def _merge_metadata_factory(a_meta, b_meta):
         if b_cal not in (None, _UNSET_CALIB):
             a_meta.pixel_calibration = b_cal
 
-    # planes
-    a_planes = getattr(a_meta, "planes", None)
-    b_planes = getattr(b_meta, "planes", None)
+    # other_settings
+    a_settings = getattr(a_meta, "_other_settings", None)
+    b_settings = getattr(b_meta, "_other_settings", None)
+    if b_settings:
+        if a_settings is None:
+            a_meta._other_settings = deepcopy(b_settings)
+        else:
+            for key, value in b_settings.items():
+                if _is_missing_setting(value):
+                    continue
+                if _is_missing_setting(a_settings.get(key, None)):
+                    a_settings[key] = deepcopy(value)
 
-    if not a_planes and b_planes:
-        a_meta.planes = deepcopy(b_planes)
-    elif a_planes and b_planes:
-        existing = {_plane_name(p) for p in a_planes}
-        for p in b_planes:
-            if _plane_name(p) not in existing:
-                a_planes.append(deepcopy(p))
+    # planes
+    if keep_planes:
+        a_planes = getattr(a_meta, "planes", None)
+        b_planes = getattr(b_meta, "planes", None)
+
+        if not a_planes and b_planes:
+            a_meta.planes = deepcopy(b_planes)
+        elif a_planes and b_planes:
+            existing = {_plane_name(p) for p in a_planes}
+            for p in b_planes:
+                if _plane_name(p) not in existing:
+                    a_planes.append(deepcopy(p))
 
     return a_meta
 
@@ -256,6 +280,7 @@ def merge_four_fields(a, b):
         a.z_step = _coalesce_number(getattr(a, "z_step", None), getattr(b, "z_step", None))
 
     # ---- channels (replace ONLY if A has none) ----
+    a_has_channels = False
     if hasattr(a, "channels"):
         a_channels = getattr(a, "channels", None)
         b_channels = getattr(b, "channels", None)
@@ -272,6 +297,6 @@ def merge_four_fields(a, b):
     if hasattr(a, "metadata"):
         a_meta = getattr(a, "metadata", None)
         b_meta = getattr(b, "metadata", None)
-        a.metadata = _merge_metadata_factory(a_meta, b_meta)
+        a.metadata = _merge_metadata_factory(a_meta, b_meta, keep_planes=not a_has_channels)
 
     return a

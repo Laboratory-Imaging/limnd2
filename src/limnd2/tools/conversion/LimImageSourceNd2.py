@@ -375,7 +375,7 @@ class LimImageSourceNd2(LimImageSource):
         Keys:
         - tstep, zstep, pixel_calibration, pinhole_diameter, objective_magnification,
             objective_numerical_aperture, immersion_refractive_index, zoom_magnification : strings
-        - channels: list of [nameFromFile, customName, modalityString, ex, em, colorName]
+        - channels: list of [nameFromFile, customName, modalityString, ex, em, colorString]
 
         Any missing value is returned as an empty string "".
         """
@@ -387,66 +387,28 @@ class LimImageSourceNd2(LimImageSource):
             "SFC pinhole", "SFC slit", "Spinning Disc", "DSD", "NSIM", "iSim",
             "RCM", "CSU W1-SoRa", "NSPARC"
         ]
-        COLOR_NAMES = [
-            "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta",
-            "Orange", "Pink", "Purple", "Brown", "Gray",
-            "Black", "White"
-        ]
-
-        def _color_name_from_rgb(rgb):
+        def _color_to_hex(rgb):
             if not rgb or len(rgb) < 3:
                 return ""
             r, g, b = rgb[:3]
 
-            # --- Strict checks for vivid colors ---
-            if r > 200 and g < 80 and b < 80:
-                return "Red"
-            if g > 200 and r < 80 and b < 80:
-                return "Green"
-            if b > 200 and r < 80 and g < 80:
-                return "Blue"
+            def _norm(v):
+                try:
+                    v = float(v)
+                except Exception:
+                    return None
+                if 0.0 <= v <= 1.0:
+                    v = round(v * 255.0)
+                else:
+                    v = round(v)
+                return int(min(255, max(0, v)))
 
-            # Orange: strong red + moderate green, low blue
-            if r > 200 and 100 < g < 180 and b < 80:
-                return "Orange"
-
-            # Pink: strong red + moderate blue, low green
-            if r > 200 and g < 150 and b > 150:
-                return "Pink"
-
-            # Purple/Violet: red + blue both strong, green low
-            if r > 120 and b > 120 and g < 100:
-                return "Purple"
-
-            # Yellow: high red + green, low blue
-            if r > 200 and g > 200 and b < 100:
-                return "Yellow"
-
-            # Cyan: high green + blue, low red
-            if g > 200 and b > 200 and r < 100:
-                return "Cyan"
-
-            # Magenta: high red + blue, low green
-            if r > 200 and b > 200 and g < 100:
-                return "Magenta"
-
-            # Brown: moderate red + green, very low blue
-            if r > 120 and g > 80 and b < 60:
-                return "Brown"
-
-            # Gray: all channels balanced, mid intensity
-            if abs(r - g) < 20 and abs(g - b) < 20 and 50 < r < 200:
-                return "Gray"
-
-            # Black/White extremes
-            if r < 40 and g < 40 and b < 40:
-                return "Black"
-            if r > 220 and g > 220 and b > 220:
-                return "White"
-
-            # --- Fallback heuristic: max component ---
-            mx = max((r, "Red"), (g, "Green"), (b, "Blue"), key=lambda x: x[0])[1]
-            return mx
+            r = _norm(r)
+            g = _norm(g)
+            b = _norm(b)
+            if r is None or g is None or b is None:
+                return ""
+            return f"#{r:02X}{g:02X}{b:02X}"
 
         def _fmt_number(val: float | None) -> str:
             if val is None or val <= 0:
@@ -514,10 +476,15 @@ class LimImageSourceNd2(LimImageSource):
 
         # --- pinhole diameter (first available plane) ---
         pinhole = None
+        pinhole_vals = []
         for plane in meta.channels:
-            if getattr(plane, "dPinholeDiameter", -1.0) > 0:
-                pinhole = plane.dPinholeDiameter
+            val = getattr(plane, "dPinholeDiameter", -1.0)
+            if val is None or val <= 0:
+                pinhole_vals = []
                 break
+            pinhole_vals.append(float(val))
+        if pinhole_vals and (max(pinhole_vals) - min(pinhole_vals) <= 1e-6):
+            pinhole = pinhole_vals[0]
         result["pinhole_diameter"] = _fmt_number(pinhole)
 
         # --- Channels ---
@@ -557,9 +524,7 @@ class LimImageSourceNd2(LimImageSource):
             em_str = str(int(round(em))) if em and em > 0 else "0"
 
             rgb = plane.colorAsTuple if hasattr(plane, "colorAsTuple") else None
-            color_name = _color_name_from_rgb(rgb)
-            if color_name not in COLOR_NAMES:
-                color_name = "Red"
+            color_name = _color_to_hex(rgb)
 
             channels.append([name_from_file, custom_name, modality, ex_str, em_str, color_name])
 
