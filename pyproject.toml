@@ -134,6 +134,6 @@ explicit = true
 
 [[tool.uv.index]]
 name = "aws-pypi"
-url = "http://63.179.209.4:8080/simple"
-publish-url = "http://63.179.209.4:8080"
+url = "https://https://pypi.lim-dev.xyz/simple"
+publish-url = "https://pypi.lim-dev.xyz"
 explicit = true

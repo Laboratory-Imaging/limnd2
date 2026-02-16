@@ -102,7 +102,7 @@ This creates `.whl` and `.tar.gz` files in the `dist/` directory.
 The project is configured with multiple PyPI server indices in `pyproject.toml`:
 - `pypi`: Public PyPI (https://pypi.org)
 - `local`: Internal server at http://gaexec:9500
-- `aws-pypi`: AWS server at http://63.179.209.4:8080
+- `aws-pypi`: AWS server at https://pypi.lim-dev.xyz
 
 **Option 1: Using `uv publish` (recommended)**
 
@@ -113,10 +113,10 @@ uv publish --publish-url http://gaexec:9500 --trusted-publishing never --usernam
 # Publish to AWS server (with authentication via environment variables)
 $env:UV_PUBLISH_USERNAME = "your-username"
 $env:UV_PUBLISH_PASSWORD = "your-password"
-uv publish --publish-url http://63.179.209.4:8080 dist/*
+uv publish --publish-url https://pypi.lim-dev.xyz dist/*
 
 # Or pass credentials directly
-uv publish --publish-url http://63.179.209.4:8080 --username "your-username" --password "your-password" dist/*
+uv publish --publish-url https://pypi.lim-dev.xyz --username "your-username" --password "your-password" dist/*
 ```
 
 **Option 2: Using `twine` (traditional method)**
@@ -135,7 +135,7 @@ username = -
 password = -
 
 [aws-pypi]
-repository = http://63.179.209.4:8080
+repository = https://pypi.lim-dev.xyz
 username = your-username
 password = your-password
 ```
