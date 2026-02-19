@@ -85,21 +85,45 @@ def get_metadata(arguments: ConvertSequenceArgs,
 
 def convert_mx_my_to_m(files: dict[Path, list[int | float | str | tuple]],
                        experiments_count: dict[str, int]):
+    if "multipoint_x" not in experiments_count or "multipoint_y" not in experiments_count:
+        return
 
-    x_index = list(experiments_count.keys()).index("multipoint_x")
-    y_index = list(experiments_count.keys()).index("multipoint_y")
+    keys = list(experiments_count.keys())
+    x_index = keys.index("multipoint_x")
+    y_index = keys.index("multipoint_y")
+    insert_index = min(x_index, y_index)
+
+    target_name = "multipoint"
+    if target_name in experiments_count:
+        suffix = 2
+        while f"multipoint__dup{suffix}" in experiments_count:
+            suffix += 1
+        target_name = f"multipoint__dup{suffix}"
 
     for file in files:
-        x = files[file][x_index]
-        y = files[file][y_index]
+        values = list(files[file])
+        x = values[x_index]
+        y = values[y_index]
+        for idx in sorted((x_index, y_index), reverse=True):
+            values.pop(idx)
+        values.insert(insert_index, (x, y))
+        files[file] = values
 
-        files[file].pop(max(x_index, y_index))
-        files[file].pop(min(x_index, y_index))
-        files[file].append((x, y))
+    x_count = int(experiments_count["multipoint_x"])
+    y_count = int(experiments_count["multipoint_y"])
+    merged_size = x_count * y_count
 
-    x_count = experiments_count.pop("multipoint_x")
-    y_count = experiments_count.pop("multipoint_y")
-    experiments_count["multipoint"] = x_count * y_count
+    new_keys = [k for k in keys if k not in ("multipoint_x", "multipoint_y")]
+    insert_index = min(insert_index, len(new_keys))
+    new_keys.insert(insert_index, target_name)
+
+    original_sizes = dict(experiments_count)
+    experiments_count.clear()
+    for key in new_keys:
+        if key == target_name:
+            experiments_count[key] = merged_size
+        else:
+            experiments_count[key] = int(original_sizes[key])
 
 def get_experiments(files: dict[Path, list[int | float | str | tuple]],
                     arguments: ConvertSequenceArgs,

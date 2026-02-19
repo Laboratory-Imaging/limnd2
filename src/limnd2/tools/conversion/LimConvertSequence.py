@@ -8,7 +8,7 @@ import limnd2.experiment_factory
 import limnd2.metadata_factory
 
 from .LimImageSource import LimImageSource
-from .LimImageSourceConvert import LIMND2Utils, convert_to_nd2
+from .LimImageSourceConvert import LIMND2Utils, convert_to_nd2, convert_to_nd2_flatten
 
 from .crawler import FileCrawler
 from .LimConvertJsonOutput import tiff_to_json
@@ -16,6 +16,32 @@ from .LimConvertSequenceArgparser import convert_sequence_parse
 from .LimConvertUtils import ConvertSequenceArgs, logprint
 
 from .LimImageSourceMapping import EXTENSION_MAP, READER_CLASS_MAP
+
+
+def build_dimensions_from_groups(
+    parsed_groups: dict[int, str],
+    found_values: list[set[int | float | str]],
+) -> dict[str, int]:
+    """
+    Build dimension-size mapping from parsed capture groups.
+
+    Repeated logical group names are preserved by adding ``__dupN`` suffixes
+    (for example ``channel__dup2``) instead of overwriting keys. This allows
+    downstream flattening to merge duplicate logical dimensions safely.
+    """
+    groups_count = [len(s) for s in found_values]
+    exp_order = [parsed_groups[k] for k in sorted(parsed_groups)]
+
+    dimensions: dict[str, int] = {}
+    for exp, count in zip(exp_order, groups_count):
+        target = exp
+        if target in dimensions:
+            suffix = 2
+            while f"{exp}__dup{suffix}" in dimensions:
+                suffix += 1
+            target = f"{exp}__dup{suffix}"
+        dimensions[target] = int(count)
+    return dimensions
 
 
 def _convert_sequence_to_nd2(args: list[str] | None = None):
@@ -50,16 +76,18 @@ def _convert_sequence_to_nd2(args: list[str] | None = None):
 
     logprint("Checking if all files exist.")
     if len(file_sources) != 1:
-        found_values = check_files(list(file_sources.values()))
-        if not found_values:
+        found_values, missing_combinations = analyze_file_grid(list(file_sources.values()))
+        if missing_combinations and not parsed_args.allow_missing_files:
+            print("ERROR: missing files with dimension values:", missing_combinations[0])
             raise ValueError("No files found matching provided regexp.")
-        groups_count = [len(s) for s in found_values]
-        exp_order = [parsed_args.groups[k] for k in sorted(parsed_args.groups)]
-
-        # creates a dictionary with the number of files for each dimension
-        # ordered by the the position of the dimension in the regexp
-        # e.g. exp_count = {"zstack": 3, "timeloop": 4}
-        exp_count = {exp: count for exp, count in zip(exp_order, groups_count)}
+        if missing_combinations and parsed_args.allow_missing_files:
+            logprint(
+                f"Missing {len(missing_combinations)} file combination(s) in sequence. Missing data will be black-filled.",
+                type="warning",
+            )
+        # Creates a dictionary with number of files for each regexp dimension.
+        # Duplicate logical names are kept as __dupN so they can be flattened later.
+        exp_count = build_dimensions_from_groups(parsed_args.groups, found_values)
     else:
         exp_count = {}
 
@@ -86,7 +114,20 @@ def _convert_sequence_to_nd2(args: list[str] | None = None):
     elif parsed_args.nd2_output:
             logprint(f"Starting conversion to ND2.")
             outpath = Path(parsed_args.output_dir) / parsed_args.nd2_output
-            if convert_to_nd2(file_sources, sample_file, parsed_args, exp_count) == False:
+            use_flexible_mode = parsed_args.flatten_duplicates or parsed_args.allow_missing_files
+            if use_flexible_mode:
+                result = convert_to_nd2_flatten(
+                    file_sources,
+                    sample_file,
+                    parsed_args,
+                    exp_count,
+                    flatten_duplicates=parsed_args.flatten_duplicates,
+                    allow_missing_files=parsed_args.allow_missing_files,
+                )
+            else:
+                result = convert_to_nd2(file_sources, sample_file, parsed_args, exp_count)
+
+            if result == False:
                 sys.exit(1)
             else:
                 logprint(f"ND2 file created at {outpath.absolute()}.", type="success")
@@ -268,9 +309,10 @@ def convert_values(files: dict[Path, list[list[str]]]):
     for key, new_val in zip(keys, new):
         files[key] = list(new_val)
 
-def check_files(files_values: list[list[int | float | str]]):
+def analyze_file_grid(files_values: list[list[int | float | str]]) -> tuple[list[set[int | float | str]], list[tuple[int | float | str, ...]]]:
     found_values = [set() for _ in range(len(files_values[0]))]
     files_values_set = {tuple(vals) for vals in files_values}
+    missing_combinations: list[tuple[int | float | str, ...]] = []
 
     for vals in files_values:
         for i in range(len(vals)):
@@ -278,8 +320,15 @@ def check_files(files_values: list[list[int | float | str]]):
 
     for combination in itertools.product(*found_values):
         if combination not in files_values_set:
-            print("ERROR: missing files with dimension values:", combination)
-            return False
+            missing_combinations.append(combination)
+
+    return found_values, missing_combinations
+
+def check_files(files_values: list[list[int | float | str]]):
+    found_values, missing_combinations = analyze_file_grid(files_values)
+    if missing_combinations:
+        print("ERROR: missing files with dimension values:", missing_combinations[0])
+        return False
     return found_values
 
 def get_group_values(path: Path, regexp: re.Pattern) -> list[list[str]]:

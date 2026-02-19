@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from copy import deepcopy
 from dataclasses import is_dataclass, asdict
+import re
 
 import numpy as np
 import sys
@@ -109,6 +110,8 @@ class LimImageSource(ABC):
         sources: dict["LimImageSource", list[int]],
         original_dimensions: dict[str, int],
         unknown_dimension_type: str | None = None,
+        preserve_duplicate_dimension_names: bool = False,
+        respect_per_file_channel_count: bool = False,
     ) -> tuple[dict["LimImageSource", list[int]], dict[str, int]]:
 
         # Parse additional dimensions from the image source.
@@ -156,6 +159,56 @@ class LimImageSource(ABC):
         return open_lim_image_source(filename)
 
 
+def _single_file_channel_label_sort_key(label: str) -> tuple:
+    text = str(label).strip()
+    if text == "":
+        return (3, "")
+
+    text = re.sub(r"[XY]+$", "", text).strip()
+    if "-" in text:
+        token, chan = text.split("-", 1)
+        token = token.strip()
+        chan = chan.strip()
+
+        if token.isdigit():
+            token_key = (0, int(token))
+        else:
+            m = re.search(r"(\d+)$", token)
+            token_key = (1, token.casefold(), int(m.group(1)) if m else -1)
+
+        chan_idx = re.match(r"(?i)^channel[_ ]?(\d+)$", chan)
+        if chan_idx:
+            chan_key = (0, int(chan_idx.group(1)))
+        else:
+            first_num = re.search(r"(\d+)", chan)
+            if first_num:
+                chan_key = (1, int(first_num.group(1)), chan.casefold())
+            else:
+                chan_key = (2, chan.casefold())
+
+        return (0, token_key, chan_key)
+
+    first_num = re.search(r"(\d+)", text)
+    if first_num:
+        return (1, int(first_num.group(1)), text.casefold())
+    return (2, text.casefold())
+
+
+def _sort_single_file_qml_channels(qml_settings: dict) -> dict:
+    channels = qml_settings.get("channels")
+    if not isinstance(channels, list):
+        return qml_settings
+    indexed = list(enumerate(channels))
+    indexed.sort(
+        key=lambda item: (
+            _single_file_channel_label_sort_key(item[1][0]) if isinstance(item[1], list) and item[1] else (4, ""),
+            item[0],
+        )
+    )
+    qml_settings["channels"] = [row for _, row in indexed]
+    return qml_settings
+
+
 
 def get_file_dimensions_as_json(file_path: Path | None = None):
     if file_path is None:
@@ -173,6 +226,7 @@ def get_file_dimensions_as_json(file_path: Path | None = None):
         if hasattr(image_source, "metadata_as_pattern_settings"):
             try:
                 result["qml_settings"] = image_source.metadata_as_pattern_settings() or {}
+                result["qml_settings"] = _sort_single_file_qml_channels(result["qml_settings"])
             except Exception:
                 result["qml_settings"] = {}
         else:

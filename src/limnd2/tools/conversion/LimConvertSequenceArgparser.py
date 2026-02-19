@@ -79,15 +79,39 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("-" + MX.SHORT, "--" + MX.LONG, type=int, help="Capture group index for multipoint x-axis.")
     parser.add_argument("-" + MY.SHORT, "--" + MY.LONG, type=int, help="Capture group index for multipoint y-axis.")
     # OR
-    parser.add_argument("-" + M.SHORT, "--" + M.LONG, type=int, help="Capture group index for multipoint.")
+    parser.add_argument(
+        "-" + M.SHORT,
+        "--" + M.LONG,
+        type=int,
+        action="append",
+        help="Capture group index for multipoint.",
+    )
 
-    parser.add_argument("-" + Z.SHORT, "--" + Z.LONG, type=int, help="Capture group index for Z-stack.")
+    parser.add_argument(
+        "-" + Z.SHORT,
+        "--" + Z.LONG,
+        type=int,
+        action="append",
+        help="Capture group index for Z-stack.",
+    )
     parser.add_argument("-" + ZSTEP.SHORT, "--" + ZSTEP.LONG, type=int, default=None, help="Z-stack step in micrometers.")
 
-    parser.add_argument("-" + T.SHORT, "--" + T.LONG, type=int, help="Capture group index for time index.")
+    parser.add_argument(
+        "-" + T.SHORT,
+        "--" + T.LONG,
+        type=int,
+        action="append",
+        help="Capture group index for time index.",
+    )
     parser.add_argument("-" + TSTEP.SHORT, "--" + TSTEP.LONG, type=int, default=None, help="Time step in miliseconds")
 
-    parser.add_argument("-" + C.SHORT, "--" + C.LONG, type=int, help="Capture group index for channels.")
+    parser.add_argument(
+        "-" + C.SHORT,
+        "--" + C.LONG,
+        type=int,
+        action="append",
+        help="Capture group index for channels.",
+    )
 
     # EITHER THIS
     parser.add_argument("-" + J.SHORT, "--" + J.LONG, type=str, help="Store output in sequence JSON file. (limited support, does not allow multidimensional files like multipage TIFFs or OME TIFFs)")
@@ -104,6 +128,8 @@ def create_parser() -> argparse.ArgumentParser:
                         help="File extension to match. If none is provided, program tries to detect extension from regular expression.")
 
     parser.add_argument("--multiprocessing", action="store_true", help="Write into ND2 file using several threads.")
+    parser.add_argument("--flatten_duplicates", action="store_true", help="Flatten duplicate logical dimensions (for example repeated regex mappings, regex + in-file channel, or multipoint_x/multipoint_y + multipoint).")
+    parser.add_argument("--allow_missing_files", action="store_true", help="Allow missing combinations in file sequence and fill missing frames/channels with black data.")
 
     parser.add_argument("--logs_to_json", action="store_true", help=argparse.SUPPRESS)      # used to print log messages as JSON over strings for parsing is NIS Express
 
@@ -149,27 +175,31 @@ def get_groups(parsed_args: argparse.Namespace, compiled_regexp: re.Pattern) -> 
     groups = {}
     expected_groups = compiled_regexp.groups
 
+    def _iter_values(raw_value):
+        if raw_value is None:
+            return []
+        if isinstance(raw_value, (list, tuple, set)):
+            return list(raw_value)
+        return [raw_value]
+
     for arg in capture_indices:
-        value = parsed_args.__dict__[arg]
-        if value is None:
-            continue
+        for value in _iter_values(parsed_args.__dict__[arg]):
+            if value <= 0:
+                print(f"ERROR: Group number '{value}' for argument '{arg}' can not be negative, exiting.")
+                return False
 
-        if value <= 0:
-            print(f"ERROR: Group number '{value}' for argument '{arg}' can not be negative, exiting.")
-            return False
+            if value > expected_groups:
+                print(f"ERROR: Group number '{value}' for argument '{arg}' bigger than number of capturing groups ({expected_groups}), exiting.")
+                return False
 
-        if value > expected_groups:
-            print(f"ERROR: Group number '{value}' for argument '{arg}' bigger than number of capturing groups ({expected_groups}), exiting.")
-            return False
-
-        if value not in groups:
-            groups[value] = arg
-        else:
-            print()
-            print(f"ERROR: Arguments '{groups[value]}' and '{arg}' were both used for highlighted capture group {value}, exiting.")
-            highlight_group(compiled_regexp, value)
-            print()
-            return False
+            if value not in groups:
+                groups[value] = arg
+            elif groups[value] != arg:
+                print()
+                print(f"ERROR: Arguments '{groups[value]}' and '{arg}' were both used for highlighted capture group {value}, exiting.")
+                highlight_group(compiled_regexp, value)
+                print()
+                return False
 
     for i in range(1, expected_groups + 1):
         if i not in groups:
@@ -251,12 +281,8 @@ def parse_channels(channels: list[str]) -> dict[str, Plane]:
         result[filename] = Plane(name=lst[1], modality=lst[2], excitation_wavelength=int(lst[3]), emission_wavelength=int(lst[4]), color=lst[5])
     return result
 
-def check_parsed_args(parsed_args: argparse.Namespace, parser: argparse.ArgumentParser) -> bool:
+def check_parsed_args(parsed_args: argparse.Namespace, parser: argparse.ArgumentParser, require_output: bool = True) -> bool:
     # parse multidimensional args (MX, MY, M)
-    if (parsed_args.__dict__[MX.LONG] is not None or parsed_args.__dict__[MY.LONG] is not None) and parsed_args.__dict__[M.LONG] is not None:
-        print(f"ERROR: Argument --{M.LONG} can not be used with --{MX.LONG} or --{MY.LONG}.")
-        return False
-
     if (parsed_args.__dict__[MX.LONG] is not None and parsed_args.__dict__[MY.LONG] is None):
         print(f"ERROR: Argument --{MX.LONG} must be used with --{MY.LONG} argument.")
         return False
@@ -265,19 +291,51 @@ def check_parsed_args(parsed_args: argparse.Namespace, parser: argparse.Argument
         print(f"ERROR: Argument --{MY.LONG} must be used with --{MX.LONG} argument.")
         return False
 
-    # parse output
-    if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[N.LONG] is not None:
-        print(f"ERROR: You must select output type (either --{J.LONG} or --{N.LONG})")
+    flatten_duplicates = bool(parsed_args.__dict__.get("flatten_duplicates", False))
+
+    def _as_list(value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return [value]
+
+    repeated_dims = {
+        M.LONG: _as_list(parsed_args.__dict__[M.LONG]),
+        Z.LONG: _as_list(parsed_args.__dict__[Z.LONG]),
+        T.LONG: _as_list(parsed_args.__dict__[T.LONG]),
+        C.LONG: _as_list(parsed_args.__dict__[C.LONG]),
+    }
+    repeated_names = [name for name, values in repeated_dims.items() if len(values) > 1]
+    if repeated_names and not flatten_duplicates:
+        repeated_str = ", ".join(f"--{name}" for name in repeated_names)
+        print(
+            f"ERROR: Repeated dimension mappings ({repeated_str}) require --flatten_duplicates."
+        )
         return False
 
-    if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[O.LONG] is not None:
-        print(f"ERROR: Argument --{O.LONG} can not be used with --{J.LONG} argument.")
+    has_mxy = parsed_args.__dict__[MX.LONG] is not None and parsed_args.__dict__[MY.LONG] is not None
+    has_m = len(_as_list(parsed_args.__dict__[M.LONG])) > 0
+    if has_mxy and has_m and not flatten_duplicates:
+        print(
+            f"ERROR: Combining --{MX.LONG}/--{MY.LONG} with --{M.LONG} requires --flatten_duplicates."
+        )
         return False
+
+    if require_output:
+        # parse output
+        if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[N.LONG] is not None:
+            print(f"ERROR: You must select output type (either --{J.LONG} or --{N.LONG})")
+            return False
+
+        if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[O.LONG] is not None:
+            print(f"ERROR: Argument --{O.LONG} can not be used with --{J.LONG} argument.")
+            return False
 
     return True
 
 
-def convert_sequence_parse(args: list[str] | None = None) -> LimConvertUtils.ConvertSequenceArgs:
+def convert_sequence_parse(args: list[str] | None = None, require_output: bool = True) -> LimConvertUtils.ConvertSequenceArgs:
     parser = create_parser()
     parsed_args = parser.parse_args(args)
     if parsed_args.logs_to_json:
@@ -285,7 +343,7 @@ def convert_sequence_parse(args: list[str] | None = None) -> LimConvertUtils.Con
     else:
         LimConvertUtils.LOG_TYPE = LimConvertUtils.LogType.CONSOLE
 
-    if not check_parsed_args(parsed_args, parser):
+    if not check_parsed_args(parsed_args, parser, require_output=require_output):
         sys.exit(1)
 
 
@@ -315,7 +373,7 @@ def convert_sequence_parse(args: list[str] | None = None) -> LimConvertUtils.Con
     # check if groups properly match arguments
     groups = get_groups(parsed_args, regexp)
     if groups == False:
-        print(f"ERROR: Invalid configuration of capture groups: {e}")
+        print("ERROR: Invalid configuration of capture groups.")
         sys.exit(1)
 
     folder_path = Path(parsed_args.folder)
@@ -357,4 +415,6 @@ def convert_sequence_parse(args: list[str] | None = None) -> LimConvertUtils.Con
                           metadata = metadata_factory,
                           channels = channels,
                           unknown_dim = parsed_args.extra_dimension,
-                          multiprocessing = parsed_args.multiprocessing)
+                          multiprocessing = parsed_args.multiprocessing,
+                          flatten_duplicates = parsed_args.flatten_duplicates,
+                          allow_missing_files = parsed_args.allow_missing_files)

@@ -87,6 +87,8 @@ class ConvertSequenceArgs:
     unknown_dim_size: int | None = None
 
     multiprocessing: bool = False
+    flatten_duplicates: bool = False
+    allow_missing_files: bool = False
 
 class ProgressPrinter:
     # Progress class for storing and printing progress of the conversion

@@ -123,13 +123,15 @@ def _slice_yx(arr, x0: int, x1: int, y0: int, y1: int) -> np.ndarray:
 class LimImageSourceTiff(LimImageSource):
     """Image source reading from TIFF (supports ROI reads)."""
     idf: int
+    channel_index: int | None
 
-    def __init__(self, filename: str | Path, idf: int = 0):
+    def __init__(self, filename: str | Path, idf: int = 0, channel_index: int | None = None):
         super().__init__(filename)
         self.idf = idf
+        self.channel_index = int(channel_index) if channel_index is not None else None
 
     def __repr__(self):
-        return f"LimImageSourceTiff({self.filename}, {self.idf})"
+        return f"LimImageSourceTiff({self.filename}, {self.idf}, channel_index={self.channel_index})"
 
     @property
     def additional_information(self) -> dict:
@@ -343,6 +345,8 @@ class LimImageSourceTiff(LimImageSource):
         sources: dict["LimImageSource", list[int]],
         original_dimensions: dict[str, int],
         unknown_dimension_type: str | None = None,
+        preserve_duplicate_dimension_names: bool = False,
+        respect_per_file_channel_count: bool = False,
     ) -> tuple[dict["LimImageSource", list[int]], dict[str, int]]:
         """
         Parse additional dimensions from the tiff source.
@@ -360,22 +364,46 @@ class LimImageSourceTiff(LimImageSource):
         ranges = [range(r) for r in new_dimension.values()]
         index_tuples = list(itertools.product(*ranges))
         index_to_idf = [(idx_tuple, idf) for idf, idx_tuple in enumerate(index_tuples)]
+        channel_axis_index = list(new_dimension.keys()).index("channel") if "channel" in new_dimension else None
 
         for file, dims in sources.items():
             for ome_dims, idf in index_to_idf:
                 file_copy = copy.deepcopy(file)
                 file_copy.idf = idf
+                if channel_axis_index is not None:
+                    file_copy.channel_index = int(ome_dims[channel_axis_index])
+                else:
+                    file_copy.channel_index = None
                 new_files[file_copy] = dims + list(ome_dims)
 
         new_dims = original_dimensions.copy()
         for dim, size in new_dimension.items():
-            new_dims[dim] = size
+            target_dim = dim
+            if preserve_duplicate_dimension_names and target_dim in new_dims:
+                suffix_index = 2
+                while f"{dim}__dup{suffix_index}" in new_dims:
+                    suffix_index += 1
+                target_dim = f"{dim}__dup{suffix_index}"
+            new_dims[target_dim] = size
 
         if new_dims.get("unknown", 0) > 1:
             if unknown_dimension_type is None:
                 logprint("WARNING: File contains unknown dimension, but no unknown dimension type was provided. This may lead to data loss.", type="warning")
             else:
-                new_dims[unknown_dimension_type] = new_dims.pop("unknown")
+                target_dim = unknown_dimension_type
+                if target_dim in new_dims and target_dim != "unknown":
+                    suffix_index = 2
+                    while f"{target_dim}__dup{suffix_index}" in new_dims:
+                        suffix_index += 1
+                    target_dim = f"{target_dim}__dup{suffix_index}"
+
+                remapped_dims: dict[str, int] = {}
+                for dim_name, size in new_dims.items():
+                    if dim_name == "unknown":
+                        remapped_dims[target_dim] = size
+                    else:
+                        remapped_dims[dim_name] = size
+                new_dims = remapped_dims
 
         return new_files, new_dims
 

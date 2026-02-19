@@ -72,9 +72,6 @@ This script uses multiple required and optional arguments to specify the input f
     Specify how to handle additional dimension if it exists, for example in multipage tiff files. Choose from: `timeloop`, `zstack`, `multipoint`, or `channel`.
 
 !!! warning
-    If you use `-mx` or `-my` arguments, you can not use `-m` argument anymore.
-
-!!! warning
     Dimension indexes are 1-based, meaning the first capture group is index 1.
 
 ??? example "See example how to match the capture groups in filename"
@@ -187,6 +184,18 @@ This script uses multiple required and optional arguments to specify the input f
 - `--multiprocessing`
 
     Use multiple threads to write the ND2 file.
+
+- `--flatten_duplicates`
+
+    Flatten duplicate logical dimensions into one output axis.
+    This flag is required when you:
+    - map several capture groups to the same logical dimension (for example repeated `--channel` or repeated `--zstack`)
+    - combine `--multipoint_x/--multipoint_y` with `--multipoint`
+    - merge filename dimensions with in-file dimensions of the same type (for example regex `channel` + in-file `channel`)
+
+- `--allow_missing_files`
+
+    Allow sparse filename grids and fill missing frame/channel combinations with black data. Without this flag, missing combinations fail in strict mode.
 
 ## Example usage
 

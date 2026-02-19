@@ -122,7 +122,7 @@ class LimImageSourceNd2(LimImageSource):
     def _nd2_dimensions(self) -> list[tuple[str, int]]:
         with limnd2.Nd2Reader(self.filename) as nd2:
             dims: list[tuple[str, int]] = []
-            channel_in_experiment = False
+            channel_experiment_size = 1
 
             exp = nd2.experiment
             if exp is not None:
@@ -132,7 +132,7 @@ class LimImageSourceNd2(LimImageSource):
                 for name, size in zip(names, shape):
                     full = _LOOP_NAME_MAP.get(name, "unknown")
                     if full == "channel":
-                        channel_in_experiment = True
+                        channel_experiment_size *= size
                     if full in mapped_sizes:
                         mapped_sizes[full] *= size
                     else:
@@ -148,7 +148,7 @@ class LimImageSourceNd2(LimImageSource):
             if (
                 not nd2.pictureMetadata.isRgb
                 and nd2.imageAttributes.componentCount > 1
-                and not channel_in_experiment
+                and channel_experiment_size <= 1
             ):
                 dims.append(("channel", nd2.imageAttributes.componentCount))
 
@@ -169,7 +169,10 @@ class LimImageSourceNd2(LimImageSource):
         sources: dict["LimImageSource", list[int]],
         original_dimensions: dict[str, int],
         unknown_dimension_type: str | None = None,
+        preserve_duplicate_dimension_names: bool = False,
+        respect_per_file_channel_count: bool = False,
     ) -> tuple[dict["LimImageSource", list[int]], dict[str, int]]:
+        debug_flatten = os.getenv("LIMND2_DEBUG_FLATTEN") == "1"
 
         dims_list = self._nd2_dimensions()
         if not dims_list:
@@ -184,9 +187,11 @@ class LimImageSourceNd2(LimImageSource):
             if exp is not None:
                 raw_names = exp.dimnames(skipSpectralLoop=False)
                 raw_shape = exp.shape(skipSpectralLoop=False)
-                channel_in_experiment = any(
-                    _LOOP_NAME_MAP.get(name, "unknown") == "channel" for name in raw_names
-                )
+                channel_experiment_size = 1
+                for raw_name, size in zip(raw_names, raw_shape):
+                    if _LOOP_NAME_MAP.get(raw_name, "unknown") == "channel":
+                        channel_experiment_size *= size
+                channel_in_experiment = channel_experiment_size > 1
                 if raw_shape:
                     loop_indexes = list(
                         itertools.product(*[range(dim) for dim in raw_shape])
@@ -200,6 +205,8 @@ class LimImageSourceNd2(LimImageSource):
                 group_shapes: dict[str, list[int]] = {}
                 for i, (raw_name, size) in enumerate(zip(raw_names, raw_shape)):
                     full = _LOOP_NAME_MAP.get(raw_name, "unknown")
+                    if full == "channel" and not channel_in_experiment:
+                        continue
                     if full not in kept_fulls:
                         continue
                     if full not in group_indices:
@@ -245,14 +252,230 @@ class LimImageSourceNd2(LimImageSource):
                     return ()
 
         new_files: dict[LimImageSource, list[int]] = {}
-        if "channel" in dims and not channel_in_experiment:
-            channel_size = dims["channel"]
+
+        if respect_per_file_channel_count:
+            target_order_all = list(dims.keys())
+            target_order_without_channel = [dim for dim in target_order_all if dim != "channel"]
+            max_sizes = {dim: int(size) for dim, size in dims.items()}
+            if debug_flatten:
+                print(
+                    f"[LIMND2_DEBUG_FLATTEN] ND2 per-file expansion start: "
+                    f"base_dims={dims}, target_order={target_order_all}, sources={len(sources)}",
+                    flush=True,
+                )
+
             for file, base_dims in sources.items():
+                file_path = Path(file.filename)
+
+                with limnd2.Nd2Reader(file_path) as src_nd2:
+                    src_exp = src_nd2.experiment
+
+                    local_channel_in_experiment = False
+                    local_combined_order: list[str] = []
+                    local_exp_index_map: dict[tuple[int, ...], int] = {}
+                    local_dim_sizes: dict[str, int] = {}
+                    use_linear_sequence_index = False
+
+                    if src_exp is not None:
+                        src_raw_names = src_exp.dimnames(skipSpectralLoop=False)
+                        src_raw_shape = src_exp.shape(skipSpectralLoop=False)
+                        suppress_channel_from_sequence = (
+                            src_nd2.imageAttributes.componentCount > 1
+                            and not src_nd2.pictureMetadata.isRgb
+                        )
+                        channel_experiment_size = 1
+                        for raw_name, size in zip(src_raw_names, src_raw_shape):
+                            if _LOOP_NAME_MAP.get(raw_name, "unknown") == "channel":
+                                channel_experiment_size *= size
+                        local_channel_in_experiment = (
+                            channel_experiment_size > 1 and not suppress_channel_from_sequence
+                        )
+                        use_linear_sequence_index = suppress_channel_from_sequence
+
+                        if src_raw_shape:
+                            if suppress_channel_from_sequence:
+                                seq_shape = [
+                                    size
+                                    for raw_name, size in zip(src_raw_names, src_raw_shape)
+                                    if _LOOP_NAME_MAP.get(raw_name, "unknown") != "channel"
+                                ]
+                                src_loop_indexes = (
+                                    list(itertools.product(*[range(dim) for dim in seq_shape]))
+                                    if seq_shape
+                                    else [()]
+                                )
+                            else:
+                                src_loop_indexes = list(
+                                    itertools.product(*[range(dim) for dim in src_raw_shape])
+                                )
+                        else:
+                            src_loop_indexes = [()]
+                        local_exp_index_map = {
+                            tuple(idx): i for i, idx in enumerate(src_loop_indexes)
+                        }
+
+                        group_indices: dict[str, list[int]] = {}
+                        group_shapes: dict[str, list[int]] = {}
+                        for i, (raw_name, size) in enumerate(zip(src_raw_names, src_raw_shape)):
+                            full = _LOOP_NAME_MAP.get(raw_name, "unknown")
+                            if full == "channel" and not local_channel_in_experiment:
+                                continue
+                            if full not in kept_fulls:
+                                continue
+                            if full not in group_indices:
+                                local_combined_order.append(full)
+                                group_indices[full] = []
+                                group_shapes[full] = []
+                            group_indices[full].append(i)
+                            group_shapes[full].append(size)
+
+                        local_exp_sizes: list[int] = []
+                        for full in local_combined_order:
+                            prod = 1
+                            for s in group_shapes[full]:
+                                prod *= s
+                            local_exp_sizes.append(prod)
+                            local_dim_sizes[full] = prod
+
+                        local_exp_index_tuples = (
+                            list(np.ndindex(*local_exp_sizes)) if local_exp_sizes else [()]
+                        )
+
+                        def local_combined_to_raw(exp_idx: tuple[int, ...]) -> tuple[int, ...]:
+                            raw_idx = [0] * len(src_raw_names)
+                            for combined_pos, full in enumerate(local_combined_order):
+                                combined_value = exp_idx[combined_pos] if exp_idx else 0
+                                sizes = group_shapes[full]
+                                indices = group_indices[full]
+                                if len(sizes) == 1:
+                                    raw_idx[indices[0]] = combined_value
+                                    continue
+                                remaining = combined_value
+                                decoded = [0] * len(sizes)
+                                for rev_i, size in enumerate(reversed(sizes)):
+                                    decoded[-(rev_i + 1)] = remaining % size
+                                    remaining //= size
+                                for idx, val in zip(indices, decoded):
+                                    raw_idx[idx] = val
+                            return tuple(raw_idx)
+                    else:
+                        frame_count = int(src_nd2.imageAttributes.frameCount)
+                        if "unknown" in kept_fulls and frame_count > 1:
+                            local_combined_order = ["unknown"]
+                            local_dim_sizes["unknown"] = frame_count
+                        local_exp_sizes = [
+                            local_dim_sizes[name] for name in local_combined_order
+                        ]
+                        local_exp_index_tuples = (
+                            list(np.ndindex(*local_exp_sizes)) if local_exp_sizes else [()]
+                        )
+
+                        def local_combined_to_raw(exp_idx: tuple[int, ...]) -> tuple[int, ...]:
+                            return ()
+
+                    local_channel_size = int(dims.get("channel", 1))
+                    if "channel" in dims and not local_channel_in_experiment:
+                        local_channel_size = int(src_nd2.imageAttributes.componentCount)
+                        if src_nd2.pictureMetadata.isRgb:
+                            local_channel_size = 1
+                        local_channel_size = max(local_channel_size, 1)
+                        local_dim_sizes["channel"] = local_channel_size
+
+                if debug_flatten:
+                    print(
+                        f"[LIMND2_DEBUG_FLATTEN] file={file_path.name} "
+                        f"local_dim_sizes={local_dim_sizes} "
+                        f"local_order={local_combined_order} "
+                        f"local_exp_count={len(local_exp_index_tuples)} "
+                        f"local_channel_in_exp={local_channel_in_experiment}",
+                        flush=True,
+                    )
+
+                for dim, size in local_dim_sizes.items():
+                    if dim in max_sizes and size > max_sizes[dim]:
+                        max_sizes[dim] = int(size)
+
+                for local_linear_idx, local_exp_idx in enumerate(local_exp_index_tuples):
+                    if use_linear_sequence_index:
+                        seq_index = local_linear_idx
+                    else:
+                        raw_idx = local_combined_to_raw(tuple(local_exp_idx))
+                        seq_index = local_exp_index_map.get(raw_idx)
+                        if seq_index is None:
+                            fallback_seq = local_exp_idx[0] if local_exp_idx else 0
+                            if debug_flatten:
+                                print(
+                                    f"[LIMND2_DEBUG_FLATTEN] raw index miss for {file_path.name}: "
+                                    f"raw_idx={raw_idx}, local_exp_idx={local_exp_idx}, fallback_seq={fallback_seq}",
+                                    flush=True,
+                                )
+                            seq_index = fallback_seq
+
+                    local_idx_map = {
+                        dim: int(local_exp_idx[pos])
+                        for pos, dim in enumerate(local_combined_order)
+                    }
+                    ordered_all = [local_idx_map.get(dim, 0) for dim in target_order_all]
+                    ordered_without_channel = [
+                        local_idx_map.get(dim, 0) for dim in target_order_without_channel
+                    ]
+
+                    if "channel" in dims and not local_channel_in_experiment:
+                        for c in range(local_channel_size):
+                            file_copy = type(file)(
+                                file.filename, seq_index=seq_index, channel_index=c
+                            )
+                            new_files[file_copy] = (
+                                base_dims + ordered_without_channel + [c]
+                            )
+                    else:
+                        file_copy = type(file)(file.filename, seq_index=seq_index)
+                        new_files[file_copy] = base_dims + ordered_all
+
+            for dim, size in max_sizes.items():
+                dims[dim] = int(size)
+            if debug_flatten:
+                print(
+                    f"[LIMND2_DEBUG_FLATTEN] ND2 per-file expansion done: "
+                    f"new_files={len(new_files)}, final_dims={dims}",
+                    flush=True,
+                )
+
+        elif "channel" in dims and not channel_in_experiment:
+            channel_size = int(dims["channel"])
+            per_file_channel_size: dict[LimImageSource, int] = {}
+            channel_count_cache: dict[Path, int] = {}
+
+            if preserve_duplicate_dimension_names:
+                max_channel_size = channel_size
+                for file in sources:
+                    file_path = Path(file.filename)
+                    if file_path not in channel_count_cache:
+                        try:
+                            with limnd2.Nd2Reader(file_path) as src_nd2:
+                                comp_count = int(src_nd2.imageAttributes.componentCount)
+                                if src_nd2.pictureMetadata.isRgb:
+                                    comp_count = 1
+                                channel_count_cache[file_path] = max(comp_count, 1)
+                        except Exception:
+                            channel_count_cache[file_path] = channel_size
+
+                    file_channel_size = channel_count_cache[file_path]
+                    per_file_channel_size[file] = file_channel_size
+                    if file_channel_size > max_channel_size:
+                        max_channel_size = file_channel_size
+
+                dims["channel"] = max_channel_size
+
+            for file, base_dims in sources.items():
+                file_channel_size = per_file_channel_size.get(file, channel_size)
                 for exp_idx in exp_index_tuples:
                     raw_idx = combined_to_raw(tuple(exp_idx))
                     seq_index = exp_index_map.get(raw_idx, exp_idx[0] if exp_idx else 0)
-                    for c in range(channel_size):
-                        file_copy = type(file)(file.filename, seq_index=seq_index, channel_index=c)
+                    for c in range(file_channel_size):
+                        file_copy = type(file)(
+                            file.filename, seq_index=seq_index, channel_index=c
+                        )
                         new_files[file_copy] = base_dims + list(exp_idx) + [c]
         else:
             for file, base_dims in sources.items():
@@ -264,11 +487,30 @@ class LimImageSourceNd2(LimImageSource):
 
         new_dims = original_dimensions.copy()
         for dim, size in dims.items():
-            new_dims[dim] = size
+            target_dim = dim
+            if preserve_duplicate_dimension_names and target_dim in new_dims:
+                suffix_index = 2
+                while f"{dim}__dup{suffix_index}" in new_dims:
+                    suffix_index += 1
+                target_dim = f"{dim}__dup{suffix_index}"
+            new_dims[target_dim] = size
 
         if new_dims.get("unknown", 0) > 1:
             if unknown_dimension_type is not None:
-                new_dims[unknown_dimension_type] = new_dims.pop("unknown")
+                target_dim = unknown_dimension_type
+                if target_dim in new_dims and target_dim != "unknown":
+                    suffix_index = 2
+                    while f"{target_dim}__dup{suffix_index}" in new_dims:
+                        suffix_index += 1
+                    target_dim = f"{target_dim}__dup{suffix_index}"
+
+                remapped_dims: dict[str, int] = {}
+                for dim_name, size in new_dims.items():
+                    if dim_name == "unknown":
+                        remapped_dims[target_dim] = size
+                    else:
+                        remapped_dims[dim_name] = size
+                new_dims = remapped_dims
 
         return new_files, new_dims
 
