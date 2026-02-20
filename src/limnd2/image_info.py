@@ -14,7 +14,11 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     Returns general information about the image as a dictionary.
     """
     ia = reader.imageAttributes
-    loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in reader.experiment if 0 < exp_level.count ]) if reader.experiment else ""
+    try:
+        exp = reader.experiment
+    except NotImplementedError:
+        exp = None
+    loops = ", ".join([ f"{exp_level.shortName}({exp_level.count})" for exp_level in exp if 0 < exp_level.count ]) if exp else ""
     path = ""
     filename = ""
     if reader.store.filename:
@@ -31,7 +35,7 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     mtime = f"{reader.store.lastModified.strftime('%x %X')}"
     app_created = reader.appInfo.software
 
-    sizes = format_general_info_sizes(reader.store.sizeOnDisk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*reader.experiment.dims.get('z', 0) if reader.experiment is not None else 0)
+    sizes = format_general_info_sizes(reader.store.sizeOnDisk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*exp.dims.get('z', 0) if exp is not None else 0)
 
     return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
 
@@ -48,8 +52,12 @@ def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, Any]:
     ret["imageTextInfo"] = file_object.imageTextInfo.to_dict() if file_object.imageTextInfo is not None else {}
 
     exp_data = []
-    if file_object.experiment is not None:
-        for exp in file_object.experiment:
+    try:
+        exp = file_object.experiment
+    except NotImplementedError:
+        exp = None
+    if exp is not None:
+        for exp in exp:
             json_ = _experiment_to_table(exp)
             exp_data.append(dict(ClassName=exp.name.lower(), LoopName=f'{exp.name} Loop', data=json_))
     ret["experimentData"] = exp_data
