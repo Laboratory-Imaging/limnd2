@@ -113,7 +113,7 @@ This script uses multiple required and optional arguments to specify the input f
 
 - `-o <output_directory>`, `--output_dir <output_directory>`
 
-    Specify output directory for the ND2 / JSON file *(same as input folder by default).*
+    Specify output directory for ND2 output *(same as input folder by default).* This option cannot be combined with `--json`.
 
 !!! warning
     You must use either `-n` or `-j` argument.
@@ -131,11 +131,11 @@ This script uses multiple required and optional arguments to specify the input f
 
 - `-zstep <value>`, `--zstack_step <value>`
 
-    Z-stack step size in micrometers (default: 100).
+    Z-stack step size in micrometers.
 
 - `-tstep <value>`, `--timeloop_step <value>`
 
-    Time step in milliseconds (default: 100).
+    Time step in milliseconds.
 
 ### Metadata arguments
 
@@ -157,27 +157,27 @@ This script uses multiple required and optional arguments to specify the input f
 
 - `--pixel_calibration <value>`
 
-    Set pixel calibration value (in micrometers per pixel). Default is `0.0`.
+    Set pixel calibration value (in micrometers per pixel).
 
 - `--ms-objective_magnification <value>`
 
-    Microscope objective magnification. Default is `-1.0` (unspecified).
+    Microscope objective magnification.
 
 - `--ms-objective_numerical_aperture <value>`
 
-    Microscope objective numerical aperture. Default is `-1.0` (unspecified).
+    Microscope objective numerical aperture.
 
 - `--ms-zoom_magnification <value>`
 
-    Microscope zoom magnification. Default is `-1.0` (unspecified).
+    Microscope zoom magnification.
 
 - `--ms-immersion_refractive_index <value>`
 
-    Microscope immersion medium refractive index. Default is `-1.0` (unspecified).
+    Microscope immersion medium refractive index.
 
 - `--ms-pinhole_diameter <value>`
 
-    Microscope pinhole diameter. Default is `-1.0` (unspecified).
+    Microscope pinhole diameter.
 
 ### Other arguments
 
@@ -199,7 +199,7 @@ This script uses multiple required and optional arguments to specify the input f
 
 ## Example usage
 
-Below are some example commands for `limnd2-convert-sequence-to-nd2`. A
+Below are some example commands for `limnd2-convert-sequence-to-nd2`.
 
 ??? example "Basic Z-stack and Time-lapse conversion"
     ```sh
@@ -220,7 +220,7 @@ Below are some example commands for `limnd2-convert-sequence-to-nd2`. A
         -s --zstack 1 --timeloop 2 -n result.nd2
     ```
 
-    - `-s result.nd2` Use simplified regular expression.
+    - `-s` Use simplified regular expression.
     - `-n result.nd2`: Name of the output ND2 file.
     - `-o ./output`: Output directory for the ND2 file.
 
@@ -231,7 +231,7 @@ Below are some example commands for `limnd2-convert-sequence-to-nd2`. A
         --ms-objective_numerical_aperture 1.3 --ms-immersion_refractive_index 1.5
     ```
 
-    - `--pixel_calibration 65`: Pixel size in nanometers.
+    - `--pixel_calibration 65`: Pixel size in micrometers per pixel.
     - `--ms-objective_magnification 40`: Microscope objective magnification.
     - `--ms-objective_numerical_aperture 1.3`: Numerical aperture of the objective.
     - `--ms-immersion_refractive_index 1.5`: Immersion medium refractive index.

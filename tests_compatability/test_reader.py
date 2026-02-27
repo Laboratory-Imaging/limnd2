@@ -3,18 +3,28 @@ import pickle
 import sys
 from pathlib import Path
 
-import dask.array as da
 import numpy as np
 import pytest
 from nd2 import ND2File, imread
 from nd2._parse._chunk_decode import get_version
 from nd2._util import AXIS, is_supported_file
+
+try:
+    import dask.array as da
+except ImportError:  # pragma: no cover - optional dependency
+    da = None  # type: ignore
+
 try:
     from resource_backed_dask_array import ResourceBackedDaskArray
 except Exception:  # pragma: no cover - optional dependency
     ResourceBackedDaskArray = None  # type: ignore
 
 DATA = Path(__file__).parent / "data"
+
+
+def _require_dask() -> None:
+    if da is None:
+        pytest.skip("dask not installed")
 
 
 def test_read_safety(new_nd2: Path):
@@ -26,6 +36,7 @@ def test_read_safety(new_nd2: Path):
 def test_position(new_nd2: Path):
     """use position to extract a single stage position with asarray."""
     pytest.importorskip("xarray")
+    _require_dask()
     if new_nd2.stat().st_size > 250_000_000:
         pytest.skip("skipping read on big files")
     with ND2File(new_nd2) as nd:
@@ -40,6 +51,7 @@ def test_position(new_nd2: Path):
 
 
 def test_dask(new_nd2):
+    _require_dask()
     with ND2File(new_nd2) as nd:
         dsk = nd.to_dask()
         assert isinstance(dsk, da.Array)
@@ -50,6 +62,7 @@ def test_dask(new_nd2):
 
 
 def test_dask_closed(single_nd2):
+    _require_dask()
     with ND2File(single_nd2) as nd:
         dsk = nd.to_dask()
     assert isinstance(dsk.compute(), np.ndarray)
@@ -57,6 +70,7 @@ def test_dask_closed(single_nd2):
 
 def test_full_read(new_nd2):
     pytest.importorskip("xarray")
+    _require_dask()
     with ND2File(new_nd2) as nd:
         if new_nd2.stat().st_size > 500_000_000:
             pytest.skip("skipping full read on big files")
@@ -70,6 +84,7 @@ def test_full_read(new_nd2):
 )
 def test_dask_legacy(old_nd2):
     pytest.importorskip("imagecodecs")
+    _require_dask()
     with ND2File(old_nd2) as nd:
         dsk = nd.to_dask()
         assert isinstance(dsk, da.Array)
@@ -80,6 +95,7 @@ def test_dask_legacy(old_nd2):
 
 
 def test_full_read_legacy(old_nd2):
+    _require_dask()
     with ND2File(old_nd2) as nd:
         if (old_nd2.stat().st_size > 500_000) and "--runslow" not in sys.argv:
             pytest.skip("use --runslow to test full read")
@@ -90,6 +106,7 @@ def test_full_read_legacy(old_nd2):
 
 def test_xarray(new_nd2) -> None:
     xr = pytest.importorskip("xarray")
+    _require_dask()
     with ND2File(new_nd2) as nd:
         xarr = nd.to_xarray()
         assert isinstance(xarr, xr.DataArray)
@@ -102,6 +119,7 @@ def test_xarray(new_nd2) -> None:
 
 def test_xarray_legacy(old_nd2):
     xr = pytest.importorskip("xarray")
+    _require_dask()
     with ND2File(old_nd2) as nd:
         xarr = nd.to_xarray()
         assert isinstance(xarr, xr.DataArray)
@@ -182,6 +200,7 @@ def test_pickle_closed_reader(single_nd2):
 
 def test_pickle_dask_wrapper(single_nd2):
     """test that we can pickle and restore just the dask wrapper"""
+    _require_dask()
     if ResourceBackedDaskArray is None:
         pytest.skip("resource_backed_dask_array not installed")
 

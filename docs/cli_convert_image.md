@@ -13,7 +13,7 @@ limnd2-convert-file-to-nd2 <arguments>
 
 - **`input`**
 
-    Input file or directory to be converted.
+    Input image file to be converted.
 
 - `output`
 

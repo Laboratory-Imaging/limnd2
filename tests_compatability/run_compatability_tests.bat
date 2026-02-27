@@ -17,15 +17,11 @@ if errorlevel 1 (
 REM Ensure src/ is importable (src layout)
 set PYTHONPATH=%CD%\..\src;%PYTHONPATH%
 
-if not exist test_report mkdir test_report
-set PYTEST_LOG=%CD%\test_report\pytest_output.txt
-set COVERAGE_LOG=%CD%\test_report\coverage_output.txt
-
 echo Running tests and generating HTML report...
-pytest --html=test_report\report.html --self-contained-html > "%PYTEST_LOG%" 2>&1 || echo Tests completed with failures. See %PYTEST_LOG%.
+pytest --html=test_report\report.html --self-contained-html || echo Tests completed with failures.
 
 echo Generating coverage HTML report...
-coverage html > "%COVERAGE_LOG%" 2>&1 || echo Coverage HTML generation failed. See %COVERAGE_LOG%.
+coverage html || echo Coverage HTML generation failed.
 
 echo Opening reports in your default browser...
 start "" "%CD%\test_report\report.html"

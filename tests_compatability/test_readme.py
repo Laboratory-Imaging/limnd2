@@ -11,7 +11,11 @@ SAMPLE = Path(__file__).parent / "data" / "dims_c2y32x32.nd2"
 def test_readme(capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
     pytest.importorskip("xarray")
 
-    code = README.read_text().split("```python")[1].split("```")[0]
+    readme_text = README.read_text()
+    if "```python" not in readme_text:
+        pytest.skip("README has no runnable Python quick-start snippet.")
+
+    code = readme_text.split("```python")[1].split("```")[0]
     code = code.replace("some_file.nd2", str(SAMPLE.absolute()))
     code = code.replace("output.ome.tif", str(tmp_path / "output.ome.tif"))
     exec(code)

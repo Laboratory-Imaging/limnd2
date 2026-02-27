@@ -1,7 +1,8 @@
-import dask.array as da
 import numpy as np
 import pytest
 from nd2 import ND2File
+
+da = pytest.importorskip("dask.array")
 
 try:
     from resource_backed_dask_array import ResourceBackedDaskArray

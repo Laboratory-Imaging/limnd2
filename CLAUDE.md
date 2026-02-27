@@ -19,7 +19,7 @@ limnd2 is a Python library for reading and writing Nikon NIS Elements `.nd2` mic
 # Windows
 python -m venv env
 env\Scripts\activate
-pip install -r requirements.txt
+python -m pip install --upgrade pip
 pip install -e ".[dev]"  # Install with dev dependencies
 ```
 
@@ -32,7 +32,7 @@ pytest
 tests\run_tests.bat
 
 # Run specific test file
-pytest tests/test_reader_base.py
+pytest tests/test_suites/limnd2/test_reader_base.py
 
 # Skip slow tests (marked with @pytest.mark.slow)
 pytest -m "not slow"
@@ -65,10 +65,15 @@ python -m build
 # or
 uv build
 
-# Upload to private PyPI (local)
-twine upload -r local dist\*
-# or with uv
+# Upload to local index with uv
 uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
+
+# Upload to aws-pypi with uv
+uv publish --publish-url https://pypi.lim-dev.xyz --username "your-username" --password "your-password" dist/*
+
+# Or upload with twine
+twine upload -r local dist\*
+twine upload -r aws-pypi dist\*
 ```
 
 ## Architecture
@@ -82,24 +87,19 @@ The ND2 file format is chunk-based with specific binary signatures:
 
 **Key classes** ([base.py](src/limnd2/base.py)):
 - `BaseChunker`: Abstract base class for chunk reading/writing
-- `LimBinaryIOChunker` ([file.py](src/limnd2/file.py)): Concrete implementation for binary file I/O
+- `LimBinaryIOChunker` ([file_modern.py](src/limnd2/file_modern.py)): Concrete implementation for modern ND2 binary I/O
 - Chunk names are defined as constants (e.g., `ND2_CHUNK_NAME_ImageAttributes`)
 
 ### Reader/Writer Architecture
 
 **Main classes** ([nd2.py](src/limnd2/nd2.py)):
-- `Nd2Reader`: High-level reader implementing `Nd2ReaderProtocol`
+- `Nd2Reader`: High-level reader
   - Uses chunker to access file data
   - Lazy loads metadata and images
   - Context manager support (`with` statement)
-- `Nd2Writer`: High-level writer implementing `Nd2WriterProtocol`
+- `Nd2Writer`: High-level writer
   - Constructs valid ND2 files with proper chunk structure
   - Handles image compression and metadata encoding
-
-**Protocols** ([protocols.py](src/limnd2/protocols.py)):
-- `Nd2ReaderProtocol`: Interface for reading ND2 files
-- `Nd2WriterProtocol`: Interface for writing ND2 files
-- Ensures consistency across implementations
 
 ### Metadata System
 
@@ -192,6 +192,8 @@ Use `@pytest.mark.slow` for tests that are too slow for CI.
 
 - Python 3.9+ required (3.12+ recommended)
 - Windows-focused development (batch scripts, PowerShell examples)
-- Private PyPI server at `http://gaexec:9500` (internal use)
+- Internal indexes configured in `pyproject.toml`:
+  - `http://gaexec:9500/simple` (local)
+  - `https://pypi.lim-dev.xyz/simple` (aws-pypi)
 - Documentation uses MkDocs with Material theme and mkdocstrings
 - Uses `uv` for fast package management (optional)

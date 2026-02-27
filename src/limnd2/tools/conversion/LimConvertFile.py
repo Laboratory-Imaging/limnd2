@@ -154,7 +154,7 @@ def convert_file_to_nd2_args(args: list[str] | None = None):
 
 def _convert_file_to_nd2(args: list[str] | None = None):
     parser = argparse.ArgumentParser(description="Convert files to ND2 format.")
-    parser.add_argument("input", type=str, help="Input file or directory.")
+    parser.add_argument("input", type=str, help="Input file.")
     parser.add_argument("output", type=str, nargs="?", default=None, help="File name of converted .nd2 file.")
 
     parser.add_argument("-f", action="store_true", help="Force overwrite of the output file if it already exists.")

@@ -1,17 +1,17 @@
 # Index ND2 files
 
-Following command line tool allows you to index ND2 files is specified directory and extract basic metadata:
+This command line tool indexes ND2 files in a specified directory and extracts basic metadata:
 
 ```sh
 limnd2-index <arguments>
 ```
 
-Script also allows you to filter, sort, and format the output. The output can be formatted as a table, CSV, or JSON.
+The script also supports filtering, sorting, and output formatting (`table`, `csv`, `json`).
 
-As an example, the following command will index all ND2 files in the current directory and output the results as a table, filter only specific columns, and select images with resolution greater than 1000 pixels:
+As an example, the following command indexes ND2 files in the current directory, keeps selected columns, and filters images with width greater than 1000 pixels:
 
 ```sh
-limnd2-index.exe . -i Name,Size,Experiment,Resolution -F "int(Resolution.split('x')[0]) > 1000"
+limnd2-index . -c Name,Size,Experiment,Resolution -F "int(Resolution.split('x')[0]) > 1000"
 ```
 
 **Output:**
@@ -54,11 +54,19 @@ limnd2-index.exe . -i Name,Size,Experiment,Resolution -F "int(Resolution.split('
 
 - `--include <list>`, `-i <list>`
 
-    Comma-separated list of columns to include in the output. Optional.
+    Comma-separated list of columns to add to the default output. Optional.
+
+- `--columns <list>`, `-c <list>`
+
+    Exact comma-separated list of columns to output (replaces default column selection). Optional.
 
 - `--exclude <list>`, `-e <list>`
 
-    Comma-separated list of columns to exclude from the output. Optional.
+    Comma-separated list of columns to remove from the selected output columns. Optional.
+
+- `--all-columns`
+
+    Show all columns by default (instead of hiding selected columns). Optional.
 
 - `--no-header`
 
@@ -83,11 +91,15 @@ The following columns are available for output, filtering, and sorting.
 | `Frames`     | `int`     | Total number of frames            |
 | `Dtype`      | `str`     | Data type                         |
 | `Bits`       | `int`     | Bit depth                         |
+| `Compression`| `str`     | Compression mode and parameter    |
 | `Resolution` | `str`     | Image resolution                  |
 | `Channels`   | `int`     | Number of channels                |
 | `Binary`     | `str`     | Binary metadata                   |
+| `Downsampled`| `str`     | Downsampled pyramid information   |
 | `Software`   | `str`     | Acquisition software              |
 | `Grabber`    | `str`     | Acquisition hardware/grabber      |
+
+Default output hides: `Compression`, `Downsampled`, `Software`, `Grabber`.
 
 ## Examples
 
@@ -108,14 +120,14 @@ Here are some example usages of the `limnd2-index` command:
     limnd2-index ./data --glob-pattern '*.nd2'
     ```
 
-??? example "Sort output by acquisition date"
+??? example "Sort output by frame count"
     ```sh
     limnd2-index ./data --sort-by Frames
     ```
 
 ??? example "Output results as CSV and include only specific columns"
     ```sh
-    limnd2-index ./data --format csv --include Name,Experiment
+    limnd2-index ./data --format csv --columns Name,Experiment
     ```
 
 ??? example "Filter files"

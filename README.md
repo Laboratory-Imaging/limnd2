@@ -1,235 +1,64 @@
 # limnd2
 
-A Python library for reading and writing `.nd2` files produced by Nikon NIS-Elements Software.
+A Python library for reading and writing Nikon NIS-Elements `.nd2` files.
 
-Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible drop-in interface, adding write capabilities and extended metadata support.
-
-## Documentation
-Documentation is available [here](https://laboratory-imaging.github.io/limnd2/docs/).
-
-## Installation
-
-### Prerequisites
-
-Base limnd2 package requires the following core dependencies:
-
-- python>=3.9
-- numpy
-- ome_types
-
-Optional extras enable specific workflows:
-
-- `limnd2[results]` – load analysis tables from `.h5` files (`h5py`, `pandas`)
-- `limnd2[commonff]` – shared common-file-format deps (`Pillow` + `tifffile`); install to enable exporting and external conversions
-- `limnd2[legacy]` – read legacy JPEG2000‑compressed ND2 (`imagecodecs`)
-- `limnd2[all]` – installs extras mentioned above
-- `limnd2[dev]` – everything above plus tooling for docs, testing, coverage, static type checking
-
-Use the combos you need, e.g.:
-
-```sh
-pip install limnd2[results]
-pip install limnd2[commonff,legacy]
-pip install limnd2[all]
-pip install limnd2[dev]    # docs + pytest + coverage + mypy + mkdocs
-```
-
-<!--
-### Installation scripts
-
-This package and its prerequisites can be installed running following commands in Powershell / shell.
-
-#### Windows
-
-```powershell
-powershell -Command "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/Laboratory-Imaging/Laboratory-Imaging.github.io/refs/heads/main/limnd2/setup_limnd2.bat' -OutFile 'setup_limnd2.bat'; & '.\setup_limnd2.bat'; Remove-Item 'setup_limnd2.bat'"
-```
-
-#### Linux / MacOS   // TODO test script when repo is public
-
-```sh
-curl -O https://raw.githubusercontent.com/Laboratory-Imaging/Laboratory-Imaging.github.io/refs/heads/main/limnd2/setup_limnd2.sh && chmod +x setup_limnd2.sh && ./setup_limnd2.sh && rm ./setup.sh
-```
--->
-
-### Manual Installation
-
-This project uses `pyproject.toml` for dependency management and can be installed with either `pip` or `uv`.
-
-#### Using uv (recommended)
-
-```powershell
-git clone https://github.com/Laboratory-Imaging/limnd2.git
-cd limnd2
-uv sync                     # dependencies in .venv
-uv pip install -e ".[dev]"  # for development
-code .                      # opens VS Code editor
-```
-
-#### Using pip
-
-```powershell
-git clone https://github.com/Laboratory-Imaging/limnd2.git
-cd limnd2
-python -m venv env
-# Windows
-env\Scripts\activate
-# Linux/MacOS
-# source env/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-code .
-```
-
-### Building and Publishing
-
-#### Build the Package
-
-First, build the distribution packages:
-
-```powershell
-# Using uv (recommended)
-uv build
-
-# Or using pip/build
-python -m build
-```
-
-This creates `.whl` and `.tar.gz` files in the `dist/` directory.
-
-#### Publishing to PyPI Servers
-
-The project is configured with multiple PyPI server indices in `pyproject.toml`:
-- `pypi`: Public PyPI (https://pypi.org)
-- `local`: Internal server at http://gaexec:9500
-- `aws-pypi`: AWS server at https://pypi.lim-dev.xyz
-
-**Option 1: Using `uv publish` (recommended)**
-
-```powershell
-# Publish to local server (no authentication)
-uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
-
-# Publish to AWS server (with authentication via environment variables)
-$env:UV_PUBLISH_USERNAME = "your-username"
-$env:UV_PUBLISH_PASSWORD = "your-password"
-uv publish --publish-url https://pypi.lim-dev.xyz dist/*
-
-# Or pass credentials directly
-uv publish --publish-url https://pypi.lim-dev.xyz --username "your-username" --password "your-password" dist/*
-```
-
-**Option 2: Using `twine` (traditional method)**
-
-First, configure credentials in `~/.pypirc` (Linux/Mac) or `%USERPROFILE%\.pypirc` (Windows):
-
-```ini
-[distutils]
-index-servers =
-    local
-    aws-pypi
-
-[local]
-repository = http://gaexec:9500
-username = -
-password = -
-
-[aws-pypi]
-repository = https://pypi.lim-dev.xyz
-username = your-username
-password = your-password
-```
-
-Then upload:
-
-```powershell
-# Upload to local server
-twine upload -r local dist/*
-
-# Upload to AWS server
-twine upload -r aws-pypi dist/*
-```
+`limnd2` is built on top of [tlambert03/nd2](https://github.com/tlambert03/nd2) and keeps a compatible interface while adding write support and extended metadata handling.
 
 > [!WARNING]
-> Never commit the `.pypirc` file to version control as it contains credentials. It's already ignored in `.gitignore` by default.
+> This library is still in active development.
+> Current version: `0.3.0`.
+> Until `1.0`, behavior and API can change, and some changes may be released without a version number bump.
+> GitHub Issues and Pull Requests are currently disabled.
+> If you have a problem or question, contact: `techsupp@lim.cz`.
 
-> [!TIP]
-> For security, use environment variables for credentials:
-> ```powershell
-> # Windows PowerShell
-> $env:TWINE_USERNAME = "your-username"
-> $env:TWINE_PASSWORD = "your-password"
-> twine upload -r aws-pypi dist/*
-> ```
+## Install
 
-### Documentation Preview
+Install from our package index with `pip`:
 
 ```sh
-mkdocs serve
+pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
 ```
 
-## Development
-
-### Running Tests
-
-This project uses pytest for testing. After installing the dev dependencies (see Manual Installation above), you can run tests in several ways:
-
-#### Test Data Acquisition
-
-Many tests require `.nd2` sample files. The test suite automatically acquires test data using a three-tier fallback strategy:
-
-1. **Network share** (intranet): Copies from `\\server\home\lukas.jirusek\limnd2_test_files` if accessible
-2. **S3 download** (public): Downloads and extracts from AWS S3 if network share unavailable (requires `py7zr`)
-3. **Skip tests**: Tests requiring sample files are automatically skipped if neither source is available
-
-The test data is automatically downloaded on first test run and cached in `tests/test_files/nd2_files/`. You can also manually set the `LIMND2_TEST_DATA_ROOT` environment variable to point to a custom directory containing `.nd2` files.
-
-#### Using VS Code Testing UI
-
-Once you've installed the dev dependencies with `uv pip install -e ".[dev]"` or `pip install -e ".[dev]"`, you can use VS Code's built-in Testing UI:
-
-1. Click the Testing icon in the Activity Bar (left sidebar)
-2. VS Code will automatically discover tests in the `tests/` directory
-3. On first run, test data will be automatically downloaded from S3 (if needed)
-4. Run individual tests or the entire test suite from the UI
-
-> [!NOTE]
-> If you get an error "No module named pytest" when using VS Code's Testing button, make sure you've installed the dev dependencies first.
-
-> [!TIP]
-> If VS Code shows "not found" errors for parametrized tests (tests with `[parameter]` suffix), try refreshing the test discovery:
-> - Command Palette → `Testing: Refresh Tests`
-> - Or click individual parametrized test cases instead of the parent test node
-
-#### Using Command Line
-
-```powershell
-# Run all tests with coverage (downloads test data automatically on first run)
-pytest
-
-# Run tests with HTML report (Windows)
-tests\run_tests.bat
-
-# Run specific test file
-pytest tests/test_reader_base.py
-
-# Skip slow tests (marked with @pytest.mark.slow)
-pytest -m "not slow"
-```
-
-### Running MyPy static type checker
-
-> [!NOTE]
-> MyPy is not required for running the package, it is only used for static type checking.
-> You can install MyPy with `pip install mypy`.
-
-To run MyPy static type checker, run the following command in the root directory of the repository:
+Install from our package index with `uv`:
 
 ```sh
-mypy .
+uv pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
 ```
 
-MyPy is also run automatically with each commit, you can download latest MyPy report by navigating to [Workflow action for MyPy](https://github.com/Laboratory-Imaging/limnd2/actions/workflows/mypy_check.yml), selecting latest workflow run and by downloading the latest report from the "Artifacts" section at the bottom of the page.
+Quick install check:
 
-> [!NOTE]
-> Those reports are only available for 90 days since the workflow run.
+```sh
+python -c "import limnd2; print(limnd2.__version__)"
+```
+
+## Choose extras
+
+Install only what your workflow needs:
+
+- `limnd2[results]`: enables reading ND2 results/analysis tables stored in `.h5` data (`h5py`, `pandas`).
+- `limnd2[commonff]`: enables common file-format workflows, mainly conversions and exports (TIFF/OME-TIFF/PNG/JPEG inputs and TIFF export via `Pillow`, `tifffile`, `zarr`).
+- `limnd2[legacy]`: enables reading legacy ND2 files that use JPEG2000 compression (`imagecodecs`).
+- `limnd2[all]`: installs all runtime extras above; use this if you want full runtime functionality without picking extras one by one.
+
+Examples with `pip`:
+
+```sh
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+```
+
+Examples with `uv`:
+
+```sh
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+```
+
+## Documentation and examples
+
+- [Documentation](https://laboratory-imaging.github.io/limnd2/docs/)
+- [Quick start](https://laboratory-imaging.github.io/limnd2/docs/index/)
+- [Command-line tools](https://laboratory-imaging.github.io/limnd2/docs/cli_index/)
+- [Usage examples](examples/)

@@ -98,10 +98,12 @@ nav:
       - Convert image sequence to ND2: convert_sequence.md
       - LimImageSource.py: convert_image_source.md
 
-  - Compatability:
+  - Compatibility:
     - nd2file.py: nd2file.md
 
   - Command line tools:
     - Index ND2 files: cli_index.md
     - Convert image to ND2: cli_convert_image.md
     - Convert image sequence to ND2: cli_convert_sequence.md
+    - Export sequence to images: cli_sequence_export.md
+    - Export one frame: cli_frame_export.md

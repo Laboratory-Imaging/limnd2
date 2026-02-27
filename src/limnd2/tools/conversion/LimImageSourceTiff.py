@@ -342,12 +342,12 @@ class LimImageSourceTiff(LimImageSource):
 
     def parse_additional_dimensions(
         self,
-        sources: dict["LimImageSource", list[int]],
+        sources: dict["LimImageSourceTiff", list[int]],
         original_dimensions: dict[str, int],
         unknown_dimension_type: str | None = None,
         preserve_duplicate_dimension_names: bool = False,
         respect_per_file_channel_count: bool = False,
-    ) -> tuple[dict["LimImageSource", list[int]], dict[str, int]]:
+    ) -> tuple[dict["LimImageSourceTiff", list[int]], dict[str, int]]:
         """
         Parse additional dimensions from the tiff source.
         Adds IDF to tiff file based on dimensions found in the TIFF file.

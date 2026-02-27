@@ -328,6 +328,10 @@ def check_parsed_args(parsed_args: argparse.Namespace, parser: argparse.Argument
             print(f"ERROR: You must select output type (either --{J.LONG} or --{N.LONG})")
             return False
 
+        if parsed_args.__dict__[J.LONG] is None and parsed_args.__dict__[N.LONG] is None:
+            print(f"ERROR: You must select output type (either --{J.LONG} or --{N.LONG})")
+            return False
+
         if parsed_args.__dict__[J.LONG] is not None and parsed_args.__dict__[O.LONG] is not None:
             print(f"ERROR: Argument --{O.LONG} can not be used with --{J.LONG} argument.")
             return False

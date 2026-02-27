@@ -4,9 +4,13 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal
 
-import dask.array as da
 import pytest
 from nd2 import ND2File, structures
+
+try:
+    import dask.array as da
+except ImportError:  # pragma: no cover - optional dependency
+    da = None  # type: ignore
 
 try:
     import xarray as xr
@@ -77,6 +81,8 @@ def test_metadata_extraction_legacy(old_nd2: Path) -> None:
         assert isinstance(nd.text_info, dict)
         assert isinstance(nd.metadata, structures.Metadata)
         if xr is not None:
+            if da is None:
+                pytest.skip("dask not installed")
             xarr = nd.to_xarray()
             assert isinstance(xarr, xr.DataArray)
             assert isinstance(xarr.data, da.Array)

@@ -33,6 +33,7 @@ def test_time_imread(file: Path) -> None:
 @pytest.mark.parametrize("file", FILES, ids=lambda x: x.stem)
 def test_time_imread_dask(file: Path) -> None:
     """Test time to read a file."""
+    pytest.importorskip("dask.array")
     _ = nd2.imread(file, dask=True).compute()
 
 

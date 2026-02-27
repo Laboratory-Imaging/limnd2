@@ -1,6 +1,15 @@
+from importlib.metadata import PackageNotFoundError, version
+
 __author__ = "Laboratory Imaging, s.r.o."
 __email__ = "techsupp@lim.cz"
+
+try:
+    __version__ = version("limnd2")
+except PackageNotFoundError:  # pragma: no cover
+    __version__ = "unknown"
+
 __all__ = [
+    "__version__",
     "ImageAttributesCompression", "ImageAttributesPixelType", "ImageAttributes",
     "FileStore", "MemoryStore","BaseChunker", "FileLikeObject", "Nd2LoggerEnabled", "NumpyArrayLike", "NameNotInChunkmapError", "NotNd2Format", "UnsupportedChunkmapError", "UnexpectedCallError",
     "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata",

@@ -12,11 +12,29 @@ authors = [
 license = {file = "LICENSE"}
 description = "A Python library for reading and writing Nikon NIS-Elements .nd2 files"
 readme = "README.md"
+keywords = ["nd2", "nikon", "microscopy", "image-processing"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
 
 dependencies = [                # base needed for limnd2
     "numpy",
     "ome_types",
 ]
+
+[project.urls]
+Homepage = "https://laboratory-imaging.github.io/limnd2/docs/"
+Documentation = "https://laboratory-imaging.github.io/limnd2/docs/"
+Repository = "https://github.com/Laboratory-Imaging/limnd2"
+"Release Notes" = "https://github.com/Laboratory-Imaging/limnd2/releases"
 
 [project.optional-dependencies]
 results = [                     # results
@@ -135,6 +153,6 @@ explicit = true
 
 [[tool.uv.index]]
 name = "aws-pypi"
-url = "https://https://pypi.lim-dev.xyz/simple"
+url = "https://pypi.lim-dev.xyz/simple"
 publish-url = "https://pypi.lim-dev.xyz"
 explicit = true

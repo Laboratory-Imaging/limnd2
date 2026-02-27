@@ -1,44 +1,53 @@
 # limnd2 package
 
-!!! warning
-    This Python package is not yet available for the public, both the package and the documentation is still being worked on.
-
 A Python library for reading and writing `.nd2` files produced by Nikon NIS-Elements Software.
 
 Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible drop-in interface, adding write capabilities and extended metadata support.
+
+> [!WARNING]
+> This library is still in active development.
+> Current version: `0.3.0`.
+> Until `1.0`, behavior and API can change, and some changes may be released without a version number bump.
+> GitHub Issues and Pull Requests are currently disabled.
+> If you have a problem or question, contact: `techsupp@lim.cz`.
 
 ## Installation
 
 ### Prerequisites
 
-limnd2 package requires the following core dependencies:
+Base `limnd2` requires:
 
 - python>=3.9
 - numpy
 - ome_types
-- tifffile
-- imagecodecs
-- Pillow
 
-#### Optional Dependencies
+Optional extras enable specific workflows:
 
-For working with results and analytics features, install the optional `results` extras:
+- `limnd2[results]` - load analysis tables from `.h5` files (`h5py`, `pandas`)
+- `limnd2[commonff]` - shared image format deps (`Pillow`, `tifffile`, `zarr`)
+- `limnd2[legacy]` - read legacy JPEG2000 ND2 (`imagecodecs`)
+- `limnd2[all]` - all runtime extras
 
-- h5py
-- pandas
-
-Install with: `pip install limnd2[results]` or `uv pip install limnd2[results]`
-
-### Installing from PyPI
-
-!!! warning
-    This Python package is not released on PyPI yet, use manual installation.
+Install examples from our package index:
 
 ```sh
-pip install limnd2
+pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+```
 
-# With optional results support
-pip install limnd2[results]
+```sh
+uv pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+```
+
+Quick install check:
+
+```sh
+python -c "import limnd2; print(limnd2.__version__)"
 ```
 
 ### Manual Installation
@@ -75,33 +84,6 @@ This project uses `pyproject.toml` for dependency management and can be installe
     python -m pip install --upgrade pip
     pip install -e ".[dev]"
     ```
-<!---
-### Installation from PyPI
-
-!!! warning
-    This Python package is not released on PyPI yet, use manual installation.
-
-You can install this package from PyPI by running following command:
-
-```sh
-pip install limnd2
-```
-
-### Manual Installation
-
-#### Windows
-
-Run following commands in a folder where you want to install this package.
-
-```powershell
-git clone https://github.com/Laboratory-Imaging/limnd2.git
-cd limnd2
-python -m venv env
-env\Scripts\activate
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-```
--->
 ## Usage
 
 ### Reading `.nd2` files
@@ -485,7 +467,7 @@ for key, value in nd2.imageTextInfo.to_dict().items():
 
 Attributes, experiments, metadata, and image data are the most important parts of an .nd2 file, which is why they were the focus of this guide. The limnd2 module can also access information about binary layers, ROIs, and other data stored in the file. However, at this time, we do not provide a guide on how to read these additional components.
 
-If this causes any issues or you need further clarification, please feel free to head over to the [Discussion page on our GitHub repository](https://github.com/Laboratory-Imaging/limnd2/discussions) and let us know.
+If this causes any issues or you need further clarification, contact `techsupp@lim.cz`.
 
 ### Writing to `.nd2` file
 
@@ -648,4 +630,4 @@ Compatibility layer:
 
 ## Feedback
 
-Did you find a bug? Do you have a question about this package or an idea for improvement? Join the discussion [here](https://github.com/Laboratory-Imaging/limnd2/discussions).
+For questions, bug reports, or feature requests, contact `techsupp@lim.cz`.
