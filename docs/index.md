@@ -153,13 +153,13 @@ For all properties and methods of this dataclass see [attributes.py](attributes.
 
 To get image attributes use `imageAttributes` attribute of `Nd2Reader` instance created in previous step.
 
-```python linenums="18" title="example_reader.py"
+```python linenums="19" title="example_reader.py"
 attributes = nd2.imageAttributes
 ```
 
 Then you can use following properties to get information about the file:
 
-```python linenums="20" title="example_reader.py"
+```python linenums="21" title="example_reader.py"
 print(f"Image resolution: {attributes.width} x {attributes.height}")
 print(f"Number of components: {attributes.componentCount}")
 print(f"Number of frames: {attributes.frameCount}")
@@ -180,7 +180,7 @@ print(f"Python data type: {attributes.dtype}")
 
 This library uses NumPy arrays to store image data found in the `.nd2` file, if you want to access image data itself, you can do so by using [`.image()`](nd2.md#limnd2.nd2.Nd2Reader.image) method with index of the image you want to get like this:
 
-```python linenums="29" title="example_reader.py"
+```python linenums="30" title="example_reader.py"
 image = nd2.image(0)        # get first image
 print(type(image))
 print("Numpy array shape:", image.shape, "stored datatype:", image.dtype)
@@ -194,7 +194,7 @@ print("Numpy array shape:", image.shape, "stored datatype:", image.dtype)
 
 If you want to get all images in the `.nd2` file, use a for loop with `frameCount` property from image attributes.
 
-```python linenums="34" title="example_reader.py"
+```python linenums="35" title="example_reader.py"
 images = []
 for i in range(attributes.frameCount):
     images.append(nd2.image(i))
@@ -273,7 +273,7 @@ An image can have no experiment, a single experiment, or a combination of multip
 
 To obtain data structure with information about used experiments, use `experiment` property.
 
-```py linenums="42" title="example_reader.py"
+```py linenums="43" title="example_reader.py"
 experiment = nd2.experiment
 ```
 
