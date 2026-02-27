@@ -5,13 +5,14 @@ with limnd2.Nd2Reader(r"file.nd2") as nd2:
 
     #summary info
     print("Summary information")
-    for key, value in nd2.generalImageInfo.items():
+    for key, value in limnd2.generalImageInfo(nd2).items():
         print(f"{key}: {value}")
     print()
 
     print("More information")
-    for key, value in nd2.imageTextInfo.to_dict().items():
-        print(f"{key}: {value}")
+    if nd2.imageTextInfo is not None:
+        for key, value in nd2.imageTextInfo.to_dict().items():
+            print(f"{key}: {value}")
     print()
 
     # imageAttributes
@@ -42,17 +43,23 @@ with limnd2.Nd2Reader(r"file.nd2") as nd2:
     experiment = nd2.experiment
 
     print("Experiment loops in image:")
-    for e in experiment:
-        print(f"Experiment name: {e.name}, number of frames: {e.count}")
+    if experiment is not None:
+        for e in experiment:
+            print(f"Experiment name: {e.name}, number of frames: {e.count}")
     print()
 
-    zstack = experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
+    zstack = (
+        experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
+        if experiment is not None
+        else None
+    )
 
-    print("Distance between frames:", zstack.uLoopPars.dZStep, "μm")
-    print("Home index:", zstack.uLoopPars.homeIndex)
-    print("Top position:", zstack.uLoopPars.top, "μm")
-    print("Bottom position:", zstack.uLoopPars.bottom, "μm")
-    print()
+    if zstack is not None:
+        print("Distance between frames:", zstack.uLoopPars.dZStep, "μm")
+        print("Home index:", zstack.uLoopPars.homeIndex)
+        print("Top position:", zstack.uLoopPars.top, "μm")
+        print("Bottom position:", zstack.uLoopPars.bottom, "μm")
+        print()
 
     # metadata
 
@@ -65,7 +72,8 @@ with limnd2.Nd2Reader(r"file.nd2") as nd2:
         print(" Emission wavelength:", channel.emissionWavelengthNm)
         print(" Excitation wavelength:", channel.excitationWavelengthNm)
 
-        print(" Camera name", settings.cameraName)
-        print(" Microscope name", settings.microscopeName)
-        print(" Objective magnification", settings.objectiveMagnification)
-        print()
+        if settings is not None:
+            print(" Camera name", settings.cameraName)
+            print(" Microscope name", settings.microscopeName)
+            print(" Objective magnification", settings.objectiveMagnification)
+            print()

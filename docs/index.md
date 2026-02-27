@@ -119,11 +119,11 @@ with limnd2.Nd2Reader("file.nd2") as nd2:
 
 #### Summary image information
 
-Quick access to information about the file can be gained with `generalImageInfo` dictionary:
+Quick access to information about the file can be gained with the `generalImageInfo` helper function:
 
 ```python linenums="7" title="example_reader.py"
 print("Summary information")
-for key, value in nd2.generalImageInfo.items():
+for key, value in limnd2.generalImageInfo(nd2).items():
     print(f"{key}: {value}")
 ```
 
@@ -219,15 +219,15 @@ Metadata in `.nd2` file contain a lot of additional data about the image, especi
 
 To get metadata, use `pictureMetadata` attribute like this:
 
-```py linenums="59" title="example_reader.py"
+```py linenums="66" title="example_reader.py"
 metadata = nd2.pictureMetadata
 ```
 
-To iterate over planes in the image, you can use `.channels()` method from the metadata that just were created, then `.sampleSettings()` method to get sample settings for given plane.
+To iterate over planes in the image, use the `channels` property from metadata, then use `.sampleSettings()` to get sample settings for each plane.
 
 With channel and settings stored in separate variables, you can then access selected attributes like this:
 
-```py linenums="61" title="example_reader.py"
+```py linenums="68" title="example_reader.py"
 for channel in metadata.channels:
     settings = metadata.sampleSettings(channel)
     print("Channel name:", channel.sDescription)
@@ -235,10 +235,11 @@ for channel in metadata.channels:
     print(" Emission wavelength:", channel.emissionWavelengthNm)
     print(" Excitation wavelength:", channel.excitationWavelengthNm)
 
-    print(" Camera name", settings.cameraName)
-    print(" Microscope name", settings.microscopeName)
-    print(" Objective magnification", settings.objectiveMagnification)
-    print()
+    if settings is not None:
+        print(" Camera name", settings.cameraName)
+        print(" Microscope name", settings.microscopeName)
+        print(" Objective magnification", settings.objectiveMagnification)
+        print()
 ```
 
 ??? example "See example output"
@@ -276,12 +277,13 @@ To obtain data structure with information about used experiments, use `experimen
 experiment = nd2.experiment
 ```
 
-Then to see what kind of experiment `.nd2` file contains, you can iterate over this data structure with a for loop:
+Then to see what kind of experiment `.nd2` file contains, iterate over this structure (when present):
 
-```py linenums="44" title="example_reader.py"
+```py linenums="45" title="example_reader.py"
 print("Experiment loops in image:")
-for e in experiment:
-    print(f"Experiment name: {e.name}, number of frames: {e.count}")
+if experiment is not None:
+    for e in experiment:
+        print(f"Experiment name: {e.name}, number of frames: {e.count}")
 ```
 
 ??? example "See example output"
@@ -295,13 +297,18 @@ Now if we want to access attributes and methods for specific loop type, we can u
 
 Then we can access data for this experiment through parameters of this experiment, in this example we use attributes and properties of ExperimentZStackLoop.
 
-```py linenums="49" title="example_reader.py"
-zstack = experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
+```py linenums="51" title="example_reader.py"
+zstack = (
+    experiment.findLevel(limnd2.ExperimentLoopType.eEtZStackLoop)
+    if experiment is not None
+    else None
+)
 
-print("Distance between frames:", zstack.uLoopPars.dZStep, "μm")
-print("Home index:", zstack.uLoopPars.homeIndex)
-print("Top position:", zstack.uLoopPars.top, "μm")
-print("Bottom position:", zstack.uLoopPars.bottom, "μm")
+if zstack is not None:
+    print("Distance between frames:", zstack.uLoopPars.dZStep, "μm")
+    print("Home index:", zstack.uLoopPars.homeIndex)
+    print("Top position:", zstack.uLoopPars.top, "μm")
+    print("Bottom position:", zstack.uLoopPars.bottom, "μm")
 ```
 ??? example "See example output"
     ```
@@ -319,8 +326,9 @@ More information about components can be in `imageTextInfo` dataclass, though th
 
 ```python linenums="12" title="example_reader.py"
 print("More information")
-for key, value in nd2.imageTextInfo.to_dict().items():
-    print(f"{key}: {value}")
+if nd2.imageTextInfo is not None:
+    for key, value in nd2.imageTextInfo.to_dict().items():
+        print(f"{key}: {value}")
 ```
 
 ??? example "See example output"
