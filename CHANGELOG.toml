@@ -1,0 +1,21 @@
+# Release changelog used by GitHub release workflow.
+# Add one section per version under [releases."<version>"].
+
+[releases."0.3.0"]
+title = "Initial testing release"
+date = "2026-03-02"
+changes = [
+  "Initial testing release for limnd2.",
+  "Includes reader and writer support for Nikon NIS-Elements .nd2 files.",
+  "Includes compatibility access through the ND2File wrapper.",
+  "Includes conversion/export tooling and example scripts.",
+]
+
+# Template for the next release:
+# [releases."0.3.1"]
+# title = "Short release title"
+# date = "YYYY-MM-DD"
+# changes = [
+#   "Describe the first user-visible change.",
+#   "Describe the second user-visible change.",
+# ]
