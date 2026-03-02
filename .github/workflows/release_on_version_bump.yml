@@ -61,6 +61,7 @@ jobs:
           echo "Tag updated to current commit: $TAG"
 
       - name: Build release body from changelog
+        id: changelog
         env:
           VERSION: ${{ steps.version.outputs.current }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -86,9 +87,14 @@ jobs:
               raise SystemExit(f"Version {version} not found in CHANGELOG.toml")
 
           title = str(entry.get("title", "")).strip()
-          date = str(entry.get("date", "")).strip()
+          message = str(entry.get("message", "")).strip()
+          prerelease = entry.get("prerelease", False)
           changes = entry.get("changes", [])
 
+          if not isinstance(prerelease, bool):
+              raise SystemExit(
+                  f"Version {version} in CHANGELOG.toml has invalid prerelease value. Use true/false."
+              )
           if not isinstance(changes, list) or not changes:
               raise SystemExit(
                   f"Version {version} in CHANGELOG.toml must define a non-empty changes list."
@@ -98,9 +104,9 @@ jobs:
           if title:
               lines.append("")
               lines.append(title)
-          if date:
+          if message:
               lines.append("")
-              lines.append(f"Date: {date}")
+              lines.append(message)
           lines.append("")
           lines.append("## Changes")
           for item in changes:
@@ -109,6 +115,10 @@ jobs:
 
           pathlib.Path("RELEASE_BODY.md").write_text("\n".join(lines), encoding="utf-8")
           print("Generated RELEASE_BODY.md")
+
+          out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"prerelease={'true' if prerelease else 'false'}\n")
           PY
 
       - name: Build distributions
@@ -120,6 +130,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
           body_path: RELEASE_BODY.md
+          prerelease: ${{ steps.changelog.outputs.prerelease }}
           overwrite_files: true
           files: |
             dist/*.whl
