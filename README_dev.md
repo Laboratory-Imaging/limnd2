@@ -45,10 +45,28 @@ pip install -e ".[dev]"
 ### Release checklist
 
 1. Bump `version` in `pyproject.toml` under `[project]`.
-2. Update version text in user-facing docs if present (for example `README.md` and `docs/index.md` warning blocks).
-3. Build distributions (`uv build` or `python -m build`).
-4. Publish `dist/*` to required indexes (`local` / `aws-pypi`) using commands below.
-5. Apply tagging policy (see below).
+2. Add or update release entry in `CHANGELOG.toml` for that version.
+3. Update version text in user-facing docs if present (for example `README.md` and `docs/index.md` warning blocks).
+4. Build distributions (`uv build` or `python -m build`).
+5. Publish `dist/*` to required indexes (`local` / `aws-pypi`) using commands below.
+6. Apply tagging policy (see below).
+
+### Release changelog (`CHANGELOG.toml`)
+
+GitHub release notes are generated from `CHANGELOG.toml` by the release workflow.
+
+Format:
+
+```toml
+[releases."0.3.1"]
+title = "Short release title"
+message = "One short summary paragraph for this release."
+prerelease = false
+changes = [
+  "Describe the first user-visible change.",
+  "Describe the second user-visible change.",
+]
+```
 
 ### Tagging policy
 

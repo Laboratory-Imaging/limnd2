@@ -64,7 +64,6 @@ jobs:
         id: changelog
         env:
           VERSION: ${{ steps.version.outputs.current }}
-          TAG: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
           python - <<'PY'
@@ -73,63 +72,96 @@ jobs:
           import tomllib
 
           version = os.environ["VERSION"]
-          tag = os.environ["TAG"]
           changelog_path = pathlib.Path("CHANGELOG.toml")
+          prerelease = False
+          has_custom_body = False
+          lines: list[str] = []
 
           if not changelog_path.exists():
-              raise SystemExit("CHANGELOG.toml not found.")
+              print("CHANGELOG.toml not found. Falling back to auto-generated release notes.")
+          else:
+              try:
+                  data = tomllib.loads(changelog_path.read_text(encoding="utf-8"))
+              except tomllib.TOMLDecodeError as e:
+                  print(f"CHANGELOG.toml parse error: {e}. Falling back to auto-generated release notes.")
+                  data = {}
 
-          data = tomllib.loads(changelog_path.read_text(encoding="utf-8"))
-          releases = data.get("releases", {})
-          entry = releases.get(version)
+              releases = data.get("releases", {}) if isinstance(data, dict) else {}
+              entry = releases.get(version) if isinstance(releases, dict) else None
 
-          if entry is None:
-              raise SystemExit(f"Version {version} not found in CHANGELOG.toml")
+              if isinstance(entry, dict):
+                  title = str(entry.get("title", "") or "").strip()
+                  message = str(entry.get("message", "") or "").strip()
+                  raw_prerelease = entry.get("prerelease", False)
+                  prerelease = raw_prerelease if isinstance(raw_prerelease, bool) else False
+                  raw_changes = entry.get("changes", [])
+                  changes: list[str] = []
+                  if isinstance(raw_changes, list):
+                      for item in raw_changes:
+                          text = str(item).strip()
+                          if text:
+                              changes.append(text)
 
-          title = str(entry.get("title", "")).strip()
-          message = str(entry.get("message", "")).strip()
-          prerelease = entry.get("prerelease", False)
-          changes = entry.get("changes", [])
+                  if title:
+                      lines.append(title)
+                  if message:
+                      if lines:
+                          lines.append("")
+                      lines.append(message)
+                  if changes:
+                      if lines:
+                          lines.append("")
+                      lines.append("## Changes")
+                      for item in changes:
+                          lines.append(f"- {item}")
 
-          if not isinstance(prerelease, bool):
-              raise SystemExit(
-                  f"Version {version} in CHANGELOG.toml has invalid prerelease value. Use true/false."
-              )
-          if not isinstance(changes, list) or not changes:
-              raise SystemExit(
-                  f"Version {version} in CHANGELOG.toml must define a non-empty changes list."
-              )
-
-          lines = [f"# {tag}"]
-          if title:
-              lines.append("")
-              lines.append(title)
-          if message:
-              lines.append("")
-              lines.append(message)
-          lines.append("")
-          lines.append("## Changes")
-          for item in changes:
-              lines.append(f"- {item}")
-          lines.append("")
-
-          pathlib.Path("RELEASE_BODY.md").write_text("\n".join(lines), encoding="utf-8")
-          print("Generated RELEASE_BODY.md")
+                  if lines:
+                      lines.append("")
+                      pathlib.Path("RELEASE_BODY.md").write_text("\n".join(lines), encoding="utf-8")
+                      has_custom_body = True
+                      print("Generated RELEASE_BODY.md from CHANGELOG.toml")
+                  else:
+                      print(
+                          f"CHANGELOG entry for {version} has no content (title/message/changes). "
+                          "Falling back to auto-generated release notes."
+                      )
+              else:
+                  print(
+                      f"No changelog entry found for version {version}. "
+                      "Falling back to auto-generated release notes."
+                  )
 
           out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
           with out.open("a", encoding="utf-8") as fh:
               fh.write(f"prerelease={'true' if prerelease else 'false'}\n")
+              fh.write(f"has_custom_body={'true' if has_custom_body else 'false'}\n")
           PY
 
       - name: Build distributions
         run: python -m build
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (changelog body)
+        if: steps.changelog.outputs.has_custom_body == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
           body_path: RELEASE_BODY.md
+          prerelease: ${{ steps.changelog.outputs.prerelease }}
+          overwrite_files: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release (auto notes)
+        if: steps.changelog.outputs.has_custom_body != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
           prerelease: ${{ steps.changelog.outputs.prerelease }}
           overwrite_files: true
           files: |
