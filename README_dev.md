@@ -142,6 +142,23 @@ twine upload -r aws-pypi dist/*
 > [!WARNING]
 > Never commit real credentials in `.pypirc`. `gitignore` only blocks new untracked files; if `.pypirc` is already tracked, untrack it with `git rm --cached .pypirc`.
 
+### CI publish workflow (prepared, disabled by default)
+
+Workflow file: `.github/workflows/publish_aws_pypi.yml`
+
+- Trigger: manual (`workflow_dispatch`)
+- Disabled by default using repository variable gate:
+  - `ENABLE_AWS_PUBLISH` must be set to `true`
+- Required repository secrets:
+  - `AWS_PYPI_USERNAME`
+  - `AWS_PYPI_PASSWORD`
+
+When enabled and run, workflow builds `dist/*` and publishes with:
+
+```sh
+uv publish --publish-url https://pypi.lim-dev.xyz --username "$AWS_PYPI_USERNAME" --password "$AWS_PYPI_PASSWORD" dist/*
+```
+
 ## Documentation
 
 Preview docs locally:

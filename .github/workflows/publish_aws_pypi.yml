@@ -1,0 +1,45 @@
+name: Publish To AWS PyPI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Disabled by default. Set repository variable ENABLE_AWS_PUBLISH=true to enable.
+    if: ${{ vars.ENABLE_AWS_PUBLISH == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Validate publish credentials
+        env:
+          AWS_PYPI_USERNAME: ${{ secrets.AWS_PYPI_USERNAME }}
+          AWS_PYPI_PASSWORD: ${{ secrets.AWS_PYPI_PASSWORD }}
+        run: |
+          if [ -z "$AWS_PYPI_USERNAME" ] || [ -z "$AWS_PYPI_PASSWORD" ]; then
+            echo "Missing required secrets AWS_PYPI_USERNAME and/or AWS_PYPI_PASSWORD."
+            exit 1
+          fi
+
+      - name: Publish to AWS PyPI index
+        env:
+          AWS_PYPI_USERNAME: ${{ secrets.AWS_PYPI_USERNAME }}
+          AWS_PYPI_PASSWORD: ${{ secrets.AWS_PYPI_PASSWORD }}
+        run: |
+          uv publish --publish-url https://pypi.lim-dev.xyz --username "$AWS_PYPI_USERNAME" --password "$AWS_PYPI_PASSWORD" dist/*
