@@ -1,0 +1,77 @@
+name: Release Current Version
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install release dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Read current version
+        id: version
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
+          def version_from_pyproject_text(text: str) -> str:
+              return str(tomllib.loads(text)["project"]["version"])
+
+          current_text = pathlib.Path("pyproject.toml").read_text(encoding="utf-8")
+          current = version_from_pyproject_text(current_text)
+
+          print(f"Current version: {current}")
+
+          out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"current={current}\n")
+              fh.write(f"tag=v{current}\n")
+          PY
+
+      - name: Update tag on origin
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git tag -f "$TAG"
+          git push --force origin "refs/tags/$TAG"
+          echo "Tag updated to current commit: $TAG"
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          overwrite_files: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
