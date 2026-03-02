@@ -4,12 +4,12 @@ A Python library for reading and writing `.nd2` files produced by Nikon NIS-Elem
 
 Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible drop-in interface, adding write capabilities and extended metadata support.
 
-> [!WARNING]
-> This library is still in active development.
-> Current version: `0.3.0`.
-> Until `1.0`, behavior and API can change, and some changes may be released without a version number bump.
-> GitHub Issues and Pull Requests are currently disabled.
-> If you have a problem or question, contact: `techsupp@lim.cz`.
+!!! warning
+    This library is still in active development.
+    Current version: `0.3.0`.
+    Until `1.0`, behavior and API can change, and some changes may be released without a version number bump.
+    GitHub Issues and Pull Requests are currently disabled.
+    If you have a problem or question, contact: `techsupp@lim.cz`.
 
 ## Installation
 

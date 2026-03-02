@@ -61,4 +61,5 @@ uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
 - [Documentation](https://laboratory-imaging.github.io/limnd2/docs/)
 - [Quick start](https://laboratory-imaging.github.io/limnd2/docs/index/)
 - [Command-line tools](https://laboratory-imaging.github.io/limnd2/docs/cli_index/)
+- [Releases](https://github.com/Laboratory-Imaging/limnd2/releases)
 - [Usage examples](examples/)
