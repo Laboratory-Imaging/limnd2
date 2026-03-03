@@ -23,13 +23,13 @@ as [tlambert03/nd2](https://github.com/tlambert03/nd2), so it can be used as a d
 Install from our package index with `pip`:
 
 ```sh
-pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
+pip install --index-url https://pypi.laboratory-imaging.com/simple limnd2
 ```
 
 Install from our package index with `uv`:
 
 ```sh
-uv pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple limnd2
 ```
 
 Quick install check:
@@ -37,9 +37,6 @@ Quick install check:
 ```sh
 python -c "import limnd2; print(limnd2.__version__)"
 ```
-
-> [!NOTE]
-> The `pypi.lim-dev.xyz` development domain will continue working even after a production `pypi.laboratory-imaging.com` is created.
 
 ## Choose extras
 
@@ -54,17 +51,17 @@ Install only what your workflow needs:
 Examples with `pip`:
 
 ```sh
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[results]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff,legacy]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[all]"
 ```
 
 Examples with `uv`:
 
 ```sh
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[results]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff,legacy]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[all]"
 ```
 
 ## Documentation and examples
