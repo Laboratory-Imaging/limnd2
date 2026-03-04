@@ -28,6 +28,26 @@ def _flatten_debug_enabled() -> bool:
 _SAFE_READ_DEBUG_SAMPLES_REMAINING = 40
 
 
+def _effective_multiprocessing_for_source(sample_file: "LimImageSource", requested: bool) -> bool:
+    """
+    Decide whether threaded write path should be used for a source type.
+
+    CZI currently loads full data with ``czi.asarray()`` per read call, so
+    running frame writes in parallel can multiply peak memory significantly.
+    """
+    if not requested:
+        return False
+
+    if sample_file.__class__.__name__ == "LimImageSourceCzi":
+        logprint(
+            "CZI input detected: disabling multiprocessing to reduce peak memory usage.",
+            type="warning",
+        )
+        return False
+
+    return True
+
+
 def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, parsed_args: ConvertSequenceArgs, dimensions: dict):
     """Convert a list of LimImageSource to ND2 format."""
 
@@ -42,8 +62,6 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
 
     if "channel" in dimensions:
         comp_count = dimensions["channel"]
-    elif sample_file.is_rgb:
-        comp_count = 3
     else:
         comp_count = nd2_attributes_base.uiComp
 
@@ -61,15 +79,83 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
     # get image experiments
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
     outfile = Path(parsed_args.output_dir) / parsed_args.nd2_output
-    return LIMND2Utils.write_files_to_nd2(outfile, grouped_files, nd2_attributes, nd2_experiment, nd2_metadata, parsed_args.multiprocessing)
+    use_multiprocessing = _effective_multiprocessing_for_source(sample_file, parsed_args.multiprocessing)
+    return LIMND2Utils.write_files_to_nd2(
+        outfile,
+        grouped_files,
+        nd2_attributes,
+        nd2_experiment,
+        nd2_metadata,
+        use_multiprocessing,
+    )
 
 
 
 class LIMND2Utils:
     STACKED_CHANNELS_DTYPE_MESSAGE_PRINTED = False
     STACKED_CHANNELS_COLLAPSE_MESSAGE_PRINTED = False
+    COMPONENT_MISMATCH_MESSAGE_PRINTED = False
     TILE_WRITE_THRESHOLD_BYTES = 256 * 1024 * 1024  # 256 MB
     TILE_WRITE_TILE_SIZE = 2048  # default tile edge
+
+    @staticmethod
+    def _coerce_array_components(array: np.ndarray, attrs) -> np.ndarray:
+        arr = np.asarray(array)
+        expected_components = int(getattr(attrs, "componentCount", getattr(attrs, "uiComp", 1)))
+        expected_components = max(expected_components, 1)
+
+        if expected_components == 1:
+            if arr.ndim == 3 and arr.shape[-1] > 1:
+                if not LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED:
+                    LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED = True
+                    logprint(
+                        f"Input frame has {arr.shape[-1]} components but ND2 expects 1. "
+                        "Keeping first component only.",
+                        type="warning",
+                    )
+                return np.asarray(arr[..., 0])
+            return arr
+
+        if arr.ndim == 2:
+            out = np.zeros((arr.shape[0], arr.shape[1], expected_components), dtype=arr.dtype)
+            out[..., 0] = arr
+            if not LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED:
+                LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED = True
+                logprint(
+                    f"Input frame is single-channel but ND2 expects {expected_components} components. "
+                    "Padding missing components with zeros.",
+                    type="warning",
+                )
+            return out
+
+        if arr.ndim != 3:
+            return arr
+
+        current_components = int(arr.shape[-1])
+        if current_components == expected_components:
+            return arr
+
+        if current_components > expected_components:
+            if not LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED:
+                LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED = True
+                logprint(
+                    f"Input frame has {current_components} components but ND2 expects {expected_components}. "
+                    "Truncating extra components.",
+                    type="warning",
+                )
+            return np.asarray(arr[..., :expected_components])
+
+        # current_components < expected_components
+        out = np.zeros((arr.shape[0], arr.shape[1], expected_components), dtype=arr.dtype)
+        out[..., :current_components] = arr
+        if not LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED:
+            LIMND2Utils.COMPONENT_MISMATCH_MESSAGE_PRINTED = True
+            logprint(
+                f"Input frame has {current_components} components but ND2 expects {expected_components}. "
+                "Padding missing components with zeros.",
+                type="warning",
+            )
+        return out
 
     @staticmethod
     def _frame_work_units(frame_sources, attrs) -> int:
@@ -241,6 +327,8 @@ class LIMND2Utils:
             array = np.stack(arrays, axis=-1)
         else:
             array = frame_sources[0].read()
+
+        array = LIMND2Utils._coerce_array_components(array, attrs)
 
         if nd2_file_lock:
             with nd2_file_lock:
@@ -782,7 +870,7 @@ def _tiff_channel_name_from_source(inner: Any, tiff_channel_cache: dict[Path, li
     except Exception:
         return None
 
-    if file_path.suffix.lower() not in {".tif", ".tiff", ".btf"}:
+    if file_path.suffix.lower() not in {".tif", ".tiff", ".btf", ".lsm", ".czi", ".oib", ".oif"}:
         return None
 
     if file_path not in tiff_channel_cache:
@@ -1620,8 +1708,6 @@ def convert_to_nd2_flatten(
 
     if "channel" in dimensions:
         component_count = int(dimensions["channel"])
-    elif sample_file.is_rgb:
-        component_count = 3
     else:
         component_count = int(nd2_attributes_base.uiComp)
 
@@ -1704,11 +1790,12 @@ def convert_to_nd2_flatten(
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
     outfile = Path(parsed_args.output_dir) / parsed_args.nd2_output
 
+    use_multiprocessing = _effective_multiprocessing_for_source(sample_file, parsed_args.multiprocessing)
     return LIMND2Utils.write_files_to_nd2(
         outfile,
         grouped_files,
         nd2_attributes,
         nd2_experiment,
         nd2_metadata,
-        parsed_args.multiprocessing,
+        use_multiprocessing,
     )

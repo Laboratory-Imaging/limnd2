@@ -7,6 +7,7 @@ from pathlib import Path
 from copy import deepcopy
 from dataclasses import is_dataclass, asdict
 import re
+import warnings
 
 import numpy as np
 import sys
@@ -26,8 +27,12 @@ class LimImageSource(ABC):
     Currently supported formats are:
 
     - TIFF and its subformats (`.ome.tiff`, `.btf`, `.tif`, `.tiff`)
+    - LSM (`.lsm`)
+    - CZI (`.czi`)
+    - OIF/OIB (`.oif`, `.oib`)
     - PNG (`.png`)
     - JPEG (`.jpg`, `.jpeg`)
+    - ND2 (`.nd2`)
 
     This class provides a common interface for reading images and converting them to ND2 format,
     as well as for extracting additional information from the images.
@@ -39,7 +44,7 @@ class LimImageSource(ABC):
 
     """
     filename: Path
-    supports_streaming_read: bool = False
+    supports_tile_read: bool = False
     _is_rgb: bool
     _additional_dimensions: dict
 
@@ -214,34 +219,44 @@ def get_file_dimensions_as_json(file_path: Path | None = None):
     if file_path is None:
         file_path = Path(sys.argv[1])
 
-    image_source = LimImageSource.open(file_path)
+    from limnd2.tools.conversion import LimConvertUtils as _convert_utils
 
-    try:
-        dims: dict[str, int] = image_source.get_file_dimensions() or {}
-        result: dict[str, int | bool | str | dict | list] = dict(dims)
+    previous_log_type = _convert_utils.LOG_TYPE
+    _convert_utils.LOG_TYPE = _convert_utils.LogType.NONE
 
-        result["is_rgb"] = bool(getattr(image_source, "is_rgb", False))
-        result["has_file_info"] = bool(dims)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=r".*incorrect StripByteCounts count.*")
+        warnings.filterwarnings("ignore", message=r".*incorrect StripOffsets count.*")
+        try:
+            image_source = LimImageSource.open(file_path)
 
-        if hasattr(image_source, "metadata_as_pattern_settings"):
-            try:
-                result["qml_settings"] = image_source.metadata_as_pattern_settings() or {}
-                result["qml_settings"] = _sort_single_file_qml_channels(result["qml_settings"])
-            except Exception:
+            dims: dict[str, int] = image_source.get_file_dimensions() or {}
+            result: dict[str, int | bool | str | dict | list] = dict(dims)
+
+            result["is_rgb"] = bool(getattr(image_source, "is_rgb", False))
+            result["has_file_info"] = bool(dims)
+
+            if hasattr(image_source, "metadata_as_pattern_settings"):
+                try:
+                    result["qml_settings"] = image_source.metadata_as_pattern_settings() or {}
+                    result["qml_settings"] = _sort_single_file_qml_channels(result["qml_settings"])
+                except Exception:
+                    result["qml_settings"] = {}
+            else:
                 result["qml_settings"] = {}
-        else:
-            result["qml_settings"] = {}
 
-        result["has_qml_settings"] = bool(result["qml_settings"])
+            result["has_qml_settings"] = bool(result["qml_settings"])
 
-        result["error"] = False
-        result["error_message"] = ""
+            result["error"] = False
+            result["error_message"] = ""
 
-    except Exception as e:
-        result = {
-            "error": True,
-            "error_message": str(e),
-        }
+        except Exception as e:
+            result = {
+                "error": True,
+                "error_message": str(e),
+            }
+        finally:
+            _convert_utils.LOG_TYPE = previous_log_type
 
     print(json.dumps(result, indent=2))
 

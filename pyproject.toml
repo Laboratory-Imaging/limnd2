@@ -47,6 +47,13 @@ commonff = [                    # shared file-format deps
     "ome_types",
     "zarr",
 ]
+czi = [                         # CZI reader deps
+    "czifile",
+    "imagecodecs",
+]
+olympus = [                     # Olympus OIF/OIB reader deps
+    "oiffile",
+]
 legacy = [                      # Jpeg2000 chanker
     "imagecodecs",
 ]
@@ -54,6 +61,8 @@ all = [                         # all above
     "limnd2[legacy]",
     "limnd2[results]",
     "limnd2[commonff]",
+    "limnd2[czi]",
+    "limnd2[olympus]",
 ]
 dev = [                         # tools for dev
     "build",

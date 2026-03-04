@@ -12,6 +12,9 @@ if TYPE_CHECKING:
 
 class ImageFormat(enum.Enum):
     TIFF = enum.auto()
+    LSM = enum.auto()
+    CZI = enum.auto()
+    OIF_OIB = enum.auto()
     PNG = enum.auto()
     JPEG = enum.auto()
     ND2 = enum.auto()
@@ -22,6 +25,24 @@ _FORMAT_REGISTRY: dict[ImageFormat, dict[str, object]] = {
         "class": "LimImageSourceTiff",
         "extensions": [".tiff", ".tif", ".btf"],
         "extra": "commonff",            # specify which extra dependency is needed for given format
+    },
+    ImageFormat.LSM: {
+        "module": ".LimImageSourceLsm",
+        "class": "LimImageSourceLsm",
+        "extensions": [".lsm"],
+        "extra": "commonff",
+    },
+    ImageFormat.CZI: {
+        "module": ".LimImageSourceCzi",
+        "class": "LimImageSourceCzi",
+        "extensions": [".czi"],
+        "extra": "czi",
+    },
+    ImageFormat.OIF_OIB: {
+        "module": ".LimImageSourceOifOib",
+        "class": "LimImageSourceOifOib",
+        "extensions": [".oib", ".oif"],
+        "extra": "olympus",
     },
     ImageFormat.PNG: {
         "module": ".LimImageSourcePng",
