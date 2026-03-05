@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from limnd2.tools.conversion.LimConvertUtils import ConversionSettings
+from limnd2.tools.conversion.LimImageSourceConvert import _derive_channel_labels_and_templates
 from limnd2.tools.conversion.LimImageSourceTiff import LimImageSourceTiff
 from limnd2.tools.conversion.LimImageSourceTiff_base import LimImageSourceTiffBase
 from limnd2.tools.conversion.LimImageSourceTiff_meta import LimImageSourceTiffMeta
@@ -46,6 +47,8 @@ def test_tiff_dispatch_selects_meta_and_extracts_qml(tmp_path: Path) -> None:
                 '"HTSInfoFile", Version 1.0',
                 '"Waves", TRUE',
                 '"NWavelengths", 3',
+                '"XWells", 12',
+                '"YWells", 8',
                 '"WaveName1", "1. BLUE penta"',
                 '"WaveName2", "4. GREEN penta"',
                 '"WaveName3", "8. RED"',
@@ -96,6 +99,10 @@ def test_tiff_dispatch_selects_meta_and_extracts_qml(tmp_path: Path) -> None:
     assert settings["application_name"] == "MetaMorph"
     assert settings["application_version"] == "6.7.2.290"
     assert settings["exposure_time"] == "300 ms"
+    assert settings["plate_rows"] == "8"
+    assert settings["plate_columns"] == "12"
+    assert settings["plate_well_count"] == "96"
+    assert src.get_htd_plate_geometry() == (8, 12)
 
 
 def test_meta_parse_additional_metadata_updates_conversion_settings(tmp_path: Path) -> None:
@@ -149,3 +156,37 @@ def test_tiff_base_mixed_resolution_series_uses_primary_resolution(tmp_path: Pat
     sorted_sources = sorted(expanded_sources.keys(), key=lambda s: s.idf)
     frames = [s.read() for s in sorted_sources]
     assert all(frame.shape == (8, 8) for frame in frames)
+
+
+def test_channel_templates_infer_from_slot_when_channel_index_missing(tmp_path: Path) -> None:
+    class _FakeMetaSource:
+        def __init__(self, filename: Path):
+            self.filename = filename
+            self.channel_index = None
+
+        def metadata_as_pattern_settings(self) -> dict:
+            return {
+                "channels": [
+                    ["1. BLUE penta", "1. BLUE penta", "Confocal, Fluo", "0", "462", "#4080FF"],
+                    ["4. GREEN penta", "4. GREEN penta", "Confocal, Fluo", "0", "517", "#00B050"],
+                    ["8. RED", "8. RED", "Confocal, Fluo", "0", "630", "#FF3030"],
+                ]
+            }
+
+    file_a = tmp_path / "A.tif"
+    file_b = tmp_path / "B.tif"
+    file_a.write_bytes(b"")
+    file_b.write_bytes(b"")
+
+    grouped = [[_FakeMetaSource(file_a), _FakeMetaSource(file_b)]]
+    labels, templates = _derive_channel_labels_and_templates(grouped, component_count=2)
+
+    assert labels == ["1. BLUE penta", "4. GREEN penta"]
+    assert templates[0] is not None
+    assert templates[1] is not None
+    assert templates[0]["name"] == "1. BLUE penta"
+    assert templates[1]["name"] == "4. GREEN penta"
+    assert templates[0]["emission_wavelength"] == 462
+    assert templates[1]["emission_wavelength"] == 517
+    assert templates[0]["color"] == "#4080FF"
+    assert templates[1]["color"] == "#00B050"

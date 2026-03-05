@@ -22,6 +22,8 @@ from .LimConvertUtils import ConvertSequenceArgs, LogType
 from . import LimConvertUtils as _convert_utils_mod
 from .LimImageSource import LimImageSource
 from .LimImageSourceConvert import (
+    _build_auto_wellplate_chunks,
+    _build_wellplate_plan_summary,
     ConvertUtils,
     ZeroChannelSource,
     _derive_channel_labels_and_templates,
@@ -139,7 +141,11 @@ def _common_plane_value(planes, key: str) -> Any:
     return None
 
 
-def _build_qml_settings(parsed_args: ConvertSequenceArgs, channel_labels: list[str]) -> dict[str, Any]:
+def _build_qml_settings(
+    parsed_args: ConvertSequenceArgs,
+    channel_labels: list[str],
+    channel_original_labels: list[str] | None = None,
+) -> dict[str, Any]:
     metadata = parsed_args.metadata
     planes = list(getattr(metadata, "planes", []))
     other_settings = getattr(metadata, "_other_settings", {}) or {}
@@ -166,11 +172,16 @@ def _build_qml_settings(parsed_args: ConvertSequenceArgs, channel_labels: list[s
             # labels are only generic placeholders.
             if _is_generic_channel_label(label) or not _is_generic_channel_label(inferred):
                 label = inferred
+        original_label = label
+        if channel_original_labels and idx < len(channel_original_labels):
+            raw_original = channel_original_labels[idx]
+            if raw_original is not None and str(raw_original).strip() != "":
+                original_label = str(raw_original)
         ex = int(plane.excitation_wavelength) if plane.excitation_wavelength else 0
         em = int(plane.emission_wavelength) if plane.emission_wavelength else 0
         channels.append(
             [
-                label,
+                original_label,
                 label,
                 _modality_to_string(plane.modality),
                 str(ex),
@@ -233,7 +244,9 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
     if sample_file.is_rgb and "channel" in dimensions:
         raise ValueError("Can not use channel dimension with RGB image.")
 
-    channels_were_user_provided = bool(parsed_args.channels)
+    channels_were_user_provided = bool(
+        getattr(parsed_args, "channels_user_provided", bool(parsed_args.channels))
+    )
 
     sources, dimensions = sample_file.parse_additional_dimensions(
         file_sources,
@@ -243,6 +256,8 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
         respect_per_file_channel_count=True,
     )
     ConvertUtils.convert_mx_my_to_m(sources, dimensions)
+    wellplate_sources = dict(sources)
+    wellplate_dimension_names = list(dimensions.keys())
     if parsed_args.flatten_duplicates:
         sources, dimensions = flatten_duplicate_dimensions(sources, dimensions)
     sources, dimensions = ConvertUtils.reorder_experiments(sources, dimensions)
@@ -273,7 +288,7 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
             components=fallback_components,
         )
 
-    grouped_files = group_by_channel_with_padding(
+    grouped_with_slots = group_by_channel_with_padding(
         sources,
         parsed_args,
         dimensions,
@@ -281,10 +296,28 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
         _zero_source_factory,
         _source_wrapper_factory,
         allow_missing_files=parsed_args.allow_missing_files,
+        return_channel_slot_values=True,
     )
+    grouped_files, channel_slot_values = grouped_with_slots
     if not channels_were_user_provided and "channel" in dimensions and component_count > 1:
-        grouped_files, _ = reorder_grouped_files_by_auto_channel_labels(grouped_files, component_count)
+        grouped_files, reordered = reorder_grouped_files_by_auto_channel_labels(grouped_files, component_count)
+        if reordered is not None and isinstance(channel_slot_values, list):
+            channel_slot_values = [
+                channel_slot_values[idx] if idx < len(channel_slot_values) else None
+                for idx in reordered
+            ]
     channel_labels, channel_templates = _derive_channel_labels_and_templates(grouped_files, component_count)
+    channel_original_labels: list[str] | None = None
+    if isinstance(channel_slot_values, list) and len(channel_slot_values) > 0:
+        if len(channel_slot_values) < component_count:
+            channel_slot_values = channel_slot_values + [None] * (component_count - len(channel_slot_values))
+        channel_original_labels = []
+        for idx in range(component_count):
+            raw = channel_slot_values[idx]
+            if raw is None or str(raw).strip() == "":
+                channel_original_labels.append(channel_labels[idx] if idx < len(channel_labels) else f"Channel {idx + 1}")
+            else:
+                channel_original_labels.append(str(raw))
 
     _ensure_metadata_plane_count(
         parsed_args,
@@ -299,8 +332,24 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
     result: dict[str, Any] = dict(dimensions)
     result["is_rgb"] = bool(sample_file.is_rgb)
     result["has_file_info"] = bool(dimensions)
-    result["qml_settings"] = _build_qml_settings(parsed_args, channel_labels)
+    result["qml_settings"] = _build_qml_settings(parsed_args, channel_labels, channel_original_labels)
     result["has_qml_settings"] = bool(result["qml_settings"])
+
+    auto_wellplate = _build_auto_wellplate_chunks(
+        sample_file,
+        grouped_files,
+        wellplate_sources,
+        wellplate_dimension_names,
+        parsed_args=parsed_args,
+    )
+    if auto_wellplate is None:
+        result["wellplate_settings"] = {}
+        result["has_wellplate_settings"] = False
+    else:
+        wp_desc, wp_info = auto_wellplate
+        result["wellplate_settings"] = _build_wellplate_plan_summary(wp_desc, wp_info)
+        result["has_wellplate_settings"] = True
+
     result["error"] = False
     result["error_message"] = ""
     result["sequence_info"] = {

@@ -334,15 +334,15 @@ class LimImageSourceTiffMeta(LimImageSourceTiffBase):
         return data.decode("utf-8", errors="ignore")
 
     @classmethod
-    def _parse_htd_channel_names(cls, source_file: Path) -> list[str]:
+    def _parse_htd_keyvals(cls, source_file: Path) -> dict[str, list[str]]:
         htd = cls._find_htd_file(source_file)
         if not htd:
-            return []
+            return {}
 
         try:
             text = cls._read_text_best_effort(htd)
         except Exception:
-            return []
+            return {}
 
         keyvals: dict[str, list[str]] = {}
         for line in text.splitlines():
@@ -358,6 +358,13 @@ class LimImageSourceTiffMeta(LimImageSourceTiffBase):
             key = row[0].strip().strip('"')
             values = [cell.strip().strip('"') for cell in row[1:]]
             keyvals[key] = values
+        return keyvals
+
+    @classmethod
+    def _parse_htd_channel_names(cls, source_file: Path) -> list[str]:
+        keyvals = cls._parse_htd_keyvals(source_file)
+        if not keyvals:
+            return []
 
         n_waves = cls._to_int((keyvals.get("NWavelengths") or [""])[0])
         wave_names: list[tuple[int, str]] = []
@@ -386,6 +393,25 @@ class LimImageSourceTiffMeta(LimImageSourceTiffBase):
 
         wave_names.sort(key=lambda item: item[0])
         return [name for _, name in wave_names]
+
+    @classmethod
+    def _parse_htd_plate_geometry(cls, source_file: Path) -> tuple[int, int] | None:
+        keyvals = cls._parse_htd_keyvals(source_file)
+        if not keyvals:
+            return None
+
+        x_wells = cls._to_int((keyvals.get("XWells") or [""])[0])
+        y_wells = cls._to_int((keyvals.get("YWells") or [""])[0])
+        if x_wells is None or y_wells is None:
+            return None
+        if x_wells <= 0 or y_wells <= 0:
+            return None
+
+        # HTD stores plate size as XWells (columns), YWells (rows).
+        return (int(y_wells), int(x_wells))
+
+    def get_htd_plate_geometry(self) -> tuple[int, int] | None:
+        return self._parse_htd_plate_geometry(self.filename)
 
     @staticmethod
     def _infer_color_from_name(name: str) -> str:
@@ -514,6 +540,13 @@ class LimImageSourceTiffMeta(LimImageSourceTiffBase):
                 ]
             ]
             self._debug("No HTD channel list found; using single-file channel metadata")
+
+        htd_plate_geometry = self.get_htd_plate_geometry()
+        if htd_plate_geometry is not None:
+            rows, cols = htd_plate_geometry
+            result["plate_rows"] = str(rows)
+            result["plate_columns"] = str(cols)
+            result["plate_well_count"] = str(rows * cols)
 
         result.update(extra_settings)
 

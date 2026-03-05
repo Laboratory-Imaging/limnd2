@@ -197,6 +197,50 @@ This script uses multiple required and optional arguments to specify the input f
 
     Allow sparse filename grids and fill missing frame/channel combinations with black data. Without this flag, missing combinations fail in strict mode.
 
+### Wellplate arguments
+
+- `--wellplate-mode <mode>`
+
+    Control automatic wellplate chunk generation from filename multipoint values. Supported values:
+    - `auto`: infer wellplate layout and frame-to-well mapping when well-like tokens are detected.
+    - `off`: disable automatic wellplate generation.
+
+- `--wellplate-rows <count>`
+
+    Override inferred wellplate row count.
+
+- `--wellplate-columns <count>`
+
+    Override inferred wellplate column count.
+
+- `--wellplate-name <name>`
+
+    Override generated wellplate descriptor name.
+
+- `--wellplate-row-naming <value>`
+
+    Override row naming mode written to the wellplate descriptor.
+
+- `--wellplate-column-naming <value>`
+
+    Override column naming mode written to the wellplate descriptor.
+
+## Planner output
+
+`limnd2-plan-sequence` accepts the same sequence parsing arguments and returns JSON metadata preview without writing ND2 output.
+
+When wellplate inference is available, planner output now includes:
+
+- `has_wellplate_settings`: boolean flag indicating whether inferred wellplate settings are present.
+- `wellplate_settings`: object with inferred settings and preview values.
+  Typical keys include `name`, `rows`, `columns`, `row_naming`, `column_naming`, `frame_count`, `unique_well_count`, and `wells_preview`.
+
+??? example "Plan sequence with wellplate inference preview"
+    ```sh
+    limnd2-plan-sequence ./tiffs "06_translocation_v01(.+?)(.+?)\.tif" \
+        --multipoint_x 1 --multipoint_y 2 --extension tif --flatten_duplicates
+    ```
+
 ## Example usage
 
 Below are some example commands for `limnd2-convert-sequence-to-nd2`.

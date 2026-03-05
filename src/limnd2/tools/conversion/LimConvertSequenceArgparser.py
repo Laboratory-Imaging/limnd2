@@ -130,6 +130,18 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument("--multiprocessing", action="store_true", help="Write into ND2 file using several threads.")
     parser.add_argument("--flatten_duplicates", action="store_true", help="Flatten duplicate logical dimensions (for example repeated regex mappings, regex + in-file channel, or multipoint_x/multipoint_y + multipoint).")
     parser.add_argument("--allow_missing_files", action="store_true", help="Allow missing combinations in file sequence and fill missing frames/channels with black data.")
+    parser.add_argument(
+        "--wellplate-mode",
+        type=str,
+        default="auto",
+        choices=["auto", "off"],
+        help="Wellplate chunk generation mode: auto (infer from multipoint well tokens) or off.",
+    )
+    parser.add_argument("--wellplate-rows", type=int, default=None, help="Override wellplate row count when wellplate is inferred.")
+    parser.add_argument("--wellplate-columns", type=int, default=None, help="Override wellplate column count when wellplate is inferred.")
+    parser.add_argument("--wellplate-name", type=str, default=None, help="Override wellplate descriptor name.")
+    parser.add_argument("--wellplate-row-naming", type=str, default="letter", help="Wellplate row naming mode (for descriptor).")
+    parser.add_argument("--wellplate-column-naming", type=str, default="number", help="Wellplate column naming mode (for descriptor).")
 
     parser.add_argument("--logs_to_json", action="store_true", help=argparse.SUPPRESS)      # used to print log messages as JSON over strings for parsing is NIS Express
 
@@ -336,6 +348,13 @@ def check_parsed_args(parsed_args: argparse.Namespace, parser: argparse.Argument
             print(f"ERROR: Argument --{O.LONG} can not be used with --{J.LONG} argument.")
             return False
 
+    if parsed_args.wellplate_rows is not None and parsed_args.wellplate_rows <= 0:
+        print("ERROR: --wellplate-rows must be a positive integer.")
+        return False
+    if parsed_args.wellplate_columns is not None and parsed_args.wellplate_columns <= 0:
+        print("ERROR: --wellplate-columns must be a positive integer.")
+        return False
+
     return True
 
 
@@ -404,8 +423,10 @@ def convert_sequence_parse(args: list[str] | None = None, require_output: bool =
     )
 
     channels = {}
+    channels_user_provided = False
     if parsed_args.channel_setting:
         channels = parse_channels(parsed_args.channel_setting)
+        channels_user_provided = True
 
     return LimConvertUtils.ConvertSequenceArgs(folder = folder_path,
                           regexp = regexp,
@@ -418,7 +439,14 @@ def convert_sequence_parse(args: list[str] | None = None, require_output: bool =
                           output_dir = output_dir,
                           metadata = metadata_factory,
                           channels = channels,
+                          channels_user_provided = channels_user_provided,
                           unknown_dim = parsed_args.extra_dimension,
                           multiprocessing = parsed_args.multiprocessing,
                           flatten_duplicates = parsed_args.flatten_duplicates,
-                          allow_missing_files = parsed_args.allow_missing_files)
+                          allow_missing_files = parsed_args.allow_missing_files,
+                          wellplate_mode = parsed_args.wellplate_mode,
+                          wellplate_rows = parsed_args.wellplate_rows,
+                          wellplate_columns = parsed_args.wellplate_columns,
+                          wellplate_name = parsed_args.wellplate_name,
+                          wellplate_row_naming = parsed_args.wellplate_row_naming,
+                          wellplate_column_naming = parsed_args.wellplate_column_naming)

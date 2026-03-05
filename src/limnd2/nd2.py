@@ -1,8 +1,10 @@
 import copy
 import datetime
 import functools
+import json
 import os
 import warnings
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +49,7 @@ from .results import (
     read_results_from_h5,
 )
 from .textinfo import AppInfo, ImageTextInfo
+from .lite_variant import ELxLiteVariantType as LVType, encode_lv
 from .variant import decode_var
 
 if Nd2LoggerEnabled:
@@ -739,7 +742,10 @@ class Nd2Writer:
     ND2 file writer.
 
     Supports encoding of all image attributes, most commonly used experiments and most of image metadata.
-    Currently does not support encoding of Well-plates, binary layers, ROIs and any custom data and text into chunk.
+    Wellplate support is available through dedicated writer helpers (`setWellplateDesc`,
+    `setWellplateFrameInfo`, `setWellplate`) that write raw wellplate chunks.
+    Writing binary layers, ROIs and generic custom text/data chunks is still not
+    covered by high-level APIs.
 
     !!! info
         Data is written in chunks, so you can write data in any order you want, image data however can
@@ -855,6 +861,123 @@ class Nd2Writer:
 
     def setChunk(self, name: bytes | str, data: bytes | memoryview) -> None:
         return self._chunker.setChunk(name, data)
+
+    @staticmethod
+    def _wellplate_desc_payload(
+        desc: WellplateDesc | dict[str, Any],
+    ) -> dict[str, Any]:
+        if isinstance(desc, WellplateDesc):
+            wp_desc = desc
+        elif isinstance(desc, dict):
+            allowed = ("name", "rows", "columns", "rowNaming", "columnNaming")
+            wp_desc = WellplateDesc(
+                **{key: desc[key] for key in allowed if key in desc}
+            )
+        else:
+            raise TypeError(
+                f"Wellplate description must be WellplateDesc or dict, got {type(desc).__name__}."
+            )
+
+        return {
+            "name": wp_desc.name,
+            "rows": int(wp_desc.rows),
+            "columns": int(wp_desc.columns),
+            "rowNaming": wp_desc.rowNaming,
+            "columnNaming": wp_desc.columnNaming,
+        }
+
+    @staticmethod
+    def _wellplate_frame_info_payload(
+        frame_info: WellplateFrameInfo | list[dict[str, Any] | Any],
+    ) -> list[dict[str, Any]]:
+        if isinstance(frame_info, WellplateFrameInfo):
+            iterable = list(frame_info)
+        elif isinstance(frame_info, list):
+            iterable = frame_info
+        else:
+            raise TypeError(
+                f"Wellplate frame info must be WellplateFrameInfo or list, got {type(frame_info).__name__}."
+            )
+
+        normalized: list[dict[str, Any]] = []
+        for item in iterable:
+            if isinstance(item, dict):
+                source = dict(item)
+                if "wellName" not in source and "wellCompactName" in source:
+                    source["wellName"] = source["wellCompactName"]
+            else:
+                source = {
+                    "plateIndex": getattr(item, "plateIndex", 0),
+                    "plateUuid": getattr(item, "plateUuid", ""),
+                    "seqIndex": getattr(item, "seqIndex", 0),
+                    "wellIndex": getattr(item, "wellIndex", 0),
+                    "wellName": getattr(item, "wellName", ""),
+                    "wellColIndex": getattr(item, "wellColIndex", 0),
+                    "wellRowIndex": getattr(item, "wellRowIndex", 0),
+                }
+
+            normalized_item = {
+                "plateIndex": int(source.get("plateIndex", 0)),
+                "plateUuid": str(source.get("plateUuid", "")),
+                "seqIndex": int(source.get("seqIndex", 0)),
+                "wellIndex": int(source.get("wellIndex", 0)),
+                "wellName": str(source.get("wellName", "")),
+                "wellColIndex": int(source.get("wellColIndex", 0)),
+                "wellRowIndex": int(source.get("wellRowIndex", 0)),
+            }
+            if "wellCompactName" in source and str(source.get("wellCompactName", "")).strip() != "":
+                normalized_item["wellCompactName"] = str(source.get("wellCompactName", ""))
+            else:
+                normalized_item["wellCompactName"] = normalized_item["wellName"]
+            normalized.append(normalized_item)
+
+        return normalized
+
+    def setWellplateDesc(self, desc: WellplateDesc | dict[str, Any]) -> None:
+        """
+        Write wellplate descriptor chunk (`CustomData|WellPlateDesc_0!`).
+        """
+        from .base import ND2_CHUNK_NAME_WellPlateDesc
+
+        desc_payload = self._wellplate_desc_payload(desc)
+        payload = {
+            "PlateDesc": {
+                "name": (desc_payload["name"], LVType.STRING),
+                "rows": (desc_payload["rows"], LVType.UINT32),
+                "columns": (desc_payload["columns"], LVType.UINT32),
+                "rowNaming": (desc_payload["rowNaming"], LVType.STRING),
+                "columnNaming": (desc_payload["columnNaming"], LVType.STRING),
+            }
+        }
+        self.setChunk(ND2_CHUNK_NAME_WellPlateDesc, encode_lv(payload))
+
+    def setWellplateFrameInfo(
+        self, frame_info: WellplateFrameInfo | list[dict[str, Any] | Any]
+    ) -> None:
+        """
+        Write wellplate frame info chunk (`CustomData|WellPlateFrameInfoZJSON!`).
+        """
+        from .base import ND2_CHUNK_NAME_WellPlateFrameInfo
+
+        payload = self._wellplate_frame_info_payload(frame_info)
+        data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
+            "utf-8"
+        )
+        self.setChunk(ND2_CHUNK_NAME_WellPlateFrameInfo, zlib.compress(data))
+
+    def setWellplate(
+        self,
+        *,
+        desc: WellplateDesc | dict[str, Any] | None = None,
+        frame_info: WellplateFrameInfo | list[dict[str, Any] | Any] | None = None,
+    ) -> None:
+        """
+        Convenience helper for writing both wellplate descriptor and frame info chunks.
+        """
+        if desc is not None:
+            self.setWellplateDesc(desc)
+        if frame_info is not None:
+            self.setWellplateFrameInfo(frame_info)
 
     def setImage(self, seq_index: int, data: NumpyArrayLike) -> None:
         """

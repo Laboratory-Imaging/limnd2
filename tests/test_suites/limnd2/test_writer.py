@@ -94,3 +94,130 @@ def test_write_basic_nd2(tmp_path: Path):
         assert len(md.channels) == components
         names = [c.sDescription for c in md.channels]
         assert names == ["Blue channel", "Red channel"]
+
+
+def test_write_wellplate_chunks_roundtrip(tmp_path: Path):
+    out_path = tmp_path / "writer_wellplate_chunks.nd2"
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        attrs = limnd2.attributes.ImageAttributes.create(
+            width=8,
+            height=6,
+            component_count=1,
+            bits=8,
+            sequence_count=2,
+        )
+        nd2.imageAttributes = attrs
+        nd2.setImage(0, np.zeros((6, 8, 1), dtype=np.uint8))
+        nd2.setImage(1, np.zeros((6, 8, 1), dtype=np.uint8))
+
+        nd2.setWellplateDesc(
+            limnd2.WellplateDesc(
+                name="96 Well Plate",
+                rows=8,
+                columns=12,
+                rowNaming="A-H",
+                columnNaming="1-12",
+            )
+        )
+        nd2.setWellplateFrameInfo(
+            [
+                {
+                    "plateIndex": 0,
+                    "plateUuid": "plate-uuid-1",
+                    "seqIndex": 0,
+                    "wellIndex": 0,
+                    "wellName": "A1",
+                    "wellColIndex": 0,
+                    "wellRowIndex": 0,
+                },
+                {
+                    "plateIndex": 0,
+                    "plateUuid": "plate-uuid-1",
+                    "seqIndex": 1,
+                    "wellIndex": 1,
+                    "wellCompactName": "A2",
+                    "wellColIndex": 1,
+                    "wellRowIndex": 0,
+                },
+            ]
+        )
+
+    with limnd2.Nd2Reader(out_path) as r:
+        desc = r.wellplateDesc
+        assert desc is not None
+        assert desc.name == "96 Well Plate"
+        assert desc.rows == 8
+        assert desc.columns == 12
+        assert desc.rowNaming == "A-H"
+        assert desc.columnNaming == "1-12"
+
+        frame_info = r.wellplateFrameInfo
+        assert frame_info is not None
+        assert len(frame_info) == 2
+        assert frame_info[0].wellName == "A1"
+        assert frame_info[1].wellName == "A2"
+        assert frame_info.nwells == 2
+
+
+def test_write_wellplate_combined_helper(tmp_path: Path):
+    out_path = tmp_path / "writer_wellplate_helper.nd2"
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        attrs = limnd2.attributes.ImageAttributes.create(
+            width=8,
+            height=6,
+            component_count=1,
+            bits=8,
+            sequence_count=1,
+        )
+        nd2.imageAttributes = attrs
+        nd2.setImage(0, np.zeros((6, 8, 1), dtype=np.uint8))
+
+        nd2.setWellplate(
+            desc={
+                "name": "Custom Plate",
+                "rows": 3,
+                "columns": 4,
+                "rowNaming": "A-C",
+                "columnNaming": "1-4",
+            },
+            frame_info=[
+                {
+                    "plateIndex": 0,
+                    "plateUuid": "plate-uuid-2",
+                    "seqIndex": 0,
+                    "wellIndex": 5,
+                    "wellName": "B2",
+                    "wellColIndex": 1,
+                    "wellRowIndex": 1,
+                }
+            ],
+        )
+
+    with limnd2.Nd2Reader(out_path) as r:
+        desc = r.wellplateDesc
+        info = r.wellplateFrameInfo
+        assert desc is not None and info is not None
+        assert desc.name == "Custom Plate"
+        assert desc.rows == 3 and desc.columns == 4
+        assert len(info) == 1
+        assert info[0].wellName == "B2"
+
+
+def test_wellplate_frame_info_payload_includes_compact_name_alias():
+    payload = limnd2.Nd2Writer._wellplate_frame_info_payload(
+        [
+            {
+                "plateIndex": 0,
+                "plateUuid": "plate-uuid-3",
+                "seqIndex": 0,
+                "wellIndex": 0,
+                "wellName": "B01",
+                "wellColIndex": 0,
+                "wellRowIndex": 1,
+            }
+        ]
+    )
+    assert payload[0]["wellName"] == "B01"
+    assert payload[0]["wellCompactName"] == "B01"

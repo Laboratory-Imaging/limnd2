@@ -15,7 +15,7 @@ __all__ = [
     "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata",
     "CustomDescription", "RecordedData", "RecordedDataItem", "RecordedDataType",
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
-    "ExperimentFactory",
+    "ExperimentFactory", "WellplateFactory",
     "frameExport", "seriesExport", "metadataAsJSON",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX", "generalImageInfo",
     "Nd2Reader", "Nd2Writer",
@@ -32,6 +32,7 @@ from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadata
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .experiment_factory import ExperimentFactory
+from .wellplate_factory import WellplateFactory
 from .export import frameExport, seriesExport, metadataAsJSON
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX, generalImageInfo
 from .nd2 import Nd2Reader, Nd2Writer

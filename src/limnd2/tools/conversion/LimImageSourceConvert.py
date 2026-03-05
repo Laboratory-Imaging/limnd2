@@ -48,6 +48,310 @@ def _effective_multiprocessing_for_source(sample_file: "LimImageSource", request
     return True
 
 
+def _wellplate_debug_enabled() -> bool:
+    return os.getenv("LIMND2_DEBUG_WELLPLATE") == "1"
+
+
+_WELL_TOKEN_RE = re.compile(r"(?i)^([A-Z]{1,3})[\s_-]*0*([1-9]\d*)$")
+_WELL_TOKEN_RAW_RE = re.compile(r"(?i)^([A-Z]{1,3})[\s_-]*([0-9]+)$")
+_WELL_ROW_RE = re.compile(r"(?i)^[A-Z]{1,3}$")
+
+
+def _row_label_to_index(label: str) -> int:
+    value = 0
+    for char in label.upper():
+        if not ("A" <= char <= "Z"):
+            raise ValueError(f"Invalid row label {label!r}.")
+        value = value * 26 + (ord(char) - ord("A") + 1)
+    return value - 1
+
+
+def _canonical_well_token(value: Any) -> str | None:
+    text = str(value).strip()
+    if text == "":
+        return None
+    match = _WELL_TOKEN_RE.fullmatch(text)
+    if not match:
+        return None
+    row = match.group(1).upper()
+    col = int(match.group(2))
+    return f"{row}{col}"
+
+
+def _display_well_token(value: Any) -> str | None:
+    text = str(value).strip()
+    if text == "":
+        return None
+    match = _WELL_TOKEN_RAW_RE.fullmatch(text)
+    if not match:
+        return None
+    row = match.group(1).upper()
+    col_raw = match.group(2)
+    # Keep user-facing formatting close to source while normalizing separators/case.
+    return f"{row}{col_raw}"
+
+
+def _flatten_multipoint_tokens(values: list[Any]) -> list[str]:
+    tokens: list[str] = []
+    for value in values:
+        if isinstance(value, (tuple, list)):
+            for item in value:
+                text = str(item).strip()
+                if text != "":
+                    tokens.append(text)
+        else:
+            text = str(value).strip()
+            if text != "":
+                tokens.append(text)
+    return tokens
+
+
+def _infer_well_from_multipoint_values(values: list[Any]) -> tuple[str, str] | None:
+    tokens = _flatten_multipoint_tokens(values)
+    if not tokens:
+        return None
+
+    for token in tokens:
+        well = _canonical_well_token(token)
+        if well is not None:
+            return (well, _display_well_token(token) or well)
+
+    row_value: str | None = None
+    col_value: int | None = None
+    for token in tokens:
+        if row_value is None and _WELL_ROW_RE.fullmatch(token):
+            row_value = token.upper()
+            continue
+        if col_value is None and _is_int_like(token):
+            candidate = _to_int_like(token)
+            if candidate > 0:
+                col_value = candidate
+
+    if row_value is not None and col_value is not None:
+        normalized = f"{row_value}{col_value}"
+        return (normalized, normalized)
+    return None
+
+
+def _infer_plate_geometry_from_wells(wells: list[str]) -> tuple[int, int] | None:
+    if not wells:
+        return None
+
+    max_row = -1
+    max_col = -1
+    for well in wells:
+        match = _WELL_TOKEN_RE.fullmatch(str(well).strip())
+        if not match:
+            continue
+        row_idx = _row_label_to_index(match.group(1))
+        col_idx = int(match.group(2)) - 1
+        max_row = max(max_row, row_idx)
+        max_col = max(max_col, col_idx)
+
+    if max_row < 0 or max_col < 0:
+        return None
+    return (max_row + 1, max_col + 1)
+
+
+def _well_row_col_from_token(well: str) -> tuple[int, int] | None:
+    match = _WELL_TOKEN_RE.fullmatch(str(well).strip())
+    if not match:
+        return None
+    row_idx = _row_label_to_index(match.group(1))
+    col_idx = int(match.group(2)) - 1
+    if row_idx < 0 or col_idx < 0:
+        return None
+    return (row_idx, col_idx)
+
+
+def _unwrap_grouped_source(item: Any) -> Any | None:
+    if isinstance(item, ZeroChannelSource):
+        return None
+    source = getattr(item, "_source", item)
+    if isinstance(source, ZeroChannelSource):
+        return None
+    return source
+
+
+def _auto_wellplate_supported(sample_file: "LimImageSource") -> bool:
+    # Base support is format-agnostic and driven by multipoint token parsing.
+    # Reader-specific helpers (e.g. HTD geometry) are optional add-ons.
+    return True
+
+
+def _build_wellplate_plan_summary(desc: Any, frame_info: Any) -> dict[str, Any]:
+    items = list(frame_info) if frame_info is not None else []
+    unique_wells = sorted({getattr(item, "wellName", "") for item in items if getattr(item, "wellName", "") != ""})
+    preview_count = min(20, len(unique_wells))
+    return {
+        "name": getattr(desc, "name", ""),
+        "rows": int(getattr(desc, "rows", 0)),
+        "columns": int(getattr(desc, "columns", 0)),
+        "row_naming": str(getattr(desc, "rowNaming", "")),
+        "column_naming": str(getattr(desc, "columnNaming", "")),
+        "frame_count": len(items),
+        "unique_well_count": len(unique_wells),
+        "wells_preview": unique_wells[:preview_count],
+    }
+
+
+def _build_auto_wellplate_chunks(
+    sample_file: "LimImageSource",
+    grouped_files: list[list[Any]],
+    source_dimension_values: dict[Any, list[Any]],
+    dimension_names: list[str],
+    parsed_args: ConvertSequenceArgs | None = None,
+) -> tuple[Any, Any] | None:
+    if parsed_args is not None and str(getattr(parsed_args, "wellplate_mode", "auto")).lower() == "off":
+        return None
+    if not _auto_wellplate_supported(sample_file):
+        return None
+    if not grouped_files:
+        return None
+
+    multipoint_indexes = [
+        idx for idx, name in enumerate(dimension_names) if _dimension_base_name(str(name)) == "multipoint"
+    ]
+    if not multipoint_indexes:
+        return None
+
+    frame_wells: list[str] = []
+    frame_well_labels: list[str] = []
+    for frame_sources in grouped_files:
+        representative = None
+        representative_values = None
+        for item in frame_sources:
+            source = _unwrap_grouped_source(item)
+            if source is None:
+                continue
+            if source in source_dimension_values:
+                representative = source
+                representative_values = source_dimension_values[source]
+                break
+
+        if representative is None or representative_values is None:
+            return None
+
+        if max(multipoint_indexes, default=-1) >= len(representative_values):
+            return None
+
+        multipoint_values = [representative_values[idx] for idx in multipoint_indexes]
+        inferred = _infer_well_from_multipoint_values(multipoint_values)
+        if inferred is None:
+            return None
+        well, label = inferred
+        frame_wells.append(well)
+        frame_well_labels.append(label)
+
+    if not frame_wells:
+        return None
+
+    inferred_geometry = _infer_plate_geometry_from_wells(frame_wells)
+    if inferred_geometry is None:
+        return None
+    inferred_rows, inferred_cols = inferred_geometry
+
+    htd_geometry = None
+    get_htd_plate_geometry = getattr(sample_file, "get_htd_plate_geometry", None)
+    if callable(get_htd_plate_geometry):
+        try:
+            htd_geometry = get_htd_plate_geometry()
+        except Exception:
+            htd_geometry = None
+
+    if (
+        isinstance(htd_geometry, tuple)
+        and len(htd_geometry) == 2
+        and int(htd_geometry[0]) > 0
+        and int(htd_geometry[1]) > 0
+    ):
+        rows = max(inferred_rows, int(htd_geometry[0]))
+        cols = max(inferred_cols, int(htd_geometry[1]))
+    else:
+        rows = inferred_rows
+        cols = inferred_cols
+
+    if parsed_args is not None and getattr(parsed_args, "wellplate_rows", None):
+        try:
+            rows = int(parsed_args.wellplate_rows)
+        except Exception:
+            pass
+    if parsed_args is not None and getattr(parsed_args, "wellplate_columns", None):
+        try:
+            cols = int(parsed_args.wellplate_columns)
+        except Exception:
+            pass
+
+    if rows < inferred_rows:
+        logprint(
+            f"Requested wellplate rows ({rows}) smaller than inferred rows ({inferred_rows}). "
+            f"Expanding to {inferred_rows}.",
+            type="warning",
+        )
+        rows = inferred_rows
+    if cols < inferred_cols:
+        logprint(
+            f"Requested wellplate columns ({cols}) smaller than inferred columns ({inferred_cols}). "
+            f"Expanding to {inferred_cols}.",
+            type="warning",
+        )
+        cols = inferred_cols
+    rows = max(int(rows), 1)
+    cols = max(int(cols), 1)
+
+    default_plate_name = f"{rows * cols} Well Plate"
+    plate_name = default_plate_name
+    if parsed_args is not None and getattr(parsed_args, "wellplate_name", None):
+        plate_name = str(parsed_args.wellplate_name)
+    row_naming = "letter"
+    if parsed_args is not None and getattr(parsed_args, "wellplate_row_naming", None):
+        row_naming = str(parsed_args.wellplate_row_naming)
+    column_naming = "number"
+    if parsed_args is not None and getattr(parsed_args, "wellplate_column_naming", None):
+        column_naming = str(parsed_args.wellplate_column_naming)
+
+    # Match wellplate descriptor style commonly used by baseline ND2 files.
+    factory = limnd2.WellplateFactory(
+        name=plate_name,
+        rows=rows,
+        columns=cols,
+        rowNaming=row_naming,
+        columnNaming=column_naming,
+    )
+    for seq_index, (well, well_label) in enumerate(zip(frame_wells, frame_well_labels)):
+        row_col = _well_row_col_from_token(well)
+        if row_col is None:
+            factory.addItem(seqIndex=seq_index, well=well, wellName=well_label)
+            continue
+        row_idx, col_idx = row_col
+        absolute_well_index = row_idx * cols + col_idx
+        factory.addItem(
+            seqIndex=seq_index,
+            well=well,
+            wellName=well_label,
+            wellIndex=absolute_well_index,
+        )
+
+    unique_wells = sorted(set(frame_well_labels))
+    preview_count = min(20, len(unique_wells))
+    preview = ", ".join(unique_wells[:preview_count])
+    if len(unique_wells) > preview_count:
+        preview = f"{preview}, ..."
+    logprint(
+        "Auto-wellplate inferred from multipoint dimensions: "
+        f"plate={rows}x{cols} ({rows * cols} wells), "
+        f"frames={len(frame_wells)}, "
+        f"wells=[{preview}]"
+    )
+    if _wellplate_debug_enabled():
+        logprint(
+            "Auto-wellplate full well order by seqIndex: "
+            + ", ".join(frame_well_labels)
+        )
+
+    return factory.create()
+
+
 def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, parsed_args: ConvertSequenceArgs, dimensions: dict):
     """Convert a list of LimImageSource to ND2 format."""
 
@@ -56,7 +360,9 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
     sources, dimensions = ConvertUtils.reorder_experiments(sources, dimensions)
     grouped_files = ConvertUtils.group_by_channel(sources, parsed_args, dimensions)
 
-
+    channels_were_user_provided = bool(
+        getattr(parsed_args, "channels_user_provided", bool(parsed_args.channels))
+    )
     sample_file.parse_additional_metadata(parsed_args)
     nd2_attributes_base = sample_file.nd2_attributes(sequence_count=len(grouped_files))
 
@@ -71,14 +377,35 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
                                             bits = nd2_attributes_base.uiBpcSignificant,
                                             sequence_count = len(grouped_files))
 
-    for plane in parsed_args.channels.values():
-        parsed_args.metadata.addPlane(plane)
+    channel_labels, channel_templates = _derive_channel_labels_and_templates(grouped_files, int(comp_count))
+    _ensure_metadata_plane_count(
+        parsed_args,
+        int(nd2_attributes.componentCount),
+        sample_file.is_rgb,
+        channel_labels,
+        rename_existing_with_labels=not channels_were_user_provided,
+        channel_templates=channel_templates,
+        apply_templates_to_existing=not channels_were_user_provided,
+    )
 
     nd2_metadata = parsed_args.metadata.createMetadata(number_of_channels_fallback = nd2_attributes.componentCount, is_rgb_fallback=sample_file.is_rgb)
 
     # get image experiments
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
     outfile = Path(parsed_args.output_dir) / parsed_args.nd2_output
+    auto_wellplate = _build_auto_wellplate_chunks(
+        sample_file,
+        grouped_files,
+        sources,
+        list(dimensions.keys()),
+        parsed_args=parsed_args,
+    )
+    if auto_wellplate is None:
+        wellplate_desc = None
+        wellplate_frame_info = None
+    else:
+        wellplate_desc, wellplate_frame_info = auto_wellplate
+
     use_multiprocessing = _effective_multiprocessing_for_source(sample_file, parsed_args.multiprocessing)
     return LIMND2Utils.write_files_to_nd2(
         outfile,
@@ -87,6 +414,8 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
         nd2_experiment,
         nd2_metadata,
         use_multiprocessing,
+        wellplate_desc=wellplate_desc,
+        wellplate_frame_info=wellplate_frame_info,
     )
 
 
@@ -347,6 +676,8 @@ class LIMND2Utils:
         exp,
         metadata,
         multiprocessing: bool = True,
+        wellplate_desc: Any | None = None,
+        wellplate_frame_info: Any | None = None,
     ) -> bool:
 
         if nd2_path.is_file():
@@ -361,6 +692,8 @@ class LIMND2Utils:
             nd2.imageAttributes = attr
             nd2.experiment = exp
             nd2.pictureMetadata = metadata
+            if wellplate_desc is not None or wellplate_frame_info is not None:
+                nd2.setWellplate(desc=wellplate_desc, frame_info=wellplate_frame_info)
 
             # Avoid assuming grouped_files[0] exists
             total = LIMND2Utils.total_work_units(grouped_files, attr) if grouped_files else 0
@@ -819,10 +1152,26 @@ def _infer_file_token_from_source(inner: Any) -> str | None:
     return _filename_token_from_stem(stem)
 
 
-def _nd2_channel_name_from_source(inner: Any, nd2_channel_cache: dict[Path, list[str]]) -> str | None:
+def _resolve_channel_slot_index(channel_index: Any, fallback_slot: int | None, count: int) -> int | None:
+    for candidate in (channel_index, fallback_slot):
+        if candidate is None:
+            continue
+        try:
+            idx = int(candidate)
+        except Exception:
+            continue
+        if 0 <= idx < int(count):
+            return idx
+    return None
+
+
+def _nd2_channel_name_from_source(
+    inner: Any,
+    nd2_channel_cache: dict[Path, list[str]],
+    fallback_slot: int | None = None,
+) -> str | None:
     filename = getattr(inner, "filename", None)
-    channel_index = getattr(inner, "channel_index", None)
-    if filename is None or channel_index is None:
+    if filename is None:
         return None
 
     try:
@@ -850,61 +1199,118 @@ def _nd2_channel_name_from_source(inner: Any, nd2_channel_cache: dict[Path, list
             nd2_channel_cache[file_path] = names
 
     names = nd2_channel_cache.get(file_path, [])
-    try:
-        idx = int(channel_index)
-    except Exception:
+    idx = _resolve_channel_slot_index(getattr(inner, "channel_index", None), fallback_slot, len(names))
+    if idx is None:
         return None
     if 0 <= idx < len(names):
         return names[idx]
     return None
 
 
-def _tiff_channel_name_from_source(inner: Any, tiff_channel_cache: dict[Path, list[str]]) -> str | None:
+def _settings_channel_rows_from_source(
+    inner: Any,
+    settings_channel_cache: dict[Path, list[list[Any]]],
+) -> list[list[Any]]:
     filename = getattr(inner, "filename", None)
-    channel_index = getattr(inner, "channel_index", None)
-    if filename is None or channel_index is None:
-        return None
+    if filename is None:
+        return []
 
     try:
         file_path = Path(filename)
     except Exception:
-        return None
+        return []
 
     if file_path.suffix.lower() not in {".tif", ".tiff", ".btf", ".lsm", ".czi", ".oib", ".oif"}:
-        return None
+        return []
 
-    if file_path not in tiff_channel_cache:
-        names: list[str] = []
+    if file_path not in settings_channel_cache:
+        rows_out: list[list[Any]] = []
         try:
-            from .LimImageSource import LimImageSource
+            if hasattr(inner, "metadata_as_pattern_settings"):
+                settings = inner.metadata_as_pattern_settings()
+            else:
+                from .LimImageSource import LimImageSource
 
-            source = LimImageSource.open(file_path)
-            settings = source.metadata_as_pattern_settings() if hasattr(source, "metadata_as_pattern_settings") else {}
+                source = LimImageSource.open(file_path)
+                settings = source.metadata_as_pattern_settings() if hasattr(source, "metadata_as_pattern_settings") else {}
             rows = settings.get("channels", []) if isinstance(settings, dict) else []
-            for idx, row in enumerate(rows):
-                if isinstance(row, list) and len(row) > 0 and str(row[0]).strip():
-                    names.append(str(row[0]).strip())
-                else:
-                    names.append(f"Channel {idx + 1}")
+            for row in rows:
+                if isinstance(row, (list, tuple)):
+                    rows_out.append(list(row))
         except Exception:
-            tiff_channel_cache[file_path] = []
+            settings_channel_cache[file_path] = []
         else:
-            tiff_channel_cache[file_path] = names
+            settings_channel_cache[file_path] = rows_out
 
-    names = tiff_channel_cache.get(file_path, [])
-    try:
-        idx = int(channel_index)
-    except Exception:
+    return settings_channel_cache.get(file_path, [])
+
+
+def _settings_channel_row_from_source(
+    inner: Any,
+    settings_channel_cache: dict[Path, list[list[Any]]],
+    fallback_slot: int | None = None,
+) -> list[Any] | None:
+    rows = _settings_channel_rows_from_source(inner, settings_channel_cache)
+    if not rows:
         return None
-    if 0 <= idx < len(names):
-        return names[idx]
+
+    idx = _resolve_channel_slot_index(getattr(inner, "channel_index", None), fallback_slot, len(rows))
+    if idx is None:
+        return None
+    return rows[idx]
+
+
+def _settings_channel_name_from_source(
+    inner: Any,
+    settings_channel_cache: dict[Path, list[list[Any]]],
+    fallback_slot: int | None = None,
+) -> str | None:
+    row = _settings_channel_row_from_source(inner, settings_channel_cache, fallback_slot=fallback_slot)
+    if not row:
+        return None
+    if len(row) > 0 and str(row[0]).strip():
+        return str(row[0]).strip()
     return None
 
 
-def _nd2_channel_template_from_source(inner: Any, nd2_template_cache: dict[Path, list[dict[str, Any]]]) -> dict[str, Any] | None:
+def _settings_channel_template_from_source(
+    inner: Any,
+    settings_channel_cache: dict[Path, list[list[Any]]],
+    fallback_slot: int | None = None,
+) -> dict[str, Any] | None:
+    row = _settings_channel_row_from_source(inner, settings_channel_cache, fallback_slot=fallback_slot)
+    if not row:
+        return None
+
+    template: dict[str, Any] = {}
+    if len(row) > 0 and str(row[0]).strip():
+        template["name"] = str(row[0]).strip()
+
+    try:
+        if len(row) > 3:
+            ex_val = int(round(float(str(row[3]).strip())))
+            template["excitation_wavelength"] = ex_val if ex_val > 0 else 0
+        if len(row) > 4:
+            em_val = int(round(float(str(row[4]).strip())))
+            template["emission_wavelength"] = em_val if em_val > 0 else 0
+    except Exception:
+        pass
+
+    if len(row) > 5:
+        color = str(row[5]).strip()
+        if color:
+            template["color"] = color
+
+    return template if template else None
+
+
+def _nd2_channel_template_from_source(
+    inner: Any,
+    nd2_template_cache: dict[Path, list[dict[str, Any]]],
+    fallback_slot: int | None = None,
+) -> dict[str, Any] | None:
     filename = getattr(inner, "filename", None)
-    channel_index = getattr(inner, "channel_index", None)
-    if filename is None or channel_index is None:
+    if filename is None:
         return None
 
     try:
@@ -957,9 +1363,8 @@ def _nd2_channel_template_from_source(inner: Any, nd2_template_cache: dict[Path,
             nd2_template_cache[file_path] = templates
 
     templates = nd2_template_cache.get(file_path, [])
-    try:
-        idx = int(channel_index)
-    except Exception:
+    idx = _resolve_channel_slot_index(getattr(inner, "channel_index", None), fallback_slot, len(templates))
+    if idx is None:
         return None
     if 0 <= idx < len(templates):
         return dict(templates[idx])
@@ -969,21 +1374,24 @@ def _nd2_channel_template_from_source(inner: Any, nd2_template_cache: dict[Path,
 def _infer_channel_label_parts_from_source(
     source: Any,
     nd2_channel_cache: dict[Path, list[str]],
-    tiff_channel_cache: dict[Path, list[str]],
+    settings_channel_cache: dict[Path, list[list[Any]]],
+    channel_slot: int | None = None,
 ) -> tuple[str | None, str | None]:
     inner = _unwrap_source(source)
     if isinstance(inner, ZeroChannelSource):
         return None, None
 
     file_token = _infer_file_token_from_source(inner)
-    channel_name = _nd2_channel_name_from_source(inner, nd2_channel_cache)
+    channel_name = _nd2_channel_name_from_source(inner, nd2_channel_cache, fallback_slot=channel_slot)
     if channel_name is None:
-        channel_name = _tiff_channel_name_from_source(inner, tiff_channel_cache)
+        channel_name = _settings_channel_name_from_source(inner, settings_channel_cache, fallback_slot=channel_slot)
     if channel_name is None:
         channel_index = getattr(inner, "channel_index", None)
         try:
             if channel_index is not None and int(channel_index) >= 0:
                 channel_name = f"Channel{int(channel_index) + 1}"
+            elif channel_slot is not None and int(channel_slot) >= 0:
+                channel_name = f"Channel{int(channel_slot) + 1}"
         except Exception:
             pass
 
@@ -998,7 +1406,7 @@ def _derive_channel_labels_and_templates(
     file_tokens: list[str | None] = [None] * component_count
     labels: list[str | None] = [None] * component_count
     nd2_channel_cache: dict[Path, list[str]] = {}
-    tiff_channel_cache: dict[Path, list[str]] = {}
+    settings_channel_cache: dict[Path, list[list[Any]]] = {}
     templates: list[dict[str, Any] | None] = [None] * component_count
     nd2_template_cache: dict[Path, list[dict[str, Any]]] = {}
 
@@ -1007,14 +1415,25 @@ def _derive_channel_labels_and_templates(
             if labels[idx] is not None:
                 if templates[idx] is None:
                     inner = _unwrap_source(source)
-                    template = _nd2_channel_template_from_source(inner, nd2_template_cache)
+                    template = _nd2_channel_template_from_source(
+                        inner,
+                        nd2_template_cache,
+                        fallback_slot=idx,
+                    )
+                    if template is None:
+                        template = _settings_channel_template_from_source(
+                            inner,
+                            settings_channel_cache,
+                            fallback_slot=idx,
+                        )
                     if template:
                         templates[idx] = template
                 continue
             channel_name, file_token = _infer_channel_label_parts_from_source(
                 source,
                 nd2_channel_cache,
-                tiff_channel_cache,
+                settings_channel_cache,
+                channel_slot=idx,
             )
             if channel_name:
                 channel_names[idx] = channel_name
@@ -1024,7 +1443,17 @@ def _derive_channel_labels_and_templates(
                 labels[idx] = file_token
             if templates[idx] is None:
                 inner = _unwrap_source(source)
-                template = _nd2_channel_template_from_source(inner, nd2_template_cache)
+                template = _nd2_channel_template_from_source(
+                    inner,
+                    nd2_template_cache,
+                    fallback_slot=idx,
+                )
+                if template is None:
+                    template = _settings_channel_template_from_source(
+                        inner,
+                        settings_channel_cache,
+                        fallback_slot=idx,
+                    )
                 if template:
                     templates[idx] = template
             if file_tokens[idx] is None and file_token is not None:
@@ -1380,8 +1809,12 @@ def group_by_channel_with_padding(
     zero_source_factory,
     source_wrapper_factory,
     allow_missing_files: bool = False,
-) -> list[list[Any]]:
+    return_channel_slot_values: bool = False,
+) -> list[list[Any]] | tuple[list[list[Any]], list[Any | None]]:
     debug = _flatten_debug_enabled()
+    channels_were_user_provided = bool(
+        getattr(arguments, "channels_user_provided", bool(arguments.channels))
+    )
     dim_names = list(exp_count.keys())
     has_channel = "channel" in exp_count
     non_channel_names = [name for name in dim_names if name != "channel"]
@@ -1396,6 +1829,7 @@ def group_by_channel_with_padding(
         non_channel_maps[name] = _build_linear_map(observed_values, declared_size)
 
     grouped_files: dict[tuple[int, ...], dict[int, Any]] = {}
+    slot_original_values: dict[int, Any] = {}
     all_channel_values: set[Any] = set()
     channel_idx = axis_index["channel"] if has_channel else None
 
@@ -1451,6 +1885,7 @@ def group_by_channel_with_padding(
     else:
         channel_to_slot = {}
         linear_channel_map = {}
+    warned_channel_fallback = False
 
     for file, values in files.items():
         non_channel_index_values: list[int] = []
@@ -1465,18 +1900,36 @@ def group_by_channel_with_padding(
 
         if has_channel and channel_idx is not None:
             channel_value = values[channel_idx]
-            if channel_value in channel_to_slot:
+            if (not channels_were_user_provided) and channel_value in linear_channel_map:
+                slot = linear_channel_map[channel_value]
+            elif channel_value in channel_to_slot:
                 slot = channel_to_slot[channel_value]
+            elif channel_value in linear_channel_map:
+                slot = linear_channel_map[channel_value]
+                if channels_were_user_provided and not warned_channel_fallback:
+                    warned_channel_fallback = True
+                    logprint(
+                        "Channel values from filenames did not match provided channel keys exactly; "
+                        "falling back to observed channel order.",
+                        type="warning",
+                    )
             elif _is_int_like(channel_value):
                 candidate = _to_int_like(channel_value)
                 if 0 <= candidate < channel_count:
                     slot = candidate
+                elif 1 <= candidate <= channel_count:
+                    slot = candidate - 1
+                    if channels_were_user_provided and not warned_channel_fallback:
+                        warned_channel_fallback = True
+                        logprint(
+                            "Detected 1-based numeric channel values in filenames; "
+                            "mapping them to 0-based channel slots.",
+                            type="warning",
+                        )
                 else:
                     raise ValueError(
                         f"Channel value '{channel_value}' maps outside channel range <0, {channel_count - 1}>."
                     )
-            elif channel_value in linear_channel_map:
-                slot = linear_channel_map[channel_value]
             else:
                 raise ValueError(f"Could not map channel value '{channel_value}' to output channel index.")
         else:
@@ -1485,6 +1938,8 @@ def group_by_channel_with_padding(
         if group not in grouped_files:
             grouped_files[group] = {}
         grouped_files[group][slot] = source_wrapper_factory(file, slot)
+        if has_channel and slot not in slot_original_values:
+            slot_original_values[slot] = channel_value
 
     if allow_missing_files:
         non_channel_sizes = [int(exp_count[name]) for name in non_channel_names]
@@ -1534,6 +1989,13 @@ def group_by_channel_with_padding(
             type="warning",
         )
 
+    if return_channel_slot_values:
+        if has_channel:
+            slot_values = [slot_original_values.get(slot) for slot in range(channel_count)]
+        else:
+            slot_values = [None]
+        return frames, slot_values
+
     return frames
 
 
@@ -1549,7 +2011,70 @@ def _ensure_metadata_plane_count(
     if is_rgb:
         return
 
-    for plane in parsed_args.channels.values():
+    selected_user_planes: list[Any] = []
+    if parsed_args.channels:
+        channel_items = list(parsed_args.channels.items())
+
+        def _key_candidates_from_label(label: str) -> list[Any]:
+            text = str(label).strip()
+            out: list[Any] = [text]
+            if _is_int_like(text):
+                try:
+                    idx = _to_int_like(text)
+                    out.extend([idx, str(idx)])
+                except Exception:
+                    pass
+            channel_match = re.match(r"(?i)^channel[_ ]?(\d+)$", text)
+            if channel_match:
+                idx = int(channel_match.group(1))
+                out.extend([idx, str(idx)])
+            return out
+
+        used_keys: set[Any] = set()
+        if channel_labels:
+            for label in channel_labels:
+                for candidate in _key_candidates_from_label(label):
+                    if candidate in parsed_args.channels and candidate not in used_keys:
+                        selected_user_planes.append(parsed_args.channels[candidate])
+                        used_keys.add(candidate)
+                        break
+                if len(selected_user_planes) >= component_count:
+                    break
+
+        if len(selected_user_planes) < component_count:
+            numeric_candidates: list[tuple[int, Any]] = []
+            for key, _plane in channel_items:
+                if key in used_keys:
+                    continue
+                if _is_int_like(key):
+                    try:
+                        numeric_candidates.append((_to_int_like(key), key))
+                    except Exception:
+                        pass
+            for _num, key in sorted(numeric_candidates, key=lambda item: item[0]):
+                selected_user_planes.append(parsed_args.channels[key])
+                used_keys.add(key)
+                if len(selected_user_planes) >= component_count:
+                    break
+
+        if len(selected_user_planes) < component_count:
+            for key, plane in channel_items:
+                if key in used_keys:
+                    continue
+                selected_user_planes.append(plane)
+                used_keys.add(key)
+                if len(selected_user_planes) >= component_count:
+                    break
+
+        if len(parsed_args.channels) > component_count:
+            logprint(
+                f"Received {len(parsed_args.channels)} channel setting(s), "
+                f"but output has {component_count} component(s). "
+                f"Using best-matching {component_count} setting(s).",
+                type="warning",
+            )
+
+    for plane in selected_user_planes:
         parsed_args.metadata.addPlane(plane)
 
     existing_count = len(parsed_args.metadata.planes)
@@ -1673,7 +2198,9 @@ def convert_to_nd2_flatten(
     """
     debug = _flatten_debug_enabled()
 
-    channels_were_user_provided = bool(parsed_args.channels)
+    channels_were_user_provided = bool(
+        getattr(parsed_args, "channels_user_provided", bool(parsed_args.channels))
+    )
 
     sources, dimensions = sample_file.parse_additional_dimensions(
         sources,
@@ -1689,6 +2216,9 @@ def convert_to_nd2_flatten(
         )
 
     ConvertUtils.convert_mx_my_to_m(sources, dimensions)
+    wellplate_sources = dict(sources)
+    wellplate_dimension_names = list(dimensions.keys())
+
     if flatten_duplicates:
         sources, dimensions = flatten_duplicate_dimensions(sources, dimensions)
         if debug:
@@ -1789,6 +2319,18 @@ def convert_to_nd2_flatten(
 
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
     outfile = Path(parsed_args.output_dir) / parsed_args.nd2_output
+    auto_wellplate = _build_auto_wellplate_chunks(
+        sample_file,
+        grouped_files,
+        wellplate_sources,
+        wellplate_dimension_names,
+        parsed_args=parsed_args,
+    )
+    if auto_wellplate is None:
+        wellplate_desc = None
+        wellplate_frame_info = None
+    else:
+        wellplate_desc, wellplate_frame_info = auto_wellplate
 
     use_multiprocessing = _effective_multiprocessing_for_source(sample_file, parsed_args.multiprocessing)
     return LIMND2Utils.write_files_to_nd2(
@@ -1798,4 +2340,6 @@ def convert_to_nd2_flatten(
         nd2_experiment,
         nd2_metadata,
         use_multiprocessing,
+        wellplate_desc=wellplate_desc,
+        wellplate_frame_info=wellplate_frame_info,
     )
