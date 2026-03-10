@@ -91,11 +91,9 @@ def test_tiff_dispatch_selects_meta_and_extracts_qml(tmp_path: Path) -> None:
     assert settings["immersion_refractive_index"] == "1.0"
     assert settings["pinhole_diameter"] == "60.0"
     assert settings["zoom_magnification"] == "20.0"
-    assert [row[0] for row in settings["channels"]] == ["1. BLUE penta", "4. GREEN penta", "8. RED"]
-    assert settings["channels"][1][4] == "517"
-    assert settings["channels"][0][5] == "#4080FF"
-    assert settings["channels"][1][5] == "#00B050"
-    assert settings["channels"][2][5] == "#FF3030"
+    assert [row[0] for row in settings["channels"]] == ["4. GREEN penta"]
+    assert settings["channels"][0][4] == "517"
+    assert settings["channels"][0][5] == "#00B050"
     assert settings["application_name"] == "MetaMorph"
     assert settings["application_version"] == "6.7.2.290"
     assert settings["exposure_time"] == "300 ms"
@@ -190,3 +188,69 @@ def test_channel_templates_infer_from_slot_when_channel_index_missing(tmp_path: 
     assert templates[1]["emission_wavelength"] == 517
     assert templates[0]["color"] == "#4080FF"
     assert templates[1]["color"] == "#00B050"
+
+
+def test_channel_templates_expand_meta_tiff_channels_from_htd_in_sequence(tmp_path: Path) -> None:
+    path = tmp_path / "meta_seq.tif"
+    htd = tmp_path / "plate.HTD"
+    htd.write_text(
+        "\n".join(
+            [
+                '"HTSInfoFile", Version 1.0',
+                '"Waves", TRUE',
+                '"NWavelengths", 3',
+                '"WaveName1", "1. BLUE penta"',
+                '"WaveName2", "4. GREEN penta"',
+                '"WaveName3", "8. RED"',
+                '"WaveCollect1", 1',
+                '"WaveCollect2", 1',
+                '"WaveCollect3", 1',
+                '"EndFile"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    desc = (
+        "<MetaData>."
+        "<prop id=\"_IllumSetting_\" type=\"string\" value=\"4. GREEN penta\"/>."
+        "<prop id=\"wavelength\" type=\"float\" value=\"517\"/>."
+        "<custom-prop id=\"IXConfocal Module Disk\" type=\"string\" value=\"IN - 60 um pinhole - Running\"/>."
+        "<PlaneInfo>."
+        "</PlaneInfo>."
+        "</MetaData>."
+    )
+    _write_tiff(path, description=desc)
+
+    grouped = [
+        [
+            LimImageSourceTiff(path, channel_index=0),
+            LimImageSourceTiff(path, channel_index=1),
+            LimImageSourceTiff(path, channel_index=2),
+        ]
+    ]
+    labels, templates = _derive_channel_labels_and_templates(grouped, component_count=3)
+
+    assert labels == ["1. BLUE penta", "4. GREEN penta", "8. RED"]
+    assert templates[1] is not None
+    assert templates[1]["name"] == "4. GREEN penta"
+    assert templates[1]["emission_wavelength"] == 517
+
+
+def test_meta_tiff_channel_name_color_overrides_threshold_color(tmp_path: Path) -> None:
+    path = tmp_path / "meta_color_priority.tif"
+    desc = (
+        "<MetaData>."
+        "<prop id=\"_IllumSetting_\" type=\"string\" value=\"8. RED\"/>."
+        "<prop id=\"wavelength\" type=\"float\" value=\"639\"/>."
+        "<prop id=\"threshold-color\" type=\"string\" value=\"#4080FF\"/>."
+        "<PlaneInfo>."
+        "</PlaneInfo>."
+        "</MetaData>."
+    )
+    _write_tiff(path, description=desc)
+
+    src = LimImageSourceTiff(path)
+    settings = src.metadata_as_pattern_settings()
+    assert settings["channels"][0][0] == "8. RED"
+    assert settings["channels"][0][5] == "#FF3030"

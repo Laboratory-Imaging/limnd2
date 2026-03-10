@@ -1237,6 +1237,48 @@ def _settings_channel_rows_from_source(
             for row in rows:
                 if isinstance(row, (list, tuple)):
                     rows_out.append(list(row))
+
+            # Sequence-level fallback for Meta TIFF:
+            # keep single-file metadata local, but when planning/deriving channels
+            # across a sequence, optionally expand channel rows from neighboring HTD.
+            if (
+                file_path.suffix.lower() in {".tif", ".tiff", ".btf"}
+                and len(rows_out) <= 1
+                and hasattr(inner, "_parse_htd_channel_names")
+            ):
+                try:
+                    htd_names = inner._parse_htd_channel_names(file_path)
+                except Exception:
+                    htd_names = []
+
+                if htd_names:
+                    base_row = rows_out[0] if rows_out else []
+                    base_name = str(base_row[0]).strip() if len(base_row) > 0 else ""
+                    base_modality = str(base_row[2]).strip() if len(base_row) > 2 else "Undefined"
+                    base_ex = str(base_row[3]).strip() if len(base_row) > 3 else "0"
+                    base_em = str(base_row[4]).strip() if len(base_row) > 4 else "0"
+                    base_color = str(base_row[5]).strip() if len(base_row) > 5 else ""
+
+                    expanded_rows: list[list[Any]] = []
+                    for name in htd_names:
+                        name_text = str(name).strip()
+                        same_channel = bool(base_name) and name_text.casefold() == base_name.casefold()
+
+                        ex = base_ex if (same_channel and base_ex not in {"", "0"}) else "0"
+                        em = base_em if (same_channel and base_em not in {"", "0"}) else "0"
+
+                        color = ""
+                        if hasattr(inner, "_infer_color_from_name"):
+                            try:
+                                color = str(inner._infer_color_from_name(name_text) or "").strip()
+                            except Exception:
+                                color = ""
+                        if color == "" and same_channel:
+                            color = base_color
+
+                        expanded_rows.append([name_text, name_text, base_modality or "Undefined", ex, em, color])
+
+                    rows_out = expanded_rows
         except Exception:
             settings_channel_cache[file_path] = []
         else:

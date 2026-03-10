@@ -238,6 +238,11 @@ class LimImageSourceTiffMeta(LimImageSourceTiffBase):
         emission_nm = LimImageSourceTiffMeta._to_int(LimImageSourceTiffMeta._first(props, "wavelength", "emission-wavelength"))
         excitation_nm = LimImageSourceTiffMeta._to_int(props.get("excitation-wavelength"))
         color_hex = LimImageSourceTiffMeta._color_hex(props, emission_nm)
+        # Prefer explicit color hints in channel name (e.g. "RED", "GREEN")
+        # over stale/incorrect threshold-color metadata.
+        inferred_from_name = LimImageSourceTiffMeta._infer_color_from_name(name)
+        if inferred_from_name:
+            color_hex = inferred_from_name
 
         return _MetaChannel(
             name=name,
@@ -513,33 +518,18 @@ class LimImageSourceTiffMeta(LimImageSourceTiffBase):
             "channels": [],
         }
 
-        htd_channel_names = self._parse_htd_channel_names(self.filename)
-        if htd_channel_names:
-            current_name_key = channel.name.casefold()
-            channel_rows = []
-            for name in htd_channel_names:
-                same_channel = name.casefold() == current_name_key
-                em = str(channel.emission_wavelength) if (same_channel and channel.emission_wavelength > 0) else "0"
-                ex = str(channel.excitation_wavelength) if (same_channel and channel.excitation_wavelength > 0) else "0"
-                # Prefer basic color inference from HTD channel names, fallback to per-file TIFF color.
-                color = self._infer_color_from_name(name)
-                if color == "" and same_channel:
-                    color = channel.color_hex
-                channel_rows.append([name, name, channel.modality_qml, ex, em, color])
-            result["channels"] = channel_rows
-            self._debug(f"HTD channels loaded from directory: {htd_channel_names}")
-        else:
-            result["channels"] = [
-                [
-                    channel.name,
-                    channel.name,
-                    channel.modality_qml,
-                    str(channel.excitation_wavelength),
-                    str(channel.emission_wavelength),
-                    channel.color_hex,
-                ]
+        # Keep single-file inspection strictly file-local:
+        # do not expand channels from neighboring HTD files.
+        result["channels"] = [
+            [
+                channel.name,
+                channel.name,
+                channel.modality_qml,
+                str(channel.excitation_wavelength),
+                str(channel.emission_wavelength),
+                channel.color_hex,
             ]
-            self._debug("No HTD channel list found; using single-file channel metadata")
+        ]
 
         htd_plate_geometry = self.get_htd_plate_geometry()
         if htd_plate_geometry is not None:
