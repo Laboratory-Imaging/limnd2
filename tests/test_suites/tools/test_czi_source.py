@@ -44,6 +44,53 @@ class _FakeCziFile:
         return self._metadata
 
 
+class _FakeSubBlockSegment:
+    def __init__(self, tile: np.ndarray):
+        self._tile = np.asarray(tile)
+
+    def data(self, resize=True, order=0):
+        del resize, order
+        return np.asarray(self._tile)
+
+
+class _FakeDirectoryEntry:
+    def __init__(self, axes: str, start: tuple[int, ...], tile: np.ndarray):
+        self.axes = axes
+        self.start = tuple(int(v) for v in start)
+        self._tile = np.asarray(tile)
+        self.shape = tuple(int(v) for v in self._tile.shape)
+
+    def data_segment(self):
+        return _FakeSubBlockSegment(self._tile)
+
+
+class _FakeCziFileHeterogeneous(_FakeCziFile):
+    def __init__(self, arg, multifile=True, filesize=None, detectmosaic=True):
+        del multifile, filesize, detectmosaic
+        key = str(Path(arg))
+        if key not in self._datasets:
+            raise FileNotFoundError(f"No fake CZI dataset for {key}")
+        dataset = self._datasets[key]
+        self.axes = dataset["axes"]
+        self.dtype = dataset["dtype"]
+        self._array = dataset["array"]
+        self._metadata = dataset.get("metadata", "")
+        key = str(Path(arg))
+        self._entries = self._datasets[key].get("entries", [])
+
+    @property
+    def shape(self):
+        raise ValueError("setting an array element with a sequence")
+
+    @property
+    def filtered_subblock_directory(self):
+        return list(self._entries)
+
+    def asarray(self, resize=True, order=0, out=None, max_workers=None):
+        del resize, order, out, max_workers
+        raise ValueError("setting an array element with a sequence")
+
+
 def _register_fake_dataset(path: Path, *, axes: str, array: np.ndarray, metadata: str = ""):
     _FakeCziFile._datasets[str(path)] = {
         "axes": axes,
@@ -174,3 +221,41 @@ def test_czi_read_and_rgb_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
     opened = LimImageSource.open(path_rgb)
     assert isinstance(opened, LimImageSourceCzi)
+
+
+def test_czi_shape_fallback_for_heterogeneous_subblocks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(czi_mod, "CziFile", _FakeCziFileHeterogeneous)
+
+    path = tmp_path / "hetero.czi"
+    path.write_bytes(b"fake-czi")
+
+    # Canonical dimensions expected by fallback: T,C,Z,Y,X,0 = 2,2,2,4,5,1
+    tile_full = np.zeros((2, 2, 2, 4, 5, 1), dtype=np.uint16)
+    tile_full[1, 1, 1, :, :, 0] = 77
+
+    # Second entry intentionally omits Z axis to mimic heterogeneous dimension entries.
+    tile_missing_z = np.zeros((2, 2, 4, 5, 1), dtype=np.uint16)  # T,C,Y,X,0
+
+    entries = [
+        _FakeDirectoryEntry("TCZYX0", (0, 0, 0, 0, 0, 0), tile_full),
+        _FakeDirectoryEntry("TCYX0", (0, 0, 0, 0, 0), tile_missing_z),
+    ]
+
+    _FakeCziFile._datasets[str(path)] = {
+        "axes": "TCZYX0",
+        "shape": (2, 2, 2, 4, 5, 1),
+        "dtype": np.uint16,
+        "array": tile_full,
+        "metadata": "",
+        "entries": entries,
+    }
+
+    src = LimImageSourceCzi(path, channel_index=1, axis_indices={"T": 1, "Z": 1})
+    dims = src.get_file_dimensions()
+    assert dims == {"timeloop": 2, "channel": 2, "zstack": 2}
+
+    frame = src.read()
+    assert frame.shape == (4, 5)
+    assert np.array_equal(frame, np.full((4, 5), 77, dtype=np.uint16))

@@ -59,10 +59,112 @@ class LimImageSourceCzi(LimImageSource):
             f"channel_index={self.channel_index}, axis_indices={self.axis_indices})"
         )
 
+    @staticmethod
+    def _aggregate_shape_from_subblocks(czi, axes: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        entries = list(getattr(czi, "filtered_subblock_directory", ()) or ())
+        if not entries:
+            raise ValueError("CZI file does not contain readable subblocks.")
+
+        axis_count = len(axes)
+        min_start: list[int | None] = [None] * axis_count
+        max_end: list[int | None] = [None] * axis_count
+
+        for entry in entries:
+            try:
+                entry_axes = str(getattr(entry, "axes", ""))
+                entry_start = tuple(int(v) for v in getattr(entry, "start", ()))
+                entry_shape = tuple(int(v) for v in getattr(entry, "shape", ()))
+            except Exception:
+                continue
+
+            if len(entry_axes) != len(entry_shape):
+                continue
+
+            axis_to_start = {
+                axis: int(entry_start[idx]) if idx < len(entry_start) else 0
+                for idx, axis in enumerate(entry_axes)
+            }
+            axis_to_size = {
+                axis: max(int(entry_shape[idx]), 1)
+                for idx, axis in enumerate(entry_axes)
+            }
+
+            for axis_idx, axis in enumerate(axes):
+                start = int(axis_to_start.get(axis, 0))
+                size = int(axis_to_size.get(axis, 1))
+                end = start + max(size, 1)
+
+                prev_min = min_start[axis_idx]
+                prev_max = max_end[axis_idx]
+                min_start[axis_idx] = start if prev_min is None else min(prev_min, start)
+                max_end[axis_idx] = end if prev_max is None else max(prev_max, end)
+
+        start_tuple = tuple(int(v) if v is not None else 0 for v in min_start)
+        shape_tuple = tuple(
+            max(1, int((max_end[idx] if max_end[idx] is not None else start_tuple[idx] + 1) - start_tuple[idx]))
+            for idx in range(axis_count)
+        )
+        return shape_tuple, start_tuple
+
+    def _asarray_from_subblocks(self, czi, axes: str) -> np.ndarray:
+        shape, global_start = self._aggregate_shape_from_subblocks(czi, axes)
+        out = np.zeros(shape, dtype=np.dtype(czi.dtype))
+        entries = list(getattr(czi, "filtered_subblock_directory", ()) or ())
+
+        for entry in entries:
+            try:
+                entry_axes = str(getattr(entry, "axes", ""))
+                entry_start = tuple(int(v) for v in getattr(entry, "start", ()))
+                tile = np.asarray(entry.data_segment().data(resize=True, order=0))
+            except Exception:
+                continue
+
+            if tile.ndim != len(entry_axes):
+                continue
+
+            present_axes = [axis for axis in axes if axis in entry_axes]
+            if len(present_axes) != tile.ndim:
+                continue
+
+            perm = [entry_axes.index(axis) for axis in present_axes]
+            tile = np.transpose(tile, axes=perm)
+
+            full_shape: list[int] = []
+            tile_pos = 0
+            for axis in axes:
+                if axis in entry_axes:
+                    full_shape.append(int(tile.shape[tile_pos]))
+                    tile_pos += 1
+                else:
+                    full_shape.append(1)
+            tile = tile.reshape(tuple(full_shape))
+
+            slices: list[slice] = []
+            for axis_idx, axis in enumerate(axes):
+                if axis in entry_axes:
+                    entry_pos = entry_axes.index(axis)
+                    start = int(entry_start[entry_pos]) if entry_pos < len(entry_start) else 0
+                    size = int(tile.shape[axis_idx])
+                else:
+                    start = 0
+                    size = 1
+                offset = start - int(global_start[axis_idx])
+                slices.append(slice(offset, offset + size))
+
+            try:
+                out[tuple(slices)] = tile
+            except Exception:
+                continue
+
+        return out
+
     def _axes_shape_dtype(self) -> tuple[str, tuple[int, ...], np.dtype]:
         with CziFile(self.filename) as czi:
             axes = str(czi.axes)
-            shape = tuple(int(v) for v in czi.shape)
+            try:
+                shape = tuple(int(v) for v in czi.shape)
+            except Exception:
+                shape, _ = self._aggregate_shape_from_subblocks(czi, axes)
             dtype = np.dtype(czi.dtype)
 
         if len(axes) != len(shape):
@@ -201,8 +303,11 @@ class LimImageSourceCzi(LimImageSource):
 
     def read(self) -> np.ndarray:
         with CziFile(self.filename) as czi:
-            arr = np.asarray(czi.asarray())
             axes = str(czi.axes)
+            try:
+                arr = np.asarray(czi.asarray())
+            except Exception:
+                arr = self._asarray_from_subblocks(czi, axes)
 
         if len(axes) != arr.ndim:
             raise ValueError(
