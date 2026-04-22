@@ -190,7 +190,7 @@ Use `@pytest.mark.slow` for tests that are too slow for CI.
 
 ## Important Notes
 
-- Python 3.9+ required (3.12+ recommended)
+- Python 3.10+ required (3.12+ recommended)
 - Windows-focused development (batch scripts, PowerShell examples)
 - Internal indexes configured in `pyproject.toml`:
   - `http://gaexec:9500/simple` (local)

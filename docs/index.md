@@ -17,7 +17,7 @@ Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible
 
 Base `limnd2` requires:
 
-- python>=3.9
+- python>=3.10
 - numpy
 - ome_types
 

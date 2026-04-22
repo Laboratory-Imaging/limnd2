@@ -8,7 +8,7 @@ For package users, see [README.md](README.md).
 
 Dependency management is defined in `pyproject.toml`.
 
-- Base runtime: `python>=3.9`, `numpy`, `ome_types`
+- Base runtime: `python>=3.10`, `numpy`, `ome_types`
 - Optional runtime extras:
   - `results` (`h5py`, `pandas`)
   - `commonff` (`Pillow`, `tifffile`, `zarr`)

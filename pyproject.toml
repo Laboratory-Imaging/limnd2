@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "limnd2"
 version = "0.3.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
 ]
@@ -18,7 +18,6 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -41,6 +40,10 @@ results = [                     # results
     "h5py==3.12.1",
     "pandas",
 ]
+stitch = [                      # stitching support
+    "multiview-stitcher",
+    "dask",
+]
 commonff = [                    # shared file-format deps
     "Pillow",
     "tifffile",
@@ -60,6 +63,7 @@ legacy = [                      # Jpeg2000 chanker
 all = [                         # all above
     "limnd2[legacy]",
     "limnd2[results]",
+    "limnd2[stitch]",
     "limnd2[commonff]",
     "limnd2[czi]",
     "limnd2[olympus]",
