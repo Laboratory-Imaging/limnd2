@@ -63,7 +63,6 @@ legacy = [                      # Jpeg2000 chanker
 all = [                         # all above
     "limnd2[legacy]",
     "limnd2[results]",
-    "limnd2[stitch]",
     "limnd2[commonff]",
     "limnd2[czi]",
     "limnd2[olympus]",
@@ -86,6 +85,7 @@ dev = [                         # tools for dev
     "wheel",
 
     "limnd2[all]",
+    "limnd2[stitch]",           # stitch tools are in development -> not included in [all]
 ]
 
 [project.scripts]
