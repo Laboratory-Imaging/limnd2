@@ -24,6 +24,11 @@ __all__ = [
     "MetadataFactory",
     "ResultItem", "ResultPane", "TableData", "ResultPanesConfiguration",
     "ImageTextInfo",
+    "stitch",
+    # "stitch_simple",
+    # "stitch_simple_ome_zarr",
+    # "ome_zarr_to_nd2",
+    # "stitch_to_nd2_tiled",
 ]
 
 from .attributes import ImageAttributesCompression, ImageAttributesPixelType, ImageAttributes
@@ -41,3 +46,12 @@ from .metadata import PictureMetadata
 from .metadata_factory import MetadataFactory
 from .results import ResultItem, ResultPane, TableData, ResultPanesConfiguration
 from .textinfo import ImageTextInfo
+# Minimal public stitching surface for now:
+# - stitch (aliased to stitch_simple; includes optional tiled ND2 write path)
+# Advanced APIs intentionally hidden from top-level import:
+# - stitch
+# - stitch_simple
+# - stitch_simple_ome_zarr
+# - ome_zarr_to_nd2
+# - stitch_to_nd2_tiled
+from .stitch import stitch_simple as stitch

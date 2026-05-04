@@ -29,6 +29,18 @@
             }
         },
         {
+            "name": "Stitch (tst4)",
+            "type": "debugpy",
+            "request": "launch",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "program": "./tst/tst4.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
             "name": "Talley legacy test",
             "type": "debugpy",
             "request": "launch",
