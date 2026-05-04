@@ -1,10 +1,12 @@
 import limnd2, mmap
 
-FILE = "tst_data\\zstack.nd2"
+FILE = r"\\server\home\jonas.chudy\Bugs\agnor - Recipe(7).nd2"
 
-#ff = open(FILE, "rb")
-#mm = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
-#print(limnd2.imageInformationAsJSON(memoryview(mm), filename="file.nd2"))
+ff = open(FILE, "rb")
+mm = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
+print(limnd2.imageInformationAsJSON(memoryview(mm), filename="file.nd2"))
+
+from limnd2 import ND2File
 
 def file_attributes():
     f = limnd2.Nd2Reader(FILE)
