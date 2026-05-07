@@ -63,6 +63,14 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _color_tuple_to_ome(color: tuple[float, float, float]) -> str:
+    vals = [
+        max(0, min(255, int(round(component * 255 if component <= 1 else component))))
+        for component in color
+    ]
+    return f"{vals[0]:02X}{vals[1]:02X}{vals[2]:02X}"
+
+
 def _walk_groups(group: Any, current_path: str = "") -> list[tuple[str, Any]]:
     zarr = _zarr()
     groups = [(current_path, group)]
@@ -205,11 +213,12 @@ def test_to_ome_zarr_single_position_rgb_roundtrip(
         assert arr.shards is None
 
         channels = ome["omero"]["channels"]
-        assert [channel["label"] for channel in channels] == ["Red", "Green", "Blue"]
+        assert [channel["label"] for channel in channels] == list(
+            nd2_reader.pictureMetadata.componentNames
+        )
         assert [channel["color"] for channel in channels] == [
-            "FF0000",
-            "00FF00",
-            "0000FF",
+            _color_tuple_to_ome(color)
+            for color in nd2_reader.pictureMetadata.componentColors
         ]
 
         _assert_roundtrip_plane(nd2_reader, dest, position_index=0)
@@ -247,6 +256,32 @@ def test_to_ome_zarr_multi_position_layout_and_pixels(
         assert np.dtype(arr.dtype) == np.dtype(nd2_reader.imageAttributes.dtype)
 
         _assert_roundtrip_plane(nd2_reader, first_group, position_index=0)
+
+    _assert_no_custom_attrs(dest)
+
+
+def test_to_ome_zarr_selected_position_at_root(
+    multipoint_nd2_path: Path, tmp_path: Path
+) -> None:
+    dest = tmp_path / "multipoint_position_3.ome.zarr"
+
+    with limnd2.Nd2Reader(multipoint_nd2_path) as nd2_reader:
+        nt, nm, nz, ny, nx, nc = nd2_reader.imageDataShape
+        assert nm > 1
+
+        nd2_reader.to_ome_zarr(dest, position=3)
+
+        root_meta = _load_json(dest / "zarr.json")
+        ome = root_meta["attributes"]["ome"]
+        assert "multiscales" in ome
+        assert "plate" not in ome
+        assert not (dest / "OME").exists()
+
+        arr = _level0_array(dest)
+        assert tuple(arr.shape) == (nt, nc, nz, ny, nx)
+        assert np.dtype(arr.dtype) == np.dtype(nd2_reader.imageAttributes.dtype)
+
+        _assert_roundtrip_plane(nd2_reader, dest, position_index=3)
 
     _assert_no_custom_attrs(dest)
 
@@ -416,6 +451,8 @@ def test_to_ome_zarr_smoke_all_nd2_fixtures(
         if nd2_reader.isRgb:
             ome, _level0_path = _image_group_meta(first_group)
             channels = ome["omero"]["channels"]
-            assert [channel["label"] for channel in channels] == ["Red", "Green", "Blue"]
+            assert [channel["label"] for channel in channels] == list(
+                nd2_reader.pictureMetadata.componentNames
+            )
 
     _assert_no_custom_attrs(dest)

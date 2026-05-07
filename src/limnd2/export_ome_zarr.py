@@ -30,6 +30,7 @@ def to_ome_zarr(
     min_layer_size: int = 1024,
     chunks: tuple[int, int, int, int, int] = (1, 1, 1, 512, 512),
     shard_shape: tuple[int, int, int, int, int] | None = None,
+    position: int | None = None,
     include_binaries: bool = False,
     include_well_info: bool = True,
     overwrite: bool = False,
@@ -75,11 +76,21 @@ def to_ome_zarr(
             out_path.unlink()
 
     nt, nm, nz, ny, nx, nc = nd2_reader.imageDataShape
-    positions = _position_infos(nd2_reader, nm)
+    all_positions = _position_infos(nd2_reader, nm)
+    if position is not None:
+        if not (0 <= position < len(all_positions)):
+            raise IndexError(
+                f"Position {position} out of range. File has {len(all_positions)} positions."
+            )
+        positions = [all_positions[position]]
+    else:
+        positions = all_positions
     root = zarr.open_group(str(out_path), mode="w", zarr_format=3)
     is_single_position = len(positions) == 1
     wellplate_layout = (
-        _wellplate_layout_info(nd2_reader, positions) if include_well_info else None
+        _wellplate_layout_info(nd2_reader, positions)
+        if include_well_info and position is None
+        else None
     )
     if wellplate_layout is None and not is_single_position:
         _write_root_metadata(root, series_paths=[pos.name for pos in positions])
@@ -984,27 +995,31 @@ def _omero_channels(nd2_reader: "Nd2Reader", channel_count: int) -> list[dict[st
 
 
 def _channel_names(nd2_reader: "Nd2Reader", channel_count: int) -> list[str]:
-    if nd2_reader.isRgb and channel_count >= 3:
-        names = ["Red", "Green", "Blue"][:channel_count]
-    else:
-        names: list[str] = []
-        with suppress(Exception):
-            names = [str(name) for name in nd2_reader.pictureMetadata.componentNames]
+    names: list[str] = []
+    with suppress(Exception):
+        names = [str(name) for name in nd2_reader.pictureMetadata.componentNames]
+    if len(names) < channel_count:
+        if nd2_reader.isRgb:
+            fallback = ["Red", "Green", "Blue"]
+            names.extend(fallback[i] for i in range(len(names), min(channel_count, len(fallback))))
         if len(names) < channel_count:
             names.extend(f"Channel_{i + 1}" for i in range(len(names), channel_count))
     return names[:channel_count]
 
 
 def _channel_colors(nd2_reader: "Nd2Reader", channel_count: int) -> list[str]:
-    if nd2_reader.isRgb and channel_count >= 3:
-        colors = ["#ff0000", "#00ff00", "#0000ff"][:channel_count]
-    else:
-        colors: list[str] = []
-        with suppress(Exception):
-            colors = [
-                _tuple_to_hex(color)
-                for color in nd2_reader.pictureMetadata.componentColors
-            ]
+    colors: list[str] = []
+    with suppress(Exception):
+        colors = [
+            _tuple_to_hex(color)
+            for color in nd2_reader.pictureMetadata.componentColors
+        ]
+    if len(colors) < channel_count:
+        if nd2_reader.isRgb:
+            fallback = ["#ff0000", "#00ff00", "#0000ff"]
+            colors.extend(
+                fallback[i] for i in range(len(colors), min(channel_count, len(fallback)))
+            )
         if len(colors) < channel_count:
             fallback = ["#ffffff", "#00ffff", "#ff00ff", "#ffff00", "#ff8000"]
             colors.extend(
