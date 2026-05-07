@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "limnd2"
 version = "0.3.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "Laboratory Imaging, s.r.o.", email = "techsupp@lim.cz"},
 ]
@@ -48,7 +48,8 @@ commonff = [                    # shared file-format deps
     "Pillow",
     "tifffile",
     "ome_types",
-    "zarr",
+    "ome-zarr>=0.16",
+    "zarr>=3",
 ]
 czi = [                         # CZI reader deps
     "czifile",

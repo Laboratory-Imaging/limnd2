@@ -44,7 +44,7 @@ Install only what your workflow needs:
 
 - `limnd2[results]`: enables reading ND2 results/analysis tables stored in `.h5` data (`h5py`, `pandas`).
 - `limnd2[commonff]`: enables common file-format workflows, mainly conversions and exports
-(TIFF/OME-TIFF/PNG/JPEG inputs and TIFF export via `Pillow`, `tifffile`, `zarr`).
+(TIFF/OME-TIFF/PNG/JPEG inputs, TIFF export, and OME-Zarr export via `Pillow`, `tifffile`, `ome-zarr`, `zarr`).
 - `limnd2[legacy]`: enables reading legacy ND2 files that use JPEG2000 compression (`imagecodecs`).
 - `limnd2[all]`: installs all runtime extras above; use this if you want full runtime functionality without picking extras one by one.
 

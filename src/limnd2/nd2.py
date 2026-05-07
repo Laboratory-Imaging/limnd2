@@ -444,7 +444,7 @@ class Nd2Reader:
         Parameters
         ----------
         bin_id: int
-            Binary layer ID.
+            Binary layer ID. Some files use ``0`` as a valid layer id.
         seq_index: int
             Zero-based sequence index of the frame.
         rect: tuple[int, int, int, int]|None
@@ -453,7 +453,7 @@ class Nd2Reader:
             Determines downsampling d = 2^downsample_level that produces
             lower level frames of size (w // d, h // d).
         """
-        assert isinstance(bin_id, int) and 0 < bin_id, "bin_id must be positive integer"
+        assert isinstance(bin_id, int) and 0 <= bin_id, "bin_id must be non-negative integer"
         assert isinstance(seq_index, int) and 0 <= seq_index, "seq_index must be non-negative integer"
         assert isinstance(downsample_level, int) and 0 <= downsample_level, "down_size must be non-negative integer"
         return (
@@ -569,6 +569,38 @@ class Nd2Reader:
 
         except ImportError:
             raise
+
+    def to_ome_zarr(
+        self,
+        path: str | Path,
+        *,
+        min_layer_size: int = 1024,
+        chunks: tuple[int, int, int, int, int] = (1, 1, 1, 512, 512),
+        shard_shape: tuple[int, int, int, int, int] | None = None,
+        include_binaries: bool = False,
+        include_well_info: bool = True,
+        overwrite: bool = False,
+        # include_ome_xml: bool = False,
+    ) -> Path:
+        """
+        Export this ND2 file to OME-Zarr.
+
+        Multipoint/XY positions are written as separate image groups. Each group
+        stores a conventional 5D OME-NGFF array with axes ``t, c, z, y, x``.
+        """
+        from .export_ome_zarr import to_ome_zarr
+
+        return to_ome_zarr(
+            self,
+            path,
+            min_layer_size=min_layer_size,
+            chunks=chunks,
+            shard_shape=shard_shape,
+            include_binaries=include_binaries,
+            include_well_info=include_well_info,
+            overwrite=overwrite,
+            # include_ome_xml=include_ome_xml,
+        )
 
     @functools.cached_property
     def customDescription(self) -> CustomDescription | None:

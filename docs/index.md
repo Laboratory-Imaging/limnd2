@@ -24,7 +24,7 @@ Base `limnd2` requires:
 Optional extras enable specific workflows:
 
 - `limnd2[results]` - load analysis tables from `.h5` files (`h5py`, `pandas`)
-- `limnd2[commonff]` - shared image format deps (`Pillow`, `tifffile`, `zarr`)
+- `limnd2[commonff]` - shared image format deps (`Pillow`, `tifffile`, `ome-zarr`, `zarr`)
 - `limnd2[legacy]` - read legacy JPEG2000 ND2 (`imagecodecs`)
 - `limnd2[all]` - all runtime extras
 

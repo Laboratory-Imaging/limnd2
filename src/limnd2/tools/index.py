@@ -28,6 +28,7 @@ from typing import (
 )
 
 import limnd2
+import numpy as np
 from limnd2.base import ND2_CHUNK_FORMAT_DownsampledColorData_2p
 
 original_print = print
@@ -55,6 +56,8 @@ class Record(TypedDict):
     Resolution: str
     Channels: int
     Binary: str
+    BinaryDetailed: str
+    WellplateDetailed: str
     Downsampled: str
     Software: str
     Grabber: str
@@ -62,9 +65,188 @@ class Record(TypedDict):
 
 HEADERS = list(Record.__annotations__)
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"  # YYYY-MM-DD HH:MM:SS
-DEFAULT_EXCLUDE_COLUMNS = ["Downsampled", "Compression", "Software", "Grabber"]
+DEFAULT_EXCLUDE_COLUMNS = [
+    "BinaryDetailed",
+    "WellplateDetailed",
+    "Downsampled",
+    "Compression",
+    "Software",
+    "Grabber",
+]
 HEADER_LOOKUP = {header.lower(): header for header in HEADERS}
 DEFAULT_COLUMNS = [h for h in HEADERS if h not in DEFAULT_EXCLUDE_COLUMNS]
+
+
+def _format_binary_values(values: set[int]) -> str:
+    ordered = sorted(int(v) for v in values)
+    joined = ",".join(str(v) for v in ordered)
+    if set(ordered).issubset({0, 1}):
+        return f"{joined} (binary)"
+    return joined
+
+
+def _binary_rle_label(version: int | None) -> str:
+    if version is None or version <= 0:
+        return "RLE"
+    return f"RLEv{version}"
+
+
+def _safe_binary_detailed(file_obj: limnd2.Nd2Reader, sample_seqs: int = 3) -> str:
+    chunker = file_obj.chunker
+    raster_meta = list(chunker.binaryRasterMetadata or [])
+    rle_meta = list(chunker.binaryRleMetadata)
+    if not raster_meta and not rle_meta:
+        return ""
+
+    try:
+        rle_version = chunker.rleBinaryVersion() if rle_meta else None
+    except Exception:
+        rle_version = None
+
+    layers: dict[tuple[int, str, str, int], dict[str, Any]] = {}
+    id_counts: dict[int, int] = {}
+
+    for item in raster_meta:
+        key = (item.id, item.name, item.binComp, item.binCompOrder)
+        layer = layers.setdefault(
+            key,
+            {
+                "id": item.id,
+                "name": item.name,
+                "component": item.binComp,
+                "order": item.binCompOrder,
+                "sources": [],
+            },
+        )
+        layer["sources"].append("BIN")
+        id_counts[item.id] = id_counts.get(item.id, 0) + 1
+
+    for item in rle_meta:
+        key = (item.id, item.strName, item.strCompName, item.uiCompOrder)
+        layer = layers.setdefault(
+            key,
+            {
+                "id": item.id,
+                "name": item.strName,
+                "component": item.strCompName,
+                "order": item.uiCompOrder,
+                "sources": [],
+            },
+        )
+        layer["sources"].append(_binary_rle_label(rle_version))
+        id_counts[item.id] = id_counts.get(item.id, 0) + 1
+
+    seq_limit = min(sample_seqs, max(1, file_obj.imageAttributes.frameCount))
+    details: list[str] = []
+    for layer in layers.values():
+        layer_id = int(layer["id"])
+        sources = "+".join(dict.fromkeys(layer["sources"]))
+        component = str(layer["component"] or "")
+        name = str(layer["name"] or "")
+        order = int(layer["order"])
+        detail = [
+            f"id={layer_id}",
+            f"name={json.dumps(name)}",
+            f"source={sources}",
+            f"comp={json.dumps(component)}",
+            f"order={order}",
+        ]
+
+        if layer_id <= 0:
+            detail.append("values=unavailable(non-positive-id)")
+        elif id_counts.get(layer_id, 0) > 1:
+            detail.append("values=unavailable(ambiguous-id)")
+        else:
+            sampled_values: set[int] = set()
+            sampled_seqs: list[int] = []
+            errors: list[str] = []
+            for seq_index in range(seq_limit):
+                try:
+                    arr = chunker.binaryRasterData(layer_id, seq_index)
+                except Exception as exc:
+                    errors.append(f"{seq_index}:{type(exc).__name__}")
+                    continue
+                sampled_seqs.append(seq_index)
+                sampled_values.update(int(v) for v in np.unique(arr))
+
+            if sampled_seqs:
+                detail.append(
+                    "sampled="
+                    + ",".join(str(seq) for seq in sampled_seqs)
+                )
+                detail.append(
+                    "values=" + _format_binary_values(sampled_values)
+                )
+            else:
+                detail.append("values=unavailable(read-error)")
+
+            if errors:
+                detail.append("errors=" + ",".join(errors))
+
+        details.append("; ".join(detail))
+
+    return " | ".join(details)
+
+
+def _format_seq_runs(seqs: list[int]) -> str:
+    if not seqs:
+        return "[]"
+    seqs = sorted(set(int(seq) for seq in seqs))
+    ranges: list[str] = []
+    start = prev = seqs[0]
+    for seq in seqs[1:]:
+        if seq == prev + 1:
+            prev = seq
+            continue
+        ranges.append(f"{start}" if start == prev else f"{start}-{prev}")
+        start = prev = seq
+    ranges.append(f"{start}" if start == prev else f"{start}-{prev}")
+    return "[" + ",".join(ranges) + "]"
+
+
+def _safe_wellplate_detailed(file_obj: limnd2.Nd2Reader) -> str:
+    desc = file_obj.wellplateDesc
+    frame_info = file_obj.wellplateFrameInfo
+    if desc is None and (frame_info is None or not len(frame_info)):
+        return ""
+
+    parts: list[str] = []
+    if desc is not None:
+        parts.append(f"name={json.dumps(str(getattr(desc, 'name', '') or ''))}")
+        parts.append(f"rows={int(getattr(desc, 'rows', 0) or 0)}")
+        parts.append(f"cols={int(getattr(desc, 'columns', 0) or 0)}")
+
+    if frame_info is not None and len(frame_info):
+        wells_to_seqs: dict[str, list[int]] = {}
+        for item in frame_info:
+            well_name = str(getattr(item, "wellName", "") or "")
+            if not well_name:
+                row_idx = int(getattr(item, "wellRowIndex", 0))
+                col_idx = int(getattr(item, "wellColIndex", 0))
+                row_label = ""
+                value = row_idx + 1
+                while value > 0:
+                    value, remainder = divmod(value - 1, 26)
+                    row_label = chr(ord("A") + remainder) + row_label
+                well_name = f"{row_label}{col_idx + 1}"
+            wells_to_seqs.setdefault(well_name, []).append(int(getattr(item, "seqIndex", 0)))
+
+        well_names = sorted(
+            wells_to_seqs.keys(),
+            key=lambda name: (
+                "".join(char for char in name if char.isalpha()),
+                int("".join(char for char in name if char.isdigit()) or "0"),
+            ),
+        )
+        parts.append("wells=" + ",".join(well_names))
+        parts.append(
+            "seqs="
+            + ", ".join(
+                f"{well}:{_format_seq_runs(wells_to_seqs[well])}" for well in well_names
+            )
+        )
+
+    return "; ".join(parts)
 
 
 def _normalize_columns_arg(
@@ -110,6 +292,8 @@ def index_file(path: Path) -> Record:
         return f"{size} B"
     file_version = None
     bin_info = ""
+    bin_detailed = ""
+    wellplate_detailed = ""
     try:
         with limnd2.Nd2Reader(str(path.resolve())) as file_obj:
             bins = file_obj.chunker.binaryRasterMetadata
@@ -120,7 +304,12 @@ def index_file(path: Path) -> Record:
                 else:
                     rle_bin_count = len(file_obj.chunker.binaryRleMetadata)
                     if 0 < rle_bin_count:
-                        bin_info = f"{rle_bin_count}x RLEv{file_obj.chunker.rleBinaryVersion()}"
+                        bin_info = (
+                            f"{rle_bin_count}x "
+                            f"{_binary_rle_label(file_obj.chunker.rleBinaryVersion())}"
+                        )
+            bin_detailed = _safe_binary_detailed(file_obj)
+            wellplate_detailed = _safe_wellplate_detailed(file_obj)
             downsampled_info = []
             attrs = file_obj.imageAttributes
             chunk_names = set(file_obj.chunker.chunk_names)
@@ -167,6 +356,8 @@ def index_file(path: Path) -> Record:
                 "Resolution": f"{file_obj.imageAttributes.uiWidth} x {file_obj.imageAttributes.uiHeight}",
                 "Channels": file_obj.imageAttributes.componentCount,
                 "Binary": bin_info,
+                "BinaryDetailed": bin_detailed,
+                "WellplateDetailed": wellplate_detailed,
                 "Downsampled": downsampled_value,
                 "Software": f'{file_obj.appInfo.m_SWNameString} {file_obj.appInfo.m_VersionString}',
                 "Grabber": file_obj.appInfo.m_GrabberString
@@ -202,6 +393,8 @@ def index_file(path: Path) -> Record:
         "Resolution": "",
         "Channels": 1,
         "Binary": "",
+        "BinaryDetailed": "",
+        "WellplateDetailed": "",
         "Downsampled": "",
         "Software": "",
         "Grabber": "",

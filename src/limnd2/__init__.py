@@ -17,6 +17,7 @@ __all__ = [
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
     "ExperimentFactory", "WellplateFactory",
     "frameExport", "seriesExport", "metadataAsJSON",
+    "to_ome_zarr",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX", "generalImageInfo",
     "Nd2Reader", "Nd2Writer",
     "ND2File",
@@ -34,6 +35,7 @@ from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETime
 from .experiment_factory import ExperimentFactory
 from .wellplate_factory import WellplateFactory
 from .export import frameExport, seriesExport, metadataAsJSON
+from .export_ome_zarr import to_ome_zarr
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX, generalImageInfo
 from .nd2 import Nd2Reader, Nd2Writer
 from .nd2file import ND2File

@@ -524,7 +524,7 @@ class LimBinaryIOChunker(BaseChunker):
     def binaryRleData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         try:
             return self.readBinaryRleData(binid, seqindex, rect, no_obj_info=no_obj_info)
-        except BinaryIdNotFountError or NameNotInChunkmapError:
+        except (BinaryIdNotFountError, NameNotInChunkmapError):
             pass
         h, w = self.imageAttributes.shape[0:2]
         y0, y1 = (rect[1], min(rect[1] + rect[3], h)) if rect is not None else (0, h)
@@ -570,12 +570,12 @@ class LimBinaryIOChunker(BaseChunker):
     def binaryRasterData(self, binid: int, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         try:
             return self.readBinaryRasterData(binid, seqindex, rect)
-        except BinaryIdNotFountError or NameNotInChunkmapError:
+        except (BinaryIdNotFountError, NameNotInChunkmapError):
             pass
         try:
             data, _ = self.readBinaryRleData(binid, seqindex, rect, no_obj_info=True)
             return data
-        except BinaryIdNotFountError or NameNotInChunkmapError:
+        except (BinaryIdNotFountError, NameNotInChunkmapError):
             pass
 
         h, w = self.imageAttributes.shape[0:2]

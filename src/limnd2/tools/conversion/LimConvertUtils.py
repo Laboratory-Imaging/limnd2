@@ -58,8 +58,8 @@ def logprint(msg: str, type = "log", log_type_override = None):
 #simplified settings for conversion of one image
 @dataclass
 class ConversionSettings:
-    time_step: float = 100.0
-    z_step: float = 100.0
+    time_step: float | None = None
+    z_step: float | None = None
     channels: dict[str, Plane] = field(default_factory=dict)
     metadata: MetadataFactory = field(default_factory=MetadataFactory)
 

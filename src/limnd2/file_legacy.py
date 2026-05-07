@@ -44,6 +44,7 @@ STRUCT_TRAILER = struct.Struct("<32sQ")
 
 # Legacy chunk map entry: JP2 box type, LIM/ND2 type, file offset.
 STRUCT_MAP_ENTRY = struct.Struct("<4s4sI")
+MAP_ENTRY_STRIDE = 16
 
 # JP2 box header: big-endian length and 4-byte box type.
 STRUCT_BOX_HEADER = struct.Struct(">I4s")
@@ -170,7 +171,7 @@ def _read_legacy_chunkmap(fh: typing.BinaryIO) -> dict[bytes, list[int]]:
         raise RuntimeError("Could not read legacy chunk count.")
     chunk_count = int.from_bytes(count_bytes, "big", signed=False)
 
-    entries_size = chunk_count * STRUCT_MAP_ENTRY.size
+    entries_size = chunk_count * MAP_ENTRY_STRIDE
     entries = fh.read(entries_size)
     if len(entries) != entries_size:
         raise RuntimeError("Legacy ND2 chunk map is truncated.")
@@ -178,7 +179,7 @@ def _read_legacy_chunkmap(fh: typing.BinaryIO) -> dict[bytes, list[int]]:
     chunkmap: dict[bytes, list[int]] = {}
     for idx in range(chunk_count):
         box_type, lim_type, offset = STRUCT_MAP_ENTRY.unpack_from(
-            entries, idx * STRUCT_MAP_ENTRY.size
+            entries, idx * MAP_ENTRY_STRIDE
         )
         # For core JP2 boxes we key by box_type; for everything else, use LIM type.
         key = box_type if box_type in {b"jP  ", b"ftyp", b"jp2h"} else lim_type
@@ -442,19 +443,14 @@ class LimJpeg2000Chunker(BaseChunker):
         self._image_offsets = self._chunkmap_offsets.get(b"LUNK", ())
         if not self._image_offsets:
             raise RuntimeError("Legacy ND2 file does not contain LUNK image data.")
-        if len(self._image_offsets) % self._channel_count != 0:
-            # Try to infer channel count from VCAL or fall back to 1
-            vcal_offsets = self._chunkmap_offsets.get(b"VCAL", ())
-            if vcal_offsets and len(self._image_offsets) % len(vcal_offsets) == 0:
-                self._channel_count = len(self._image_offsets) // len(vcal_offsets)
-            else:
-                self._channel_count = 1
-
-        # Frames: LegacyReader uses len(chunkmap[b"VCAL"]) as sequenceCount.
-        # Prefer that if it matches the LUNK-based count, else fall back to LUNK.
-        seq_from_lunk = len(self._image_offsets) // self._channel_count
+        # Frames: upstream nd2 LegacyReader uses len(chunkmap[b"VCAL"]) as
+        # sequenceCount and keeps the metadata-derived logical channel count even
+        # when the number of LUNK payloads is not a perfect multiple of channels.
+        # Some real legacy files have an odd trailing LUNK entry but still decode
+        # correctly for all logical frames described by VCAL/experiment metadata.
+        seq_from_lunk = len(self._image_offsets) // max(1, self._channel_count)
         vcal_offsets = self._chunkmap_offsets.get(b"VCAL", ())
-        if vcal_offsets and len(vcal_offsets) == seq_from_lunk:
+        if vcal_offsets:
             self._sequence_count = len(vcal_offsets)
         else:
             self._sequence_count = seq_from_lunk
