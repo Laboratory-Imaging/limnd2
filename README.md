@@ -44,15 +44,18 @@ Install only what your workflow needs:
 
 - `limnd2[results]`: enables reading ND2 results/analysis tables stored in `.h5` data (`h5py`, `pandas`).
 - `limnd2[commonff]`: enables common file-format workflows, mainly conversions and exports
-(TIFF/OME-TIFF/PNG/JPEG inputs, TIFF export, and OME-Zarr export via `Pillow`, `tifffile`, `ome-zarr`, `zarr`).
+(TIFF/OME-TIFF/PNG/JPEG inputs and TIFF export via `Pillow`, `tifffile`, `zarr`).
+- `limnd2[ome-zarr]`: enables OME-Zarr export and the OME-Zarr GUI/CLI tools
+(`dask`, `ome-zarr`, `zarr`, `fsspec`, `s3fs`).
 - `limnd2[legacy]`: enables reading legacy ND2 files that use JPEG2000 compression (`imagecodecs`).
-- `limnd2[all]`: installs all runtime extras above; use this if you want full runtime functionality without picking extras one by one.
+- `limnd2[all]`: installs the main runtime extras above, but does not include `ome-zarr` yet.
 
 Examples with `pip`:
 
 ```sh
 pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[results]"
 pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff,legacy]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[ome-zarr]"
 pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[all]"
 ```
 
@@ -61,6 +64,7 @@ Examples with `uv`:
 ```sh
 uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[results]"
 uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff,legacy]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[ome-zarr]"
 uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[all]"
 ```
 
@@ -71,3 +75,39 @@ uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[al
 - [Command-line tools](https://laboratory-imaging.github.io/limnd2/docs/cli_index/)
 - [Releases](https://github.com/Laboratory-Imaging/limnd2/releases)
 - [Usage examples](examples/)
+
+## OME-Zarr export
+
+Install the OME-Zarr extra first:
+
+```sh
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[ome-zarr]"
+```
+
+Python API:
+
+```python
+import limnd2
+
+with limnd2.Nd2Reader("file.nd2") as reader:
+    reader.to_ome_zarr(
+        "file.ome.zarr",
+        include_binaries=True,
+        use_dask=True,
+        overwrite=True,
+    )
+```
+
+CLI:
+
+```sh
+limnd2-ome-zarr-export file.nd2
+limnd2-ome-zarr-export file.nd2 --output-folder .\exports
+limnd2-ome-zarr-export file.nd2 --s3-prefix s3://my-bucket/ome-zarr
+```
+
+GUI:
+
+```sh
+limnd2-ome-zarr-exporter
+```

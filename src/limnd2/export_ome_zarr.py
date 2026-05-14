@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import importlib
 import inspect
 import re
 import shutil
+import threading
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 
@@ -21,6 +23,104 @@ if TYPE_CHECKING:
 
 TCZYX_AXES: tuple[str, str, str, str, str] = ("t", "c", "z", "y", "x")
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+_S3_URL_RE = re.compile(r"^s3://([^/]+)/(.+)$")
+_DASK_AUTO_THRESHOLD_BYTES = 4 * 1024**3
+_OME_ZARR_EXTRA_HINT = (
+    'Install the optional OME-Zarr support with `pip install "limnd2[ome-zarr]"`.'
+)
+
+
+class _ProgressTracker:
+    def __init__(
+        self,
+        callback: Callable[[int, int, str], None] | None,
+        total: int,
+    ) -> None:
+        self._callback = callback
+        self._total = total
+        self._completed = 0
+        self._lock = threading.Lock()
+
+    def advance(self, phase: str, step: int = 1) -> None:
+        if self._callback is None:
+            return
+        with self._lock:
+            self._completed += step
+            current = self._completed
+            total = self._total
+            try:
+                self._callback(current, total, phase)
+            except Exception:
+                self._callback = None
+
+
+def _missing_ome_zarr_dependency(package: str, *, context: str) -> ImportError:
+    return ImportError(
+        f'Missing optional dependency "{package}" required for {context}. '
+        f"{_OME_ZARR_EXTRA_HINT}"
+    )
+
+
+def ensure_ome_zarr_dependencies(
+    *,
+    require_s3: bool = False,
+    require_dask: bool = False,
+) -> None:
+    try:
+        zarr = importlib.import_module("zarr")
+    except ImportError as exc:
+        raise _missing_ome_zarr_dependency("zarr", context="OME-Zarr export") from exc
+
+    version = str(getattr(zarr, "__version__", "0"))
+    if int(version.split(".", maxsplit=1)[0]) < 3:
+        raise ImportError(
+            f"OME-Zarr export requires zarr>=3; found zarr {version}. "
+            f"{_OME_ZARR_EXTRA_HINT}"
+        )
+
+    try:
+        importlib.import_module("ome_zarr")
+    except ImportError as exc:
+        raise _missing_ome_zarr_dependency("ome-zarr", context="OME-Zarr export") from exc
+
+    if require_dask:
+        try:
+            importlib.import_module("dask.array")
+        except ImportError as exc:
+            raise _missing_ome_zarr_dependency(
+                "dask", context="Dask-backed OME-Zarr export"
+            ) from exc
+
+    if require_s3:
+        try:
+            importlib.import_module("fsspec")
+        except ImportError as exc:
+            raise _missing_ome_zarr_dependency(
+                "fsspec", context="direct S3 OME-Zarr export"
+            ) from exc
+        try:
+            importlib.import_module("s3fs")
+        except ImportError as exc:
+            raise _missing_ome_zarr_dependency(
+                "s3fs", context="direct S3 OME-Zarr export"
+            ) from exc
+
+
+def _progress_total(
+    *,
+    nt: int,
+    nz: int,
+    image_group_count: int,
+    label_count: int,
+    include_binaries: bool,
+) -> int:
+    image_frame_reads = image_group_count * nt * nz
+    image_group_writes = image_group_count
+    if not include_binaries or label_count <= 0:
+        return image_frame_reads + image_group_writes
+    label_frame_reads = image_group_count * label_count * nt * nz
+    label_group_writes = image_group_count * label_count
+    return image_frame_reads + image_group_writes + label_frame_reads + label_group_writes
 
 
 def to_ome_zarr(
@@ -31,11 +131,13 @@ def to_ome_zarr(
     chunks: tuple[int, int, int, int, int] = (1, 1, 1, 512, 512),
     shard_shape: tuple[int, int, int, int, int] | None = None,
     position: int | None = None,
+    use_dask: bool | None = None,
+    progress_callback: Callable[[int, int, str], None] | None = None,
     include_binaries: bool = False,
     include_well_info: bool = True,
     overwrite: bool = False,
     # include_ome_xml: bool = False,
-) -> Path:
+) -> str | Path:
     """
     Export an ND2 file to OME-Zarr 0.5 / Zarr v3 groups.
 
@@ -45,6 +147,10 @@ def to_ome_zarr(
     """
     _validate_chunks(chunks)
     _validate_shard_shape(shard_shape, chunks)
+    ensure_ome_zarr_dependencies(
+        require_s3=_is_s3_path(path),
+        require_dask=True,
+    )
 
     try:
         import zarr  # type: ignore
@@ -57,152 +163,114 @@ def to_ome_zarr(
         )
     except ImportError as exc:  # pragma: no cover - depends on optional env
         raise ImportError(
-            'Missing optional dependency for OME-Zarr 0.5 export. Install '
-            '"ome-zarr>=0.16" and "zarr>=3", or install an extra that provides them.'
+            "OME-Zarr export dependencies were preflight-checked but imports still "
+            f"failed. {_OME_ZARR_EXTRA_HINT}"
         ) from exc
-    if int(str(getattr(zarr, "__version__", "0")).split(".", maxsplit=1)[0]) < 3:
-        raise ImportError(
-            f"OME-Zarr 0.5 export requires zarr>=3; found zarr "
-            f"{getattr(zarr, '__version__', 'unknown')}."
-        )
 
-    out_path = Path(path)
-    if out_path.exists():
-        if not overwrite:
-            raise FileExistsError(f"OME-Zarr output already exists: {out_path}")
-        if out_path.is_dir():
-            shutil.rmtree(out_path)
+    root, out_path = _open_output_root(
+        zarr=zarr,
+        path=path,
+        overwrite=overwrite,
+    )
+    try:
+        nt, nm, nz, ny, nx, nc = nd2_reader.imageDataShape
+        all_positions = _position_infos(nd2_reader, nm)
+        if position is not None:
+            if not (0 <= position < len(all_positions)):
+                raise IndexError(
+                    f"Position {position} out of range. File has {len(all_positions)} positions."
+                )
+            positions = [all_positions[position]]
         else:
-            out_path.unlink()
+            positions = all_positions
+        is_single_position = len(positions) == 1
+        wellplate_layout = (
+            _wellplate_layout_info(nd2_reader, positions)
+            if include_well_info and position is None
+            else None
+        )
+        if wellplate_layout is None and not is_single_position:
+            _write_root_metadata(root, series_paths=[pos.name for pos in positions])
 
-    nt, nm, nz, ny, nx, nc = nd2_reader.imageDataShape
-    all_positions = _position_infos(nd2_reader, nm)
-    if position is not None:
-        if not (0 <= position < len(all_positions)):
-            raise IndexError(
-                f"Position {position} out of range. File has {len(all_positions)} positions."
-            )
-        positions = [all_positions[position]]
-    else:
-        positions = all_positions
-    root = zarr.open_group(str(out_path), mode="w", zarr_format=3)
-    is_single_position = len(positions) == 1
-    wellplate_layout = (
-        _wellplate_layout_info(nd2_reader, positions)
-        if include_well_info and position is None
-        else None
-    )
-    if wellplate_layout is None and not is_single_position:
-        _write_root_metadata(root, series_paths=[pos.name for pos in positions])
-
-    _validate_supported_channel_layout(nd2_reader, channel_count=nc)
-    scale = _scale_values(nd2_reader)
-    axes = _axes_metadata()
-    label_axes = _label_axes_metadata()
-    channel_metadata = _omero_channels(nd2_reader, nc)
-    max_layer = _max_layer_count(nx, ny, min_layer_size)
-    scale_factors = _xy_scale_factors(max_layer)
-    supports_scale_factors = "scale_factors" in inspect.signature(write_image).parameters
-    fmt = FormatV05()
-    storage_options = _storage_options_for_levels(
-        shape=(nt, nc, nz, ny, nx),
-        chunks=chunks,
-        shard_shape=shard_shape,
-        levels=max_layer + 1,
-    )
-
-    frame_lookup = _frame_lookup(nd2_reader)
-    if wellplate_layout is not None:
-        _write_plate_layout(
-            write_image=write_image,
-            write_labels=write_labels,
-            write_plate_metadata=write_plate_metadata,
-            write_well_metadata=write_well_metadata,
-            nd2_reader=nd2_reader,
-            root=root,
-            layout=wellplate_layout,
-            frame_lookup=frame_lookup,
-            image_shape=(nt, nc, nz, ny, nx),
-            fmt=fmt,
-            axes=axes,
-            label_axes=label_axes,
-            scale=scale,
-            storage_options=storage_options,
-            scale_factors=scale_factors,
-            max_layer=max_layer,
+        _validate_supported_channel_layout(nd2_reader, channel_count=nc)
+        scale = _scale_values(nd2_reader)
+        axes = _axes_metadata()
+        label_axes = _label_axes_metadata()
+        channel_metadata = _omero_channels(nd2_reader, nc)
+        max_layer = _max_layer_count(nx, ny, min_layer_size)
+        scale_factors = _xy_scale_factors(max_layer)
+        supports_scale_factors = "scale_factors" in inspect.signature(write_image).parameters
+        fmt = FormatV05()
+        resolved_use_dask = _resolve_use_dask(
+            use_dask=use_dask,
+            shape=(nt, nc, nz, ny, nx),
+            dtype=np.dtype(nd2_reader.imageAttributes.dtype),
+        )
+        label_infos = _label_infos(nd2_reader) if include_binaries else []
+        progress = _ProgressTracker(
+            progress_callback,
+            _progress_total(
+                nt=nt,
+                nz=nz,
+                image_group_count=(
+                    len(positions)
+                    if wellplate_layout is None
+                    else len(wellplate_layout.fields)
+                ),
+                label_count=len(label_infos),
+                include_binaries=include_binaries,
+            ),
+        )
+        storage_options = _storage_options_for_levels(
+            shape=(nt, nc, nz, ny, nx),
             chunks=chunks,
             shard_shape=shard_shape,
-            channel_metadata=channel_metadata,
-            supports_scale_factors=supports_scale_factors,
-            include_binaries=include_binaries,
-        )
-    elif is_single_position:
-        pos = positions[0]
-        data = _read_position_tczyx(
-            nd2_reader=nd2_reader,
-            position_index=pos.index,
-            shape=(nt, nc, nz, ny, nx),
-            frame_lookup=frame_lookup,
-        )
-        coordinate_transformations = _coordinate_transformations(
-            scale=scale,
-            translation=(0.0, 0.0, pos.stage_z_um, pos.stage_y_um, pos.stage_x_um),
             levels=max_layer + 1,
         )
-        omero_metadata = {
-            "name": pos.label,
-            "version": "0.4",
-            "channels": channel_metadata,
-            "rdefs": {
-                "model": "color" if nc > 1 else "greyscale",
-                "defaultT": 0,
-                "defaultZ": 0,
-            },
-        }
-        _write_image_compat(
-            write_image=write_image,
-            data=data,
-            group=root,
-            fmt=fmt,
-            axes=axes,
-            coordinate_transformations=coordinate_transformations,
-            storage_options=storage_options,
-            scale_factors=scale_factors,
-            max_layer=max_layer,
-            name=out_path.stem or pos.label,
-            omero_metadata=omero_metadata,
-            supports_scale_factors=supports_scale_factors,
-        )
-        if include_binaries:
-            _write_position_labels(
+
+        frame_lookup = _frame_lookup(nd2_reader)
+        if wellplate_layout is not None:
+            _write_plate_layout(
+                write_image=write_image,
                 write_labels=write_labels,
+                write_plate_metadata=write_plate_metadata,
+                write_well_metadata=write_well_metadata,
                 nd2_reader=nd2_reader,
-                group=root,
-                position=pos,
+                root=root,
+                layout=wellplate_layout,
                 frame_lookup=frame_lookup,
                 image_shape=(nt, nc, nz, ny, nx),
                 fmt=fmt,
-                axes=label_axes,
+                axes=axes,
+                label_axes=label_axes,
                 scale=scale,
+                storage_options=storage_options,
+                scale_factors=scale_factors,
+                max_layer=max_layer,
                 chunks=chunks,
                 shard_shape=shard_shape,
-                scale_factors=scale_factors,
+                channel_metadata=channel_metadata,
+                supports_scale_factors=supports_scale_factors,
+                include_binaries=include_binaries,
+                use_dask=resolved_use_dask,
+                progress=progress,
+                label_infos=label_infos,
             )
-    else:
-        for pos in positions:
-            data = _read_position_tczyx(
+        elif is_single_position:
+            pos = positions[0]
+            data = _position_image_data(
                 nd2_reader=nd2_reader,
                 position_index=pos.index,
                 shape=(nt, nc, nz, ny, nx),
                 frame_lookup=frame_lookup,
+                use_dask=resolved_use_dask,
+                progress=progress,
             )
             coordinate_transformations = _coordinate_transformations(
                 scale=scale,
                 translation=(0.0, 0.0, pos.stage_z_um, pos.stage_y_um, pos.stage_x_um),
                 levels=max_layer + 1,
             )
-
-            group = root.create_group(pos.name)
             omero_metadata = {
                 "name": pos.label,
                 "version": "0.4",
@@ -216,22 +284,23 @@ def to_ome_zarr(
             _write_image_compat(
                 write_image=write_image,
                 data=data,
-                group=group,
+                group=root,
                 fmt=fmt,
                 axes=axes,
                 coordinate_transformations=coordinate_transformations,
                 storage_options=storage_options,
                 scale_factors=scale_factors,
                 max_layer=max_layer,
-                name=pos.label,
+                name=_output_name(out_path) or pos.label,
                 omero_metadata=omero_metadata,
                 supports_scale_factors=supports_scale_factors,
+                progress=progress,
             )
             if include_binaries:
                 _write_position_labels(
                     write_labels=write_labels,
                     nd2_reader=nd2_reader,
-                    group=group,
+                    group=root,
                     position=pos,
                     frame_lookup=frame_lookup,
                     image_shape=(nt, nc, nz, ny, nx),
@@ -241,9 +310,149 @@ def to_ome_zarr(
                     chunks=chunks,
                     shard_shape=shard_shape,
                     scale_factors=scale_factors,
+                    progress=progress,
+                    label_infos=label_infos,
+                )
+        else:
+            for pos in positions:
+                data = _position_image_data(
+                    nd2_reader=nd2_reader,
+                    position_index=pos.index,
+                    shape=(nt, nc, nz, ny, nx),
+                    frame_lookup=frame_lookup,
+                    use_dask=resolved_use_dask,
+                    progress=progress,
+                )
+                coordinate_transformations = _coordinate_transformations(
+                    scale=scale,
+                    translation=(0.0, 0.0, pos.stage_z_um, pos.stage_y_um, pos.stage_x_um),
+                    levels=max_layer + 1,
                 )
 
+                group = root.create_group(pos.name)
+                omero_metadata = {
+                    "name": pos.label,
+                    "version": "0.4",
+                    "channels": channel_metadata,
+                    "rdefs": {
+                        "model": "color" if nc > 1 else "greyscale",
+                        "defaultT": 0,
+                        "defaultZ": 0,
+                    },
+                }
+                _write_image_compat(
+                    write_image=write_image,
+                    data=data,
+                    group=group,
+                    fmt=fmt,
+                    axes=axes,
+                    coordinate_transformations=coordinate_transformations,
+                    storage_options=storage_options,
+                    scale_factors=scale_factors,
+                    max_layer=max_layer,
+                    name=pos.label,
+                    omero_metadata=omero_metadata,
+                    supports_scale_factors=supports_scale_factors,
+                    progress=progress,
+                )
+                if include_binaries:
+                    _write_position_labels(
+                        write_labels=write_labels,
+                        nd2_reader=nd2_reader,
+                        group=group,
+                        position=pos,
+                        frame_lookup=frame_lookup,
+                        image_shape=(nt, nc, nz, ny, nx),
+                        fmt=fmt,
+                        axes=label_axes,
+                        scale=scale,
+                        chunks=chunks,
+                        shard_shape=shard_shape,
+                        scale_factors=scale_factors,
+                        progress=progress,
+                        label_infos=label_infos,
+                    )
+    except Exception:
+        with suppress(Exception):
+            _cleanup_output_root(out_path)
+        raise
+
     return out_path
+
+
+def _is_s3_path(path: str | Path) -> bool:
+    return str(path).startswith("s3://")
+
+
+def _validate_s3_path(path: str) -> None:
+    if _S3_URL_RE.match(path) is None:
+        raise ValueError(
+            "S3 OME-Zarr output must include a bucket and non-empty object prefix, "
+            f"got: {path!r}"
+        )
+
+
+def _output_name(path: str | Path) -> str:
+    raw = str(path).rstrip("/")
+    if _is_s3_path(raw):
+        return raw.rsplit("/", maxsplit=1)[-1]
+    return Path(raw).stem
+
+
+def _open_output_root(
+    *,
+    zarr: Any,
+    path: str | Path,
+    overwrite: bool,
+) -> tuple[Any, str | Path]:
+    if _is_s3_path(path):
+        try:
+            import fsspec
+        except ImportError as exc:  # pragma: no cover - depends on optional env
+            raise _missing_ome_zarr_dependency(
+                "fsspec", context="direct S3 OME-Zarr export"
+            ) from exc
+
+        out_path = str(path)
+        _validate_s3_path(out_path)
+        store = zarr.storage.FsspecStore.from_url(out_path, read_only=False)
+        sync_fs, sync_path = fsspec.core.url_to_fs(out_path)
+        if sync_fs.exists(sync_path):
+            if not overwrite:
+                raise FileExistsError(f"OME-Zarr output already exists: {out_path}")
+            sync_fs.rm(sync_path, recursive=True)
+        root = zarr.open_group(store=store, mode="w", zarr_format=3)
+        return root, out_path
+
+    out_path = Path(path)
+    if out_path.exists():
+        if not overwrite:
+            raise FileExistsError(f"OME-Zarr output already exists: {out_path}")
+        if out_path.is_dir():
+            shutil.rmtree(out_path)
+        else:
+            out_path.unlink()
+    root = zarr.open_group(str(out_path), mode="w", zarr_format=3)
+    return root, out_path
+
+
+def _cleanup_output_root(path: str | Path) -> None:
+    if _is_s3_path(path):
+        import fsspec
+
+        out_path = str(path)
+        sync_fs, sync_path = fsspec.core.url_to_fs(out_path)
+        if sync_fs.exists(sync_path):
+            sync_fs.rm(sync_path, recursive=True)
+        return
+
+    out_path = Path(path)
+    if not out_path.exists():
+        return
+    if out_path.is_dir():
+        shutil.rmtree(out_path)
+    else:
+        out_path.unlink(missing_ok=True)
 
 
 def _write_root_metadata(
@@ -283,6 +492,9 @@ def _write_plate_layout(
     channel_metadata: list[dict[str, Any]],
     supports_scale_factors: bool,
     include_binaries: bool,
+    use_dask: bool,
+    progress: _ProgressTracker,
+    label_infos: list[_LabelInfo],
 ) -> None:
     write_plate_metadata(
         root,
@@ -311,11 +523,13 @@ def _write_plate_layout(
 
         for field in fields:
             pos = field.position
-            data = _read_position_tczyx(
+            data = _position_image_data(
                 nd2_reader=nd2_reader,
                 position_index=pos.index,
                 shape=(nt, nc, nz, ny, nx),
                 frame_lookup=frame_lookup,
+                use_dask=use_dask,
+                progress=progress,
             )
             coordinate_transformations = _coordinate_transformations(
                 scale=scale,
@@ -347,6 +561,7 @@ def _write_plate_layout(
                 name=display_name,
                 omero_metadata=omero_metadata,
                 supports_scale_factors=supports_scale_factors,
+                progress=progress,
             )
             if include_binaries:
                 _write_position_labels(
@@ -362,13 +577,15 @@ def _write_plate_layout(
                     chunks=chunks,
                     shard_shape=shard_shape,
                     scale_factors=scale_factors,
+                    progress=progress,
+                    label_infos=label_infos,
                 )
 
 
 def _write_image_compat(
     *,
     write_image: Any,
-    data: np.ndarray,
+    data: Any,
     group: Any,
     fmt: Any,
     axes: list[dict[str, str]],
@@ -379,35 +596,22 @@ def _write_image_compat(
     name: str,
     omero_metadata: dict[str, Any],
     supports_scale_factors: bool,
+    progress: _ProgressTracker,
 ) -> None:
-    if supports_scale_factors:
-        write_image(
-            data,
-            group,
-            scale_factors=scale_factors,
-            method="local_mean",
-            fmt=fmt,
-            axes=axes,
-            coordinate_transformations=coordinate_transformations,
-            storage_options=storage_options,
-            name=name,
-            metadata={"omero": omero_metadata},
-        )
-        return
-
-    from ome_zarr.scale import Scaler  # type: ignore
-
-    write_image(
-        data,
-        group,
-        scaler=Scaler(max_layer=max_layer, method="local_mean"),
+    _write_image_numeric_levels(
+        data=data,
+        group=group,
         fmt=fmt,
         axes=axes,
         coordinate_transformations=coordinate_transformations,
         storage_options=storage_options,
+        scale_factors=scale_factors,
+        max_layer=max_layer,
         name=name,
-        metadata={"omero": omero_metadata},
+        omero_metadata=omero_metadata,
+        supports_scale_factors=supports_scale_factors,
     )
+    progress.advance("write-image-group")
 
 
 class _PositionInfo:
@@ -690,34 +894,121 @@ def _read_position_tczyx(
     position_index: int,
     shape: tuple[int, int, int, int, int],
     frame_lookup: dict[tuple[int, int, int], int],
+    progress: _ProgressTracker,
 ) -> np.ndarray:
     nt, nc, nz, ny, nx = shape
     data = np.zeros(shape, dtype=nd2_reader.imageAttributes.dtype)
-    missing_frames: list[tuple[int, int, int]] = []
+    frame_indices = _position_frame_indices(
+        nd2_reader=nd2_reader,
+        position_index=position_index,
+        shape=shape,
+        frame_lookup=frame_lookup,
+    )
+    for t, z_frames in enumerate(frame_indices):
+        for z, frame_index in enumerate(z_frames):
+            data[t, :, z, :, :] = _read_frame_cyx(
+                nd2_reader,
+                frame_index,
+                ny=ny,
+                nx=nx,
+                nc=nc,
+                progress=progress,
+            )
+    return data
 
+
+def _position_image_data(
+    *,
+    nd2_reader: "Nd2Reader",
+    position_index: int,
+    shape: tuple[int, int, int, int, int],
+    frame_lookup: dict[tuple[int, int, int], int],
+    use_dask: bool,
+    progress: _ProgressTracker,
+) -> Any:
+    if use_dask:
+        return _delayed_position_tczyx(
+            nd2_reader=nd2_reader,
+            position_index=position_index,
+            shape=shape,
+            frame_lookup=frame_lookup,
+            progress=progress,
+        )
+    return _read_position_tczyx(
+        nd2_reader=nd2_reader,
+        position_index=position_index,
+        shape=shape,
+        frame_lookup=frame_lookup,
+        progress=progress,
+    )
+
+
+def _delayed_position_tczyx(
+    *,
+    nd2_reader: "Nd2Reader",
+    position_index: int,
+    shape: tuple[int, int, int, int, int],
+    frame_lookup: dict[tuple[int, int, int], int],
+    progress: _ProgressTracker,
+) -> Any:
+    try:
+        import dask.array as da  # type: ignore
+        from dask.delayed import delayed  # type: ignore
+    except ImportError as exc:  # pragma: no cover - depends on optional env
+        raise ImportError(
+            'Dask-backed OME-Zarr export requires the "dask" package.'
+        ) from exc
+
+    nt, nc, nz, ny, nx = shape
+    frame_indices = _position_frame_indices(
+        nd2_reader=nd2_reader,
+        position_index=position_index,
+        shape=shape,
+        frame_lookup=frame_lookup,
+    )
+
+    t_stacks = []
+    for z_indices in frame_indices:
+        z_stacks = []
+        for frame_index in z_indices:
+            delayed_frame = delayed(_read_frame_cyx)(
+                nd2_reader,
+                frame_index,
+                ny=ny,
+                nx=nx,
+                nc=nc,
+                progress=progress,
+            )
+            z_stacks.append(
+                da.from_delayed(
+                    delayed_frame,
+                    shape=(nc, ny, nx),
+                    dtype=nd2_reader.imageAttributes.dtype,
+                )
+            )
+        t_stacks.append(da.stack(z_stacks, axis=1))
+    return da.stack(t_stacks, axis=0).reshape((nt, nc, nz, ny, nx))
+
+
+def _position_frame_indices(
+    *,
+    nd2_reader: "Nd2Reader",
+    position_index: int,
+    shape: tuple[int, int, int, int, int],
+    frame_lookup: dict[tuple[int, int, int], int],
+) -> list[list[int]]:
+    nt, _nc, nz, _ny, _nx = shape
+    frame_indices: list[list[int]] = []
+    missing_frames: list[tuple[int, int, int]] = []
     for t in range(nt):
+        z_frames: list[int] = []
         for z in range(nz):
             frame_index = frame_lookup.get((t, position_index, z))
-            if frame_index is None:
+            if frame_index is None or not _frame_chunk_present(nd2_reader, frame_index):
                 missing_frames.append((t, position_index, z))
                 continue
-            if not _frame_chunk_present(nd2_reader, frame_index):
-                missing_frames.append((t, position_index, z))
-                continue
-            frame = np.asarray(nd2_reader.image(frame_index))
-            if frame.ndim == 2:
-                frame = frame[:, :, np.newaxis]
-            if frame.shape[0] != ny or frame.shape[1] != nx:
-                raise ValueError(
-                    f"Unexpected frame shape for frame {frame_index}: "
-                    f"{frame.shape}, expected Y/X {ny, nx}."
-                )
-            if frame.shape[2] < nc:
-                raise ValueError(
-                    f"Unexpected component count for frame {frame_index}: "
-                    f"{frame.shape[2]}, expected at least {nc}."
-                )
-            data[t, :, z, :, :] = np.moveaxis(frame[:, :, :nc], -1, 0)
+            z_frames.append(frame_index)
+        frame_indices.append(z_frames)
     if missing_frames:
         preview = ", ".join(
             f"(t={t}, m={m}, z={z})" for t, m, z in missing_frames[:5]
@@ -729,7 +1020,35 @@ def _read_position_tczyx(
             "Missing frame data for exported OME-Zarr position "
             f"{position_index}: {preview}."
         )
-    return data
+    return frame_indices
+
+
+def _read_frame_cyx(
+    nd2_reader: "Nd2Reader",
+    frame_index: int,
+    *,
+    ny: int,
+    nx: int,
+    nc: int,
+    progress: _ProgressTracker | None = None,
+) -> np.ndarray:
+    frame = np.asarray(nd2_reader.image(frame_index))
+    if frame.ndim == 2:
+        frame = frame[:, :, np.newaxis]
+    if frame.shape[0] != ny or frame.shape[1] != nx:
+        raise ValueError(
+            f"Unexpected frame shape for frame {frame_index}: "
+            f"{frame.shape}, expected Y/X {ny, nx}."
+        )
+    if frame.shape[2] < nc:
+        raise ValueError(
+            f"Unexpected component count for frame {frame_index}: "
+            f"{frame.shape[2]}, expected at least {nc}."
+        )
+    result = np.moveaxis(frame[:, :, :nc], -1, 0)
+    if progress is not None:
+        progress.advance("read-image-frame")
+    return result
 
 
 def _read_position_tzyx_binary(
@@ -739,6 +1058,7 @@ def _read_position_tzyx_binary(
     position_index: int,
     shape: tuple[int, int, int, int],
     frame_lookup: dict[tuple[int, int, int], int],
+    progress: _ProgressTracker,
 ) -> np.ndarray:
     nt, nz, ny, nx = shape
     data = np.zeros(shape, dtype=np.uint32)
@@ -754,6 +1074,7 @@ def _read_position_tzyx_binary(
                     f"{frame_index}: {frame.shape}, expected {(ny, nx)}."
                 )
             data[t, z, :, :] = frame
+            progress.advance("read-label-frame")
     return data
 
 
@@ -766,6 +1087,29 @@ def _scale_values(nd2_reader: "Nd2Reader") -> tuple[float, float, float, float, 
         float(y_um or 1.0),
         float(x_um or 1.0),
     )
+
+
+def _resolve_use_dask(
+    *,
+    use_dask: bool | None,
+    shape: tuple[int, int, int, int, int],
+    dtype: np.dtype[Any],
+) -> bool:
+    if use_dask is not None:
+        return use_dask
+    return _estimated_array_bytes(shape=shape, dtype=dtype) >= _DASK_AUTO_THRESHOLD_BYTES
+
+
+def _estimated_array_bytes(
+    *,
+    shape: tuple[int, int, int, int, int],
+    dtype: np.dtype[Any],
+) -> int:
+    itemsize = int(dtype.itemsize)
+    total = itemsize
+    for dim in shape:
+        total *= int(dim)
+    return total
 
 
 def _validate_supported_channel_layout(
@@ -1057,6 +1401,166 @@ def _channel_ranges(
     return ranges[:channel_count]
 
 
+def _write_image_numeric_levels(
+    *,
+    data: Any,
+    group: Any,
+    fmt: Any,
+    axes: list[dict[str, str]],
+    coordinate_transformations: list[list[dict[str, list[float] | str]]],
+    storage_options: list[dict[str, tuple[int, int, int, int, int]]],
+    scale_factors: list[dict[str, int]],
+    max_layer: int,
+    name: str,
+    omero_metadata: dict[str, Any],
+    supports_scale_factors: bool,
+) -> None:
+    import dask.array as da  # type: ignore
+    from ome_zarr import writer  # type: ignore
+    from ome_zarr.scale import Methods  # type: ignore
+    from ome_zarr.scale import Scaler, _build_pyramid  # type: ignore
+
+    image = data if isinstance(data, da.Array) else da.from_array(data)
+    first_level_chunks = writer._resolve_storage_options(storage_options, 0).get("chunks")
+    if first_level_chunks and first_level_chunks != "auto":
+        image = image.rechunk(_chunks_for_shape(tuple(first_level_chunks), image.shape))
+    dims = writer._extract_dims_from_axes(axes)
+
+    if supports_scale_factors:
+        pyramid = _build_pyramid(
+            image,
+            scale_factors,
+            dims=dims,
+            method=Methods.LOCAL_MEAN,
+        )
+    else:
+        pyramid = _build_pyramid(
+            image,
+            [
+                {d: 2**i if d in ("y", "x") else 1 for d in dims}
+                for i in range(1, max_layer + 1)
+            ],
+            dims=dims,
+            method=Methods.LOCAL_MEAN,
+        )
+
+    _write_pyramid_numeric_levels(
+        pyramid=pyramid,
+        group=group,
+        fmt=fmt,
+        axes=axes,
+        coordinate_transformations=coordinate_transformations,
+        storage_options=storage_options,
+        name=name,
+        metadata={"omero": omero_metadata},
+    )
+
+
+def _write_pyramid_numeric_levels(
+    *,
+    pyramid: list[Any],
+    group: Any,
+    fmt: Any,
+    axes: list[dict[str, str]] | None,
+    coordinate_transformations: list[list[dict[str, Any]]] | None,
+    storage_options: list[dict[str, Any]] | dict[str, Any] | None,
+    name: str | None,
+    metadata: dict[str, Any],
+) -> None:
+    import dask.array as da  # type: ignore
+    from ome_zarr import writer  # type: ignore
+
+    group, fmt = writer.check_group_fmt(group, fmt)
+
+    zarr_array_kwargs: dict[str, Any] = {}
+    zarr_format = zarr_array_kwargs["zarr_format"] = fmt.zarr_format
+    if axes is not None and zarr_format != 2:
+        zarr_array_kwargs["dimension_names"] = [
+            a["name"] for a in axes if isinstance(a, dict)
+        ]
+
+    shapes = []
+    datasets: list[dict[str, Any]] = []
+    delayed = []
+
+    for idx, level in enumerate(pyramid):
+        zarr_array_kwargs_copy = zarr_array_kwargs.copy()
+        options = writer._resolve_storage_options(storage_options, idx)
+        if writer.USE_DASK_ARRAY_KWARGS:
+            options.pop("compressor", None)
+        else:
+            zarr_array_kwargs_copy["compressor"] = options.pop("compressor", None)
+
+        if "compressors" not in zarr_array_kwargs_copy and writer.USE_DASK_ARRAY_KWARGS:
+            zarr_array_kwargs_copy["compressors"] = options.pop("compressors", "auto")
+
+        chunks_opt = options.get("chunks", None)
+        shards_opt = options.get("shards", None)
+
+        if chunks_opt and not isinstance(chunks_opt, str) and not shards_opt:
+            chunks_opt = writer._retuple(chunks_opt, level.shape)
+            level_image = da.array(level).rechunk(chunks=chunks_opt)
+        elif shards_opt is not None:
+            if chunks_opt and chunks_opt != "auto":
+                chunks_opt = writer._retuple(chunks_opt, level.shape)
+            else:
+                chunks_opt = level.chunksize
+            chunks_opt = writer._retuple(chunks_opt, level.shape)
+            shards_opt = writer._retuple(shards_opt, level.shape)
+            level_image = da.array(level).rechunk(shards_opt)
+        else:
+            chunks_opt = level.chunksize
+            level_image = level
+
+        shapes.append(level_image.shape)
+        zarr_array_kwargs_copy["shards"] = shards_opt
+        zarr_array_kwargs_copy["chunks"] = chunks_opt
+        for key, value in options.items():
+            if key not in zarr_array_kwargs_copy:
+                zarr_array_kwargs_copy[key] = value
+
+        if not writer.USE_DASK_ARRAY_KWARGS:
+            if "chunks" in zarr_array_kwargs_copy:
+                level_image = level_image.rechunk(zarr_array_kwargs_copy["chunks"])
+                del zarr_array_kwargs_copy["chunks"]
+            if zarr_format != 2:
+                zarr_array_kwargs_copy["compressor"] = "auto"
+
+            zarr_array_kwargs_copy.pop("compressors", None)
+            zarr_array_kwargs_copy.pop("shards", None)
+            zarr_array_kwargs_copy.pop("serializer", None)
+
+        delayed.append(
+            da.to_zarr(
+                arr=level_image,
+                url=group.store,
+                component=str(Path(group.path, str(idx))),
+                compute=False,
+                **zarr_array_kwargs_copy,
+            )
+        )
+        datasets.append({"path": str(idx)})
+
+    da.compute(*delayed)
+
+    if coordinate_transformations is None:
+        coordinate_transformations = fmt.generate_coordinate_transformations(shapes)
+    fmt.validate_coordinate_transformations(
+        len(pyramid[0].shape), len(datasets), coordinate_transformations
+    )
+    for dataset, transform in zip(datasets, coordinate_transformations):
+        dataset["coordinateTransformations"] = transform
+
+    writer.write_multiscales_metadata(
+        group,
+        datasets,
+        fmt=fmt,
+        axes=axes,
+        name=name,
+        metadata=metadata,
+    )
+
+
 def _max_layer_count(width: int, height: int, min_layer_size: int) -> int:
     if min_layer_size <= 0:
         raise ValueError("min_layer_size must be positive.")
@@ -1149,9 +1653,10 @@ def _write_position_labels(
     chunks: tuple[int, int, int, int, int],
     shard_shape: tuple[int, int, int, int, int] | None,
     scale_factors: list[dict[str, int]],
+    progress: _ProgressTracker,
+    label_infos: list[_LabelInfo],
 ) -> None:
     nt, _nc, nz, ny, nx = image_shape
-    label_infos = _label_infos(nd2_reader)
     if not label_infos:
         return
 
@@ -1181,28 +1686,29 @@ def _write_position_labels(
             position_index=position.index,
             shape=(nt, nz, ny, nx),
             frame_lookup=frame_lookup,
+            progress=progress,
         )
         if not np.any(label_data):
+            progress.advance("write-label-group")
             continue
 
+        # Keep label metadata minimal. The integer label array itself is the
+        # authoritative data; incomplete per-value styling metadata can confuse
+        # viewers, especially for instance labels with many object ids.
         label_metadata: dict[str, Any] = {}
-        if label.color is not None:
-            label_metadata["colors"] = [
-                {"label-value": 1, "rgba": _hex_to_rgba(label.color)}
-            ]
 
-        write_labels(
-            label_data,
-            group,
+        _write_labels_numeric_levels(
+            labels=label_data,
+            group=group,
             name=label.name,
-            scale_factors=label_scale_factors,
-            method="nearest",
             fmt=fmt,
             axes=axes,
             coordinate_transformations=coordinate_transformations,
             storage_options=storage_options,
+            scale_factors=label_scale_factors,
             label_metadata=label_metadata,
         )
+        progress.advance("write-label-group")
 
 
 def _hex_to_rgba(color: str) -> list[int]:
@@ -1215,6 +1721,58 @@ def _hex_to_rgba(color: str) -> list[int]:
         int(cleaned[4:6], 16),
         255,
     ]
+
+
+def _write_labels_numeric_levels(
+    *,
+    labels: Any,
+    group: Any,
+    name: str,
+    fmt: Any,
+    axes: list[dict[str, str]],
+    coordinate_transformations: list[list[dict[str, Any]]],
+    storage_options: list[dict[str, Any]] | dict[str, Any] | None,
+    scale_factors: list[dict[str, int]],
+    label_metadata: dict[str, Any],
+) -> None:
+    import dask.array as da  # type: ignore
+    from ome_zarr import writer  # type: ignore
+    from ome_zarr.scale import Methods, _build_pyramid  # type: ignore
+
+    group, fmt = writer.check_group_fmt(group, fmt)
+    sub_group = group.require_group(f"labels/{name}")
+
+    labels_arr = labels if isinstance(labels, da.Array) else da.from_array(labels)
+    first_level_chunks = writer._resolve_storage_options(storage_options, 0).get("chunks")
+    if first_level_chunks and first_level_chunks != "auto":
+        labels_arr = labels_arr.rechunk(
+            _label_chunks_for_shape(tuple(first_level_chunks), labels_arr.shape)
+        )
+    dims = writer._extract_dims_from_axes(axes)
+    pyramid = _build_pyramid(
+        labels_arr,
+        scale_factors,
+        dims=dims,
+        method=Methods.NEAREST,
+    )
+
+    _write_pyramid_numeric_levels(
+        pyramid=pyramid,
+        group=sub_group,
+        fmt=fmt,
+        axes=axes,
+        coordinate_transformations=coordinate_transformations,
+        storage_options=storage_options,
+        name=name,
+        metadata={},
+    )
+
+    writer.write_label_metadata(
+        group=group["labels"],
+        name=name,
+        fmt=fmt,
+        **label_metadata,
+    )
 
 
 def _write_legacy_ome_xml(

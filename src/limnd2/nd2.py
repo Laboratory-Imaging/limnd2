@@ -6,7 +6,7 @@ import os
 import warnings
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -578,11 +578,13 @@ class Nd2Reader:
         chunks: tuple[int, int, int, int, int] = (1, 1, 1, 512, 512),
         shard_shape: tuple[int, int, int, int, int] | None = None,
         position: int | None = None,
+        use_dask: bool | None = None,
+        progress_callback: Callable[[int, int, str], None] | None = None,
         include_binaries: bool = False,
         include_well_info: bool = True,
         overwrite: bool = False,
         # include_ome_xml: bool = False,
-    ) -> Path:
+    ) -> str | Path:
         """
         Export this ND2 file to OME-Zarr.
 
@@ -598,6 +600,8 @@ class Nd2Reader:
             chunks=chunks,
             shard_shape=shard_shape,
             position=position,
+            use_dask=use_dask,
+            progress_callback=progress_callback,
             include_binaries=include_binaries,
             include_well_info=include_well_info,
             overwrite=overwrite,

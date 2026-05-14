@@ -12,6 +12,7 @@ Dependency management is defined in `pyproject.toml`.
 - Optional runtime extras:
   - `results` (`h5py`, `pandas`)
   - `commonff` (`Pillow`, `tifffile`, `zarr`)
+  - `ome-zarr` (`dask`, `ome-zarr`, `zarr`, `fsspec`, `s3fs`)
   - `legacy` (`imagecodecs`)
 - Full dev environment: `.[dev]` (runtime extras + docs/test/typecheck/build tooling)
 

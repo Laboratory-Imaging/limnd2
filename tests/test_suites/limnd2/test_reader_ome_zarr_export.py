@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 import pytest
 
 import limnd2
-from limnd2.export_ome_zarr import _frame_lookup
+from limnd2.export_ome_zarr import (
+    _cleanup_output_root,
+    _frame_lookup,
+    _is_s3_path,
+    _open_output_root,
+    _resolve_use_dask,
+    _validate_s3_path,
+)
 
 
 FORBIDDEN_ATTRS = ("limnd2", "limnd2_position")
@@ -114,11 +122,28 @@ def _label_group_meta(group_path: Path) -> tuple[dict[str, Any], str]:
     return ome, multiscale["datasets"][0]["path"]
 
 
+def _dataset_paths(group_path: Path) -> list[str]:
+    meta = _load_json(group_path / "zarr.json")
+    return [
+        str(dataset["path"])
+        for dataset in meta["attributes"]["ome"]["multiscales"][0]["datasets"]
+    ]
+
+
+def _assert_numeric_level_paths(group_path: Path) -> None:
+    paths = _dataset_paths(group_path)
+    assert paths == [str(index) for index in range(len(paths))]
+
+
 def _level0_label_array(image_group_path: Path, label_name: str) -> Any:
     zarr = _zarr()
     label_group = image_group_path / "labels" / label_name
     _ome, level0_path = _label_group_meta(label_group)
     return zarr.open_array(str(label_group / level0_path), mode="r")
+
+
+def _label_group_json(image_group_path: Path, label_name: str) -> dict[str, Any]:
+    return _load_json(image_group_path / "labels" / label_name / "zarr.json")
 
 
 def _image_groups_for_export(zarr_path: Path) -> list[Path]:
@@ -206,6 +231,7 @@ def test_to_ome_zarr_single_position_rgb_roundtrip(
         ome = root_meta["attributes"]["ome"]
         assert "multiscales" in ome
         assert not (dest / "OME").exists()
+        _assert_numeric_level_paths(dest)
 
         arr = _level0_array(dest)
         assert tuple(arr.shape) == (nt, nc, nz, ny, nx)
@@ -251,6 +277,7 @@ def test_to_ome_zarr_multi_position_layout_and_pixels(
         assert len(child_groups) == nm
 
         first_group = dest / child_groups[0]
+        _assert_numeric_level_paths(first_group)
         arr = _level0_array(first_group)
         assert tuple(arr.shape) == (nt, nc, nz, ny, nx)
         assert np.dtype(arr.dtype) == np.dtype(nd2_reader.imageAttributes.dtype)
@@ -284,6 +311,299 @@ def test_to_ome_zarr_selected_position_at_root(
         _assert_roundtrip_plane(nd2_reader, dest, position_index=3)
 
     _assert_no_custom_attrs(dest)
+
+
+def test_to_ome_zarr_selected_position_at_root_with_dask(
+    multipoint_nd2_path: Path, tmp_path: Path
+) -> None:
+    dest = tmp_path / "multipoint_position_3_dask.ome.zarr"
+
+    with limnd2.Nd2Reader(multipoint_nd2_path) as nd2_reader:
+        nt, nm, nz, ny, nx, nc = nd2_reader.imageDataShape
+        assert nm > 1
+
+        nd2_reader.to_ome_zarr(dest, position=3, use_dask=True)
+
+        root_meta = _load_json(dest / "zarr.json")
+        ome = root_meta["attributes"]["ome"]
+        assert "multiscales" in ome
+        assert "plate" not in ome
+        assert not (dest / "OME").exists()
+
+        arr = _level0_array(dest)
+        assert tuple(arr.shape) == (nt, nc, nz, ny, nx)
+        assert np.dtype(arr.dtype) == np.dtype(nd2_reader.imageAttributes.dtype)
+
+        _assert_roundtrip_plane(nd2_reader, dest, position_index=3)
+
+    _assert_no_custom_attrs(dest)
+
+
+def test_to_ome_zarr_use_dask_auto_threshold() -> None:
+    small = _resolve_use_dask(
+        use_dask=None,
+        shape=(1, 1, 1, 512, 512),
+        dtype=np.dtype(np.uint16),
+    )
+    large = _resolve_use_dask(
+        use_dask=None,
+        shape=(1, 1, 235, 6000, 6000),
+        dtype=np.dtype(np.uint16),
+    )
+    assert small is False
+    assert large is True
+    assert _resolve_use_dask(
+        use_dask=True,
+        shape=(1, 1, 1, 1, 1),
+        dtype=np.dtype(np.uint16),
+    )
+    assert not _resolve_use_dask(
+        use_dask=False,
+        shape=(1, 1, 235, 6000, 6000),
+        dtype=np.dtype(np.uint16),
+    )
+
+
+def test_s3_path_detection_and_validation() -> None:
+    assert _is_s3_path("s3://bucket/prefix/out.ome.zarr")
+    assert not _is_s3_path(Path(r"C:\tmp\out.ome.zarr"))
+
+    _validate_s3_path("s3://bucket/prefix/out.ome.zarr")
+    with pytest.raises(ValueError):
+        _validate_s3_path("s3://bucket")
+    with pytest.raises(ValueError):
+        _validate_s3_path("s3://bucket/")
+
+
+class _FakeFs:
+    def __init__(self, exists_result: bool) -> None:
+        self.exists_result = exists_result
+        self.exists_calls: list[str] = []
+        self.rm_calls: list[tuple[str, bool]] = []
+
+    def exists(self, path: str) -> bool:
+        self.exists_calls.append(path)
+        return self.exists_result
+
+    def rm(self, path: str, recursive: bool = False) -> None:
+        self.rm_calls.append((path, recursive))
+
+
+class _FakeStore:
+    def __init__(self, path: str, fs: _FakeFs) -> None:
+        self.path = path
+        self.fs = fs
+
+
+def test_open_output_root_local_path_uses_filesystem(tmp_path: Path) -> None:
+    created_group = object()
+    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    def open_group(*args: Any, **kwargs: Any) -> Any:
+        calls.append((args, kwargs))
+        return created_group
+
+    fake_zarr = SimpleNamespace(open_group=open_group)
+    out = tmp_path / "local.ome.zarr"
+
+    root, returned_path = _open_output_root(
+        zarr=fake_zarr,
+        path=out,
+        overwrite=False,
+    )
+
+    assert root is created_group
+    assert returned_path == out
+    assert calls == [(((str(out),), {"mode": "w", "zarr_format": 3}))]
+
+
+def test_open_output_root_s3_existing_without_overwrite_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fs = _FakeFs(exists_result=True)
+    store = _FakeStore("/bucket/prefix/out.ome.zarr", fs)
+
+    class _FakeFsspecStore:
+        @staticmethod
+        def from_url(url: str, read_only: bool = False) -> _FakeStore:
+            assert url == "s3://bucket/prefix/out.ome.zarr"
+            assert read_only is False
+            return store
+
+    def open_group(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("open_group should not be called when overwrite is False")
+
+    fake_zarr = SimpleNamespace(
+        open_group=open_group,
+        storage=SimpleNamespace(FsspecStore=_FakeFsspecStore),
+    )
+    monkeypatch.setattr(
+        "fsspec.core.url_to_fs",
+        lambda url: (fs, "/bucket/prefix/out.ome.zarr"),
+    )
+
+    with pytest.raises(FileExistsError):
+        _open_output_root(
+            zarr=fake_zarr,
+            path="s3://bucket/prefix/out.ome.zarr",
+            overwrite=False,
+        )
+
+    assert fs.exists_calls == ["/bucket/prefix/out.ome.zarr"]
+    assert fs.rm_calls == []
+
+
+def test_open_output_root_s3_overwrite_deletes_prefix_first(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fs = _FakeFs(exists_result=True)
+    store = _FakeStore("/bucket/prefix/out.ome.zarr", fs)
+    created_group = object()
+    open_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+
+    class _FakeFsspecStore:
+        @staticmethod
+        def from_url(url: str, read_only: bool = False) -> _FakeStore:
+            assert url == "s3://bucket/prefix/out.ome.zarr"
+            assert read_only is False
+            return store
+
+    def open_group(*args: Any, **kwargs: Any) -> Any:
+        open_calls.append((args, kwargs))
+        return created_group
+
+    fake_zarr = SimpleNamespace(
+        open_group=open_group,
+        storage=SimpleNamespace(FsspecStore=_FakeFsspecStore),
+    )
+    monkeypatch.setattr(
+        "fsspec.core.url_to_fs",
+        lambda url: (fs, "/bucket/prefix/out.ome.zarr"),
+    )
+
+    root, returned_path = _open_output_root(
+        zarr=fake_zarr,
+        path="s3://bucket/prefix/out.ome.zarr",
+        overwrite=True,
+    )
+
+    assert root is created_group
+    assert returned_path == "s3://bucket/prefix/out.ome.zarr"
+    assert fs.exists_calls == ["/bucket/prefix/out.ome.zarr"]
+    assert fs.rm_calls == [("/bucket/prefix/out.ome.zarr", True)]
+    assert open_calls == [(
+        tuple(),
+        {"store": store, "mode": "w", "zarr_format": 3},
+    )]
+
+
+def test_cleanup_output_root_s3_removes_existing_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fs = _FakeFs(exists_result=True)
+    monkeypatch.setattr(
+        "fsspec.core.url_to_fs",
+        lambda url: (fs, "/bucket/prefix/out.ome.zarr"),
+    )
+
+    _cleanup_output_root("s3://bucket/prefix/out.ome.zarr")
+
+    assert fs.exists_calls == ["/bucket/prefix/out.ome.zarr"]
+    assert fs.rm_calls == [("/bucket/prefix/out.ome.zarr", True)]
+
+
+def test_to_ome_zarr_failure_cleans_partial_local_output(
+    rgb_nd2_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dest = tmp_path / "failed.ome.zarr"
+
+    def fail_write(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("limnd2.export_ome_zarr._write_image_numeric_levels", fail_write)
+
+    with limnd2.Nd2Reader(rgb_nd2_path) as nd2_reader:
+        with pytest.raises(RuntimeError, match="boom"):
+            nd2_reader.to_ome_zarr(dest)
+
+    assert not dest.exists()
+
+
+def test_to_ome_zarr_progress_callback_includes_image_and_label_phases(
+    binary_mask_nd2_path: Path, tmp_path: Path
+) -> None:
+    dest = tmp_path / "progress_callback.ome.zarr"
+    events: list[tuple[int, int, str]] = []
+
+    def progress_callback(current: int, total: int, phase: str) -> None:
+        events.append((current, total, phase))
+
+    with limnd2.Nd2Reader(binary_mask_nd2_path) as nd2_reader:
+        nd2_reader.to_ome_zarr(
+            dest,
+            include_binaries=True,
+            progress_callback=progress_callback,
+        )
+
+    assert events
+    currents = [current for current, _total, _phase in events]
+    totals = [total for _current, total, _phase in events]
+    phases = {phase for _current, _total, phase in events}
+    assert currents == sorted(currents)
+    assert len(set(totals)) == 1
+    assert events[-1][0] == events[-1][1]
+    assert "read-image-frame" in phases
+    assert "write-image-group" in phases
+    assert "read-label-frame" in phases
+    assert "write-label-group" in phases
+
+
+def test_to_ome_zarr_progress_callback_is_monotonic_with_dask(
+    rgb_nd2_path: Path, tmp_path: Path
+) -> None:
+    dest = tmp_path / "progress_callback_dask.ome.zarr"
+    events: list[tuple[int, int, str]] = []
+
+    def progress_callback(current: int, total: int, phase: str) -> None:
+        events.append((current, total, phase))
+
+    with limnd2.Nd2Reader(rgb_nd2_path) as nd2_reader:
+        nd2_reader.to_ome_zarr(
+            dest,
+            use_dask=True,
+            progress_callback=progress_callback,
+        )
+
+    assert events
+    currents = [current for current, _total, _phase in events]
+    assert currents == sorted(currents)
+    assert events[-1][0] == events[-1][1]
+
+
+def test_to_ome_zarr_ignores_progress_callback_errors(
+    rgb_nd2_path: Path, tmp_path: Path
+) -> None:
+    dest = tmp_path / "progress_callback_error.ome.zarr"
+    calls = 0
+
+    def progress_callback(current: int, total: int, phase: str) -> None:
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("progress callback failure")
+
+    with limnd2.Nd2Reader(rgb_nd2_path) as nd2_reader:
+        nd2_reader.to_ome_zarr(
+            dest,
+            progress_callback=progress_callback,
+        )
+
+        arr = _level0_array(dest)
+        nt, _nm, nz, ny, nx, nc = nd2_reader.imageDataShape
+        assert tuple(arr.shape) == (nt, nc, nz, ny, nx)
+
+    assert calls >= 1
 
 
 def test_to_ome_zarr_float_dtype_and_pixels(
@@ -347,10 +667,14 @@ def test_to_ome_zarr_binary_mask_labels(
 
         label_names = _label_names_for_image_group(dest)
         assert len(label_names) == len(nd2_reader.binaryRasterMetadata)
+        _assert_numeric_level_paths(dest / "labels" / label_names[0])
 
         arr = _level0_label_array(dest, label_names[0])
         values = set(np.unique(np.asarray(arr)).tolist())
         assert values == {0, 1}
+        label_meta = _label_group_json(dest, label_names[0])
+        image_label = label_meta["attributes"]["ome"]["image-label"]
+        assert "colors" not in image_label
 
         _assert_roundtrip_label_plane(nd2_reader, dest, position_index=0)
 
@@ -415,6 +739,9 @@ def test_to_ome_zarr_integer_labels_from_results(
         arr = _level0_label_array(dest, label_names[0])
         values = set(np.unique(np.asarray(arr[0, 0, :, :])).tolist())
         assert any(value > 1 for value in values)
+        label_meta = _label_group_json(dest, label_names[0])
+        image_label = label_meta["attributes"]["ome"]["image-label"]
+        assert "colors" not in image_label
 
         _assert_roundtrip_label_plane(nd2_reader, dest, position_index=0)
 

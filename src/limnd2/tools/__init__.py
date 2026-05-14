@@ -10,6 +10,8 @@ __all__ = [
     "LimImageSource",
     "sequence_export_cli",
     "frame_export_cli",
+    "ome_zarr_exporter_gui",
+    "ome_zarr_export_cli",
     "limnd2_index",
     "get_file_dimensions_as_json",
     "plan_sequence_as_json",
@@ -20,4 +22,6 @@ from .conversion.LimConvertFile import convert_file_to_nd2_cli, convert_file_to_
 from .conversion.LimImageSource import LimImageSource, get_file_dimensions_as_json
 from .conversion.LimPlanSequence import plan_sequence_as_json
 from .export import sequence_export_cli, frame_export_cli
+from .ome_zarr_export_cli import main as ome_zarr_export_cli
+from .ome_zarr_exporter import ome_zarr_exporter_gui
 from .index import main as limnd2_index

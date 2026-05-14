@@ -48,8 +48,14 @@ commonff = [                    # shared file-format deps
     "Pillow",
     "tifffile",
     "ome_types",
+    "zarr>=3",
+]
+ome-zarr = [                    # OME-Zarr export / tools
+    "dask",
     "ome-zarr>=0.16",
     "zarr>=3",
+    "fsspec",
+    "s3fs",
 ]
 czi = [                         # CZI reader deps
     "czifile",
@@ -97,6 +103,8 @@ limnd2-get-image-dimensions = "limnd2.tools:get_file_dimensions_as_json"
 limnd2-plan-sequence = "limnd2.tools:plan_sequence_as_json"
 limnd2-sequence-export = "limnd2.tools:sequence_export_cli"
 limnd2-frame-export = "limnd2.tools:frame_export_cli"
+limnd2-ome-zarr-exporter = "limnd2.tools.ome_zarr_exporter:main"
+limnd2-ome-zarr-export = "limnd2.tools.ome_zarr_export_cli:main"
 
 [tool.setuptools.package-dir]
 "" = "src"

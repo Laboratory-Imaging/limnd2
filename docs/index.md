@@ -24,9 +24,10 @@ Base `limnd2` requires:
 Optional extras enable specific workflows:
 
 - `limnd2[results]` - load analysis tables from `.h5` files (`h5py`, `pandas`)
-- `limnd2[commonff]` - shared image format deps (`Pillow`, `tifffile`, `ome-zarr`, `zarr`)
+- `limnd2[commonff]` - shared image format deps (`Pillow`, `tifffile`, `zarr`)
+- `limnd2[ome-zarr]` - OME-Zarr export and tools (`dask`, `ome-zarr`, `zarr`, `fsspec`, `s3fs`)
 - `limnd2[legacy]` - read legacy JPEG2000 ND2 (`imagecodecs`)
-- `limnd2[all]` - all runtime extras
+- `limnd2[all]` - main runtime extras (does not include `ome-zarr` yet)
 
 Install examples from our package index:
 
@@ -34,6 +35,7 @@ Install examples from our package index:
 pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
 pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
 pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[ome-zarr]"
 pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
 ```
 
@@ -41,6 +43,7 @@ pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
 uv pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
 uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
 uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
+uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[ome-zarr]"
 uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
 ```
 
@@ -85,6 +88,42 @@ This project uses `pyproject.toml` for dependency management and can be installe
     pip install -e ".[dev]"
     ```
 ## Usage
+
+### OME-Zarr export
+
+Install the extra:
+
+```sh
+pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[ome-zarr]"
+```
+
+Python API:
+
+```python
+import limnd2
+
+with limnd2.Nd2Reader("file.nd2") as reader:
+    reader.to_ome_zarr(
+        "file.ome.zarr",
+        include_binaries=True,
+        use_dask=True,
+        overwrite=True,
+    )
+```
+
+CLI:
+
+```sh
+limnd2-ome-zarr-export file.nd2
+limnd2-ome-zarr-export file.nd2 --output-folder .\exports
+limnd2-ome-zarr-export file.nd2 --s3-prefix s3://my-bucket/ome-zarr
+```
+
+GUI:
+
+```sh
+limnd2-ome-zarr-exporter
+```
 
 ### Reading `.nd2` files
 
