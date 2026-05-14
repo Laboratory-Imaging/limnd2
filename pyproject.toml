@@ -175,6 +175,6 @@ explicit = true
 
 [[tool.uv.index]]
 name = "aws-pypi"
-url = "https://pypi.lim-dev.xyz/simple"
-publish-url = "https://pypi.lim-dev.xyz"
+url = "https://pypi.laboratory-imaging.com/simple"
+publish-url = "https://pypi.laboratory-imaging.com"
 explicit = true

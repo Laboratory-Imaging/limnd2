@@ -32,19 +32,19 @@ Optional extras enable specific workflows:
 Install examples from our package index:
 
 ```sh
-pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[ome-zarr]"
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple limnd2
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[results]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff,legacy]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[ome-zarr]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[all]"
 ```
 
 ```sh
-uv pip install --index-url https://pypi.lim-dev.xyz/simple limnd2
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[results]"
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[commonff,legacy]"
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[ome-zarr]"
-uv pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[all]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple limnd2
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[results]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff,legacy]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[ome-zarr]"
+uv pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[all]"
 ```
 
 Quick install check:
@@ -94,7 +94,7 @@ This project uses `pyproject.toml` for dependency management and can be installe
 Install the extra:
 
 ```sh
-pip install --index-url https://pypi.lim-dev.xyz/simple "limnd2[ome-zarr]"
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[ome-zarr]"
 ```
 
 Python API:

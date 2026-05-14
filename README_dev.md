@@ -121,7 +121,7 @@ The project is configured with multiple indexes in `pyproject.toml`:
 
 - `pypi`: https://pypi.org
 - `local`: http://gaexec:9500
-- `aws-pypi`: https://pypi.lim-dev.xyz
+- `aws-pypi`: https://pypi.laboratory-imaging.com
 
 Using `uv publish`:
 
@@ -130,7 +130,7 @@ Using `uv publish`:
 uv publish --publish-url http://gaexec:9500 --trusted-publishing never --username "-" --password "-" dist/*
 
 # aws index
-uv publish --publish-url https://pypi.lim-dev.xyz --username "your-username" --password "your-password" dist/*
+uv publish --publish-url https://pypi.laboratory-imaging.com --username "your-username" --password "your-password" dist/*
 ```
 
 Using `twine`:
@@ -157,7 +157,7 @@ Workflow file: `.github/workflows/publish_aws_pypi.yml`
 When enabled and run, workflow builds `dist/*` and publishes with:
 
 ```sh
-uv publish --publish-url https://pypi.lim-dev.xyz --username "$AWS_PYPI_USERNAME" --password "$AWS_PYPI_PASSWORD" dist/*
+uv publish --publish-url https://pypi.laboratory-imaging.com --username "$AWS_PYPI_USERNAME" --password "$AWS_PYPI_PASSWORD" dist/*
 ```
 
 ## Documentation
