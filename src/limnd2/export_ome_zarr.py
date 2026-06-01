@@ -1520,6 +1520,27 @@ def _write_pyramid_numeric_levels(
                 zarr_array_kwargs_copy[key] = value
 
         if not writer.USE_DASK_ARRAY_KWARGS:
+            if shards_opt is not None:
+                create_kwargs: dict[str, Any] = {}
+                for key in ("dimension_names", "chunks", "shards", "serializer"):
+                    if key in zarr_array_kwargs_copy:
+                        create_kwargs[key] = zarr_array_kwargs_copy[key]
+                target = group.create_array(
+                    str(idx),
+                    shape=level_image.shape,
+                    dtype=np.dtype(level_image.dtype),
+                    **create_kwargs,
+                )
+                delayed.append(
+                    da.store(
+                        level_image,
+                        target,
+                        lock=True,
+                        compute=False,
+                    )
+                )
+                datasets.append({"path": str(idx)})
+                continue
             if "chunks" in zarr_array_kwargs_copy:
                 level_image = level_image.rechunk(zarr_array_kwargs_copy["chunks"])
                 del zarr_array_kwargs_copy["chunks"]
