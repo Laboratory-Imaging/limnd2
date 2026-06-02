@@ -38,6 +38,7 @@ from .experiment import (
     WellplateFrameInfo,
     ExperimentZStackLoop
 )
+from .export import ExportProgressCallback
 from .file_modern import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
@@ -579,7 +580,7 @@ class Nd2Reader:
         shard_shape: tuple[int, int, int, int, int] | None = None,
         position: int | None = None,
         use_dask: bool | None = None,
-        progress_callback: Callable[[int, int, str], None] | None = None,
+        progress_callback: ExportProgressCallback | None = None,
         include_binaries: bool = False,
         include_well_info: bool = True,
         overwrite: bool = False,
@@ -606,6 +607,86 @@ class Nd2Reader:
             include_well_info=include_well_info,
             overwrite=overwrite,
             # include_ome_xml=include_ome_xml,
+        )
+
+    def to_ome_types(
+        self,
+        *,
+        include_unstructured: bool = True,
+        tiff_file_name: str | None = None,
+    ) -> Any:
+        """
+        Convert this ND2 file metadata into an ``ome_types`` OME model.
+
+        This is a metadata-only conversion used as the first step towards an
+        OME-TIFF export path.
+        """
+        from .export_ome_tiff import to_ome_types
+
+        return to_ome_types(
+            self,
+            include_unstructured=include_unstructured,
+            tiff_file_name=tiff_file_name,
+        )
+
+    def to_ome_xml(
+        self,
+        *,
+        include_unstructured: bool = True,
+        tiff_file_name: str | None = None,
+        exclude_defaults: bool = False,
+        exclude_unset: bool = True,
+        indent: int = 2,
+        include_namespace: bool | None = None,
+        include_schema_location: bool = True,
+        canonicalize: bool = False,
+        validate: bool = False,
+    ) -> str:
+        """
+        Convert this ND2 file metadata into OME-XML.
+
+        This serializes the ``ome_types`` model produced by ``to_ome_types``.
+        """
+        from .export_ome_tiff import to_ome_xml
+
+        return to_ome_xml(
+            self,
+            include_unstructured=include_unstructured,
+            tiff_file_name=tiff_file_name,
+            exclude_defaults=exclude_defaults,
+            exclude_unset=exclude_unset,
+            indent=indent,
+            include_namespace=include_namespace,
+            include_schema_location=include_schema_location,
+            canonicalize=canonicalize,
+            validate=validate,
+        )
+
+    def to_ome_tiff(
+        self,
+        path: str | Path,
+        *,
+        include_unstructured: bool = True,
+        bigtiff: bool | None = None,
+        compression: str | None = None,
+        overwrite: bool = False,
+        progress_callback: ExportProgressCallback | None = None,
+    ) -> Path:
+        """
+        Export this ND2 file to a single OME-TIFF file.
+
+        Multipoint ND2 data is exported as multiple OME images / TIFF series.
+        """
+        from .export_ome_tiff import to_ome_tiff
+
+        return to_ome_tiff(
+            self,
+            path,
+            include_unstructured=include_unstructured,
+            bigtiff=bigtiff,
+            compression=compression,
+            overwrite=overwrite,
+            progress_callback=progress_callback,
         )
 
     @functools.cached_property

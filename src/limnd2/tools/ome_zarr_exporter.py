@@ -707,21 +707,23 @@ class OmeZarrExporterApp:
                 destinations.append(f"{s3_prefix}/{name}")
         return destinations
 
-    def _progress_logger(self, label: str) -> Callable[[int, int, str], None]:
+    def _progress_logger(self, label: str) -> Callable[[int, int, str | Path | None, str], None]:
         state = {"last_bucket": -1, "last_phase": ""}
 
-        def callback(current: int, total: int, phase: str) -> None:
+        def callback(
+            current: int, total: int, file: str | Path | None, message: str
+        ) -> None:
             if total <= 0:
                 return
             percent = (current * 100.0) / total
             bucket = min(100, int(percent // 10) * 10)
             if current == total:
                 bucket = 100
-            if bucket == state["last_bucket"] and phase == state["last_phase"] and current != total:
+            if bucket == state["last_bucket"] and message == state["last_phase"] and current != total:
                 return
             state["last_bucket"] = bucket
-            state["last_phase"] = phase
-            self._log(f"[{label}] {percent:5.1f}% ({current}/{total}) phase={phase}")
+            state["last_phase"] = message
+            self._log(f"[{label}] {percent:5.1f}% ({current}/{total}) file={file} message={message}")
 
         return callback
 

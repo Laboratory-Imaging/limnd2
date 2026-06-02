@@ -46,18 +46,20 @@ def _upload_local_ome_zarr(local_path: Path, dest_uri: str) -> None:
 def _progress_logger() -> callable:
     state = {"last_bucket": -1, "last_phase": ""}
 
-    def callback(current: int, total: int, phase: str) -> None:
+    def callback(
+        current: int, total: int, file: str | Path | None, message: str
+    ) -> None:
         if total <= 0:
             return
         percent = (current * 100.0) / total
         bucket = min(100, int(percent // 10) * 10)
         if current == total:
             bucket = 100
-        if bucket == state["last_bucket"] and phase == state["last_phase"] and current != total:
+        if bucket == state["last_bucket"] and message == state["last_phase"] and current != total:
             return
         state["last_bucket"] = bucket
-        state["last_phase"] = phase
-        _log(f"Progress: {percent:5.1f}% ({current}/{total}) phase={phase}")
+        state["last_phase"] = message
+        _log(f"Progress: {percent:5.1f}% ({current}/{total}) file={file} message={message}")
 
     return callback
 

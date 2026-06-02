@@ -535,10 +535,12 @@ def test_to_ome_zarr_progress_callback_includes_image_and_label_phases(
     binary_mask_nd2_path: Path, tmp_path: Path
 ) -> None:
     dest = tmp_path / "progress_callback.ome.zarr"
-    events: list[tuple[int, int, str]] = []
+    events: list[tuple[int, int, str | Path | None, str]] = []
 
-    def progress_callback(current: int, total: int, phase: str) -> None:
-        events.append((current, total, phase))
+    def progress_callback(
+        current: int, total: int, file: str | Path | None, message: str
+    ) -> None:
+        events.append((current, total, file, message))
 
     with limnd2.Nd2Reader(binary_mask_nd2_path) as nd2_reader:
         nd2_reader.to_ome_zarr(
@@ -548,26 +550,30 @@ def test_to_ome_zarr_progress_callback_includes_image_and_label_phases(
         )
 
     assert events
-    currents = [current for current, _total, _phase in events]
-    totals = [total for _current, total, _phase in events]
-    phases = {phase for _current, _total, phase in events}
+    currents = [current for current, _total, _file, _message in events]
+    totals = [total for _current, total, _file, _message in events]
+    messages = {message for _current, _total, _file, message in events}
     assert currents == sorted(currents)
     assert len(set(totals)) == 1
     assert events[-1][0] == events[-1][1]
-    assert "read-image-frame" in phases
-    assert "write-image-group" in phases
-    assert "read-label-frame" in phases
-    assert "write-label-group" in phases
+    assert all(file == dest for _current, _total, file, _message in events)
+    assert any("image frame" in message.lower() for message in messages)
+    assert any("image group" in message.lower() for message in messages)
+    assert any("label frame" in message.lower() for message in messages)
+    assert any("label group" in message.lower() for message in messages)
+    assert "Finished exporting OME-Zarr" in events[-1][3]
 
 
 def test_to_ome_zarr_progress_callback_is_monotonic_with_dask(
     rgb_nd2_path: Path, tmp_path: Path
 ) -> None:
     dest = tmp_path / "progress_callback_dask.ome.zarr"
-    events: list[tuple[int, int, str]] = []
+    events: list[tuple[int, int, str | Path | None, str]] = []
 
-    def progress_callback(current: int, total: int, phase: str) -> None:
-        events.append((current, total, phase))
+    def progress_callback(
+        current: int, total: int, file: str | Path | None, message: str
+    ) -> None:
+        events.append((current, total, file, message))
 
     with limnd2.Nd2Reader(rgb_nd2_path) as nd2_reader:
         nd2_reader.to_ome_zarr(
@@ -577,7 +583,7 @@ def test_to_ome_zarr_progress_callback_is_monotonic_with_dask(
         )
 
     assert events
-    currents = [current for current, _total, _phase in events]
+    currents = [current for current, _total, _file, _message in events]
     assert currents == sorted(currents)
     assert events[-1][0] == events[-1][1]
 
@@ -588,7 +594,9 @@ def test_to_ome_zarr_ignores_progress_callback_errors(
     dest = tmp_path / "progress_callback_error.ome.zarr"
     calls = 0
 
-    def progress_callback(current: int, total: int, phase: str) -> None:
+    def progress_callback(
+        current: int, total: int, file: str | Path | None, message: str
+    ) -> None:
         nonlocal calls
         calls += 1
         raise RuntimeError("progress callback failure")

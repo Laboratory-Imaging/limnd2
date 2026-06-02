@@ -28,12 +28,20 @@ limnd2-sequence-export <nd2file> [arguments]
 
     Output bit depth (`-1`, `8`, `16`).
 
+- `--overwrite`
+
+    Overwrite existing output files.
+
 - `--progress-to-json`
 
-    Print progress in JSON format.
+    Print legacy JSON progress to stdout for CLI integration.
 
 ## Example
 
 ```sh
 limnd2-sequence-export ./input.nd2 --folder ./out --prefix exp1 --bits 16
+```
+
+```sh
+limnd2-sequence-export ./input.nd2 --folder ./out --prefix exp1 --bits 8 --overwrite
 ```

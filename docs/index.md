@@ -24,7 +24,7 @@ Base `limnd2` requires:
 Optional extras enable specific workflows:
 
 - `limnd2[results]` - load analysis tables from `.h5` files (`h5py`, `pandas`)
-- `limnd2[commonff]` - shared image format deps (`Pillow`, `tifffile`, `zarr`)
+- `limnd2[commonff]` - shared image format deps for TIFF/OME-TIFF/PNG/JPEG workflows (`Pillow`, `tifffile`)
 - `limnd2[ome-zarr]` - OME-Zarr export and tools (`dask`, `ome-zarr`, `zarr`, `fsspec`, `s3fs`)
 - `limnd2[legacy]` - read legacy JPEG2000 ND2 (`imagecodecs`)
 - `limnd2[all]` - main runtime extras (does not include `ome-zarr` yet)
@@ -124,6 +124,36 @@ GUI:
 ```sh
 limnd2-ome-zarr-exporter
 ```
+
+### OME-TIFF export
+
+Install the common file-format extra:
+
+```sh
+pip install --index-url https://pypi.laboratory-imaging.com/simple "limnd2[commonff]"
+```
+
+Python API:
+
+```python
+import limnd2
+
+with limnd2.Nd2Reader("file.nd2") as reader:
+    reader.to_ome_tiff(
+        "file.ome.tif",
+        overwrite=True,
+    )
+```
+
+Metadata-only export:
+
+```python
+with limnd2.Nd2Reader("file.nd2") as reader:
+    ome_model = reader.to_ome_types(tiff_file_name="file.ome.tif")
+    ome_xml = reader.to_ome_xml(tiff_file_name="file.ome.tif")
+```
+
+Multipoint ND2 files are exported as multiple OME images/series inside one OME-TIFF.
 
 ### Reading `.nd2` files
 

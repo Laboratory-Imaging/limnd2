@@ -41,6 +41,29 @@ def test_frame_export_cli(tmp_path: Path, sample_nd2_path: Path, monkeypatch: py
         assert Path(payload["file"]).exists()
 
 
+def test_frame_export_cli_overwrite(tmp_path: Path, sample_nd2_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    output_path = tmp_path / "frame_overwrite_cli.tiff"
+    output_path.write_bytes(b"existing")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "frame_export",
+            str(sample_nd2_path),
+            "--frame-index",
+            "0",
+            "--output-path",
+            str(output_path),
+            "--overwrite",
+        ],
+    )
+
+    frame_export_cli()
+
+    assert output_path.exists()
+    assert output_path.stat().st_size > len(b"existing")
+
 
 def test_sequence_export_cli(tmp_path: Path, sample_nd2_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
     export_dir = tmp_path / "series_cli"
@@ -73,3 +96,30 @@ def test_sequence_export_cli(tmp_path: Path, sample_nd2_path: Path, monkeypatch:
         assert len(lines) == len(generated)
         for entry in lines:
             assert Path(entry["file"]).exists()
+
+
+def test_sequence_export_cli_overwrite(tmp_path: Path, sample_nd2_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    export_dir = tmp_path / "series_cli_overwrite"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    (export_dir / "cli_t0.tiff").write_bytes(b"existing")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "sequence_export",
+            str(sample_nd2_path),
+            "--folder",
+            str(export_dir),
+            "--prefix",
+            "cli",
+            "--bits",
+            "8",
+            "--overwrite",
+        ],
+    )
+
+    sequence_export_cli()
+
+    generated = sorted(export_dir.glob("*.tiff"))
+    assert generated

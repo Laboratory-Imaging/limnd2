@@ -7,7 +7,7 @@ import shutil
 import threading
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -16,6 +16,7 @@ from .base import (
     NameNotInChunkmapError,
     UnexpectedCallError,
 )
+from .export import ExportProgressCallback, ExportProgressReporter
 
 if TYPE_CHECKING:
     from .nd2 import Nd2Reader
@@ -33,25 +34,49 @@ _OME_ZARR_EXTRA_HINT = (
 class _ProgressTracker:
     def __init__(
         self,
-        callback: Callable[[int, int, str], None] | None,
+        callback: ExportProgressCallback | None,
         total: int,
+        output_target: str | Path,
     ) -> None:
-        self._callback = callback
+        self._reporter = ExportProgressReporter(callback)
         self._total = total
         self._completed = 0
+        self._output_target = output_target
         self._lock = threading.Lock()
 
-    def advance(self, phase: str, step: int = 1) -> None:
-        if self._callback is None:
-            return
+    def start(self, message: str | None = None) -> None:
+        self._reporter.emit(
+            0,
+            self._total,
+            self._output_target,
+            message if message is not None else _phase_message("start-export"),
+            phase="start-export",
+        )
+
+    def advance(self, phase: str, step: int = 1, message: str | None = None) -> None:
         with self._lock:
             self._completed += step
             current = self._completed
             total = self._total
-            try:
-                self._callback(current, total, phase)
-            except Exception:
-                self._callback = None
+        self._reporter.emit(
+            current,
+            total,
+            self._output_target,
+            message if message is not None else _phase_message(phase),
+            phase=phase,
+        )
+
+
+def _phase_message(phase: str) -> str:
+    messages = {
+        "start-export": "Starting OME-Zarr export",
+        "read-image-frame": "Reading an image frame for OME-Zarr export",
+        "write-image-group": "Finished writing an OME-Zarr image group",
+        "read-label-frame": "Reading a label frame for OME-Zarr export",
+        "write-label-group": "Finished writing an OME-Zarr label group",
+        "finalize-export": "Finished exporting OME-Zarr",
+    }
+    return messages.get(phase, phase)
 
 
 def _missing_ome_zarr_dependency(package: str, *, context: str) -> ImportError:
@@ -132,7 +157,7 @@ def to_ome_zarr(
     shard_shape: tuple[int, int, int, int, int] | None = None,
     position: int | None = None,
     use_dask: bool | None = None,
-    progress_callback: Callable[[int, int, str], None] | None = None,
+    progress_callback: ExportProgressCallback | None = None,
     include_binaries: bool = False,
     include_well_info: bool = True,
     overwrite: bool = False,
@@ -220,7 +245,9 @@ def to_ome_zarr(
                 label_count=len(label_infos),
                 include_binaries=include_binaries,
             ),
+            out_path,
         )
+        progress.start(message=f"Starting OME-Zarr export to {out_path}")
         storage_options = _storage_options_for_levels(
             shape=(nt, nc, nz, ny, nx),
             chunks=chunks,
@@ -372,12 +399,16 @@ def to_ome_zarr(
                         progress=progress,
                         label_infos=label_infos,
                     )
+        progress.advance(
+            "finalize-export",
+            step=0,
+            message=f"Finished exporting OME-Zarr to {out_path}",
+        )
+        return out_path
     except Exception:
         with suppress(Exception):
             _cleanup_output_root(out_path)
         raise
-
-    return out_path
 
 
 def _is_s3_path(path: str | Path) -> bool:

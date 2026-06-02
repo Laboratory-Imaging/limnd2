@@ -93,6 +93,7 @@ dev = [                         # tools for dev
 
     "limnd2[all]",
     "limnd2[stitch]",           # stitch tools are in development -> not included in [all]
+    "limnd2[ome-zarr]",         # ome-zarr tools are in development -> not included in [all]
 ]
 
 [project.scripts]
