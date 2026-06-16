@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections, enum, functools, json, re
 from typing_extensions import Literal
 import numpy as np
+from .attributes import ImageAttributes
 from dataclasses import dataclass, asdict
 from .attributes import full_res_size
 from .variant import decode_var
@@ -95,8 +96,8 @@ class BinaryRleMetadata(collections.UserList):
 class BinaryRasterMetadataItem:
     binWidth: int = 0
     binHeight: int = 0
-    binTileWidth: int = 0
-    binTileHeight: int = 0
+    binTileWidth: int = 1024
+    binTileHeight: int = 1024
     binCompressionId: str = "zlib"
     binCompressionLevel: int = 6
     binBitdepth: int = 32
@@ -213,3 +214,9 @@ class BinaryRasterMetadata(collections.UserList):
             data = data.tobytes()
         decoded = json.loads(data.decode('utf-8'))
         return BinaryRasterMetadata(decoded)
+
+class BinaryRasterMetadataFactory(BinaryRasterMetadata):
+    def __init__(self, iterable, /, imageAttributes: ImageAttributes):
+        assert 0 < imageAttributes.width*imageAttributes.height, "Invalid Image attributes"
+        super().__init__(iterable)
+        self._imageAttributes = imageAttributes

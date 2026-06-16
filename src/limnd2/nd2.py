@@ -975,6 +975,20 @@ class Nd2Writer:
             self._chunker.pictureMetadata = val
 
     @property
+    def binaryRasterMetadata(self) -> BinaryRasterMetadata:
+        if self._chunker.binaryRasterMetadata is None:
+            return BinaryRasterMetadata([])
+
+        if 0 == len(self._chunker.binaryRasterMetadata) and 0 < len(
+            self._chunker.binaryRleMetadata
+        ):
+            return self._chunker.binaryRleMetadata.makeRasterMetadata(
+                self.imageAttributes.width, self.imageAttributes.height
+            )
+        else:
+            return self._chunker.binaryRasterMetadata
+
+    @property
     def chunker(self):
         return self._chunker
 
