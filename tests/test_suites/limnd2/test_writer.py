@@ -259,6 +259,50 @@ def test_writer_set_binary_raster_data_tile_downsampled_falls_back_to_full_tiles
     assert np.array_equal(downsampled, expected)
 
 
+def test_writer_create_downsampled_binary_raster_data_from_tiles(tmp_path: Path):
+    out_path = tmp_path / "writer_create_downsampled_binary_raster_data.nd2"
+    width, height = 2048, 1024
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=width,
+        height=height,
+        component_count=1,
+        bits=8,
+        sequence_count=1,
+    )
+    binary_metadata = BinaryRasterMetadata(
+        [
+            BinaryRasterMetadataItem(
+                binWidth=width,
+                binHeight=height,
+                binTileWidth=1024,
+                binTileHeight=1024,
+                binLayerId=1,
+                binName="Layer 1",
+                binUuid="uuid-1",
+                binComp="",
+                binColor=0xFF0000,
+            )
+        ]
+    )
+    left_tile = np.arange(1024 * 1024, dtype=np.uint32).reshape(1024, 1024)
+    right_tile = left_tile + np.uint32(100)
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.imageAttributes = attrs
+        nd2.binaryRasterMetadata = binary_metadata
+        nd2.setBinaryRasterDataTile(1, 0, 0, 0, left_tile)
+        nd2.setBinaryRasterDataTile(1, 0, 1024, 0, right_tile)
+        nd2.createDownsampledBinaryRasterData(1, 0)
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        actual = reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
+
+    expected = np.zeros((512, 1024), dtype=np.uint32)
+    expected[:, :512] = left_tile[::2, ::2]
+    expected[:, 512:] = right_tile[::2, ::2]
+    assert np.array_equal(actual, expected)
+
+
 def test_writer_set_downsampled_binary_raster_data_tile_replaces_without_reading(tmp_path: Path):
     out_path = tmp_path / "writer_downsampled_binary_raster_data_tile_replace.nd2"
     width, height = 2048, 1024

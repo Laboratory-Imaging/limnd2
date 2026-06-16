@@ -1165,6 +1165,13 @@ class Nd2Writer:
         """
         self._chunker.setBinaryRasterDataTile(bin_id, seq_index, x, y, data)
 
+    def createDownsampledBinaryRasterData(self, binid: int, seqindex: int) -> None:
+        """
+        Create downsampled binary raster data from stored full-resolution data.
+        """
+        data = self._chunker.binaryRasterData(binid, seqindex)
+        self._chunker.generateAndSetDownsampledBinaryRasterData(binid, seqindex, data)
+
     def finalize(self) -> None:
         """
         Explicitly finalize the file, this is not needed if you use `with` statement.
