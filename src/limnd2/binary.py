@@ -235,7 +235,7 @@ class BinaryRasterMetadataFactory(BinaryRasterMetadata):
             raise TypeError(f"Generated item fields cannot be provided in kwargs: {names}")
 
         bin_color = color if isinstance(color, int) else calculateColor(color)
-        bin_layer_id = max(0, *(item.binLayerId for item in self.data)) + 1
+        bin_layer_id = max((item.binLayerId for item in self.data), default=0) + 1
 
         item_kwargs = {
             "binWidth": self._imageAttributes.width,

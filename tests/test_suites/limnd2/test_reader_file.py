@@ -224,6 +224,10 @@ def test_binary_raster_metadata_factory_add_new_item():
         bits=8,
         sequence_count=1,
     )
+    empty_factory = BinaryRasterMetadataFactory([], imageAttributes=attrs)
+    first_item = empty_factory.addNewItem("Layer 1", "red")
+    assert first_item.binLayerId == 1
+
     factory = BinaryRasterMetadataFactory(
         [
             BinaryRasterMetadataItem(
