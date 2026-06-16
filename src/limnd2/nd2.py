@@ -1127,6 +1127,18 @@ class Nd2Writer:
         """
         return self._chunker.setImage(seq_index, data)
 
+    def setBinaryRasterData(
+        self,
+        bin_id: int,
+        seq_index: int,
+        data: NumpyArrayLike
+    ) -> None:
+        """
+        Set binary raster data using specified binary layer and frame index.
+        """
+        self._chunker.setBinaryRasterData(bin_id, seq_index, data)
+        self._chunker.generateAndSetDownsampledBinaryRasterData(bin_id, seq_index, data)
+
     def finalize(self) -> None:
         """
         Explicitly finalize the file, this is not needed if you use `with` statement.

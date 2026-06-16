@@ -174,8 +174,9 @@ class BinaryRasterMetadataItem:
         assert 0 <= downsample_level, f"Downsample level must be positive non-negative but got {downsample_level}"
         if 0 == downsample_level:
             return self
-        w = self.binWidth // downsample_level
-        h = self.binHeight  // downsample_level
+        downsample_factor = 1 << downsample_level
+        w = self.binWidth // downsample_factor
+        h = self.binHeight // downsample_factor
         return BinaryRasterMetadataItem(
             binWidth=w, binHeight=h, binTileWidth=self.binTileWidth, binTileHeight=self.binTileHeight,
             binCompressionId=self.binCompressionId, binCompressionLevel=self.binCompressionLevel,

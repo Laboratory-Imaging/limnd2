@@ -131,6 +131,48 @@ def test_writer_binary_raster_metadata_setter(tmp_path: Path):
     assert persisted[0] == binary_metadata[0]
 
 
+def test_writer_set_binary_raster_data_writes_downsampled_chunks(tmp_path: Path):
+    out_path = tmp_path / "writer_binary_raster_data.nd2"
+    width, height = 2048, 1024
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=width,
+        height=height,
+        component_count=1,
+        bits=8,
+        sequence_count=1,
+    )
+    binary_metadata = BinaryRasterMetadata(
+        [
+            BinaryRasterMetadataItem(
+                binWidth=width,
+                binHeight=height,
+                binLayerId=1,
+                binName="Layer 1",
+                binUuid="uuid-1",
+                binComp="",
+                binColor=0xFF0000,
+            )
+        ]
+    )
+    data = np.zeros((height, width), dtype=np.uint32)
+    data[::2, ::2] = np.arange((height // 2) * (width // 2), dtype=np.uint32).reshape(
+        height // 2,
+        width // 2,
+    )
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.imageAttributes = attrs
+        nd2.binaryRasterMetadata = binary_metadata
+        nd2.setBinaryRasterData(1, 0, data)
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        full_res = reader.binaryRasterData(1, 0)
+        downsampled = reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
+
+    assert np.array_equal(full_res, data)
+    assert np.array_equal(downsampled, data[::2, ::2])
+
+
 def test_write_wellplate_chunks_roundtrip(tmp_path: Path):
     out_path = tmp_path / "writer_wellplate_chunks.nd2"
 
