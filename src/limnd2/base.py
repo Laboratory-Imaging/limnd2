@@ -679,6 +679,43 @@ class BaseChunker(abc.ABC):
             self.setDownsampledBinaryRasterData(binid, seqindex, downsampled_image, downsample_level=level)
             src_binimage = downsampled_image
 
+    def generateAndSetDownsampledBinaryRasterDataTile(
+        self,
+        binid: int,
+        seqindex: int,
+        x: int,
+        y: int,
+        binimage: NumpyArrayLike,
+    ) -> None:
+        src_x, src_y = x, y
+        src_binimage = np.asarray(binimage)
+        for level in self.imageAttributes.downsampleLevels:
+            x_offset = src_x % 2
+            y_offset = src_y % 2
+            downsampled_image = src_binimage[y_offset::2, x_offset::2]
+            if downsampled_image.shape[0] == 0 or downsampled_image.shape[1] == 0:
+                break
+
+            dst_x = (src_x + x_offset) // 2
+            dst_y = (src_y + y_offset) // 2
+            binmeta = self._binary_raster_metadata_item(binid, downsample_level=level)
+            max_h = binmeta.shape[0] - dst_y
+            max_w = binmeta.shape[1] - dst_x
+            if max_h <= 0 or max_w <= 0:
+                break
+
+            downsampled_image = downsampled_image[:max_h, :max_w]
+            self.setDownsampledBinaryRasterDataTile(
+                binid,
+                seqindex,
+                dst_x,
+                dst_y,
+                downsampled_image,
+                downsample_level=level,
+            )
+            src_x, src_y = dst_x, dst_y
+            src_binimage = downsampled_image
+
     def scale_2xN_down_linear(self, img : NumpyArrayLike, n : int) -> NumpyArrayLike:
         src_safe_dtype = self.imageAttributes.safe_dtype
         src_shape = img.shape

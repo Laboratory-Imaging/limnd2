@@ -1152,6 +1152,7 @@ class Nd2Writer:
         and tile-aligned pixel coordinates.
         """
         self._chunker.setBinaryRasterDataTile(bin_id, seq_index, x, y, data)
+        self._chunker.generateAndSetDownsampledBinaryRasterDataTile(bin_id, seq_index, x, y, data)
 
     def finalize(self) -> None:
         """
