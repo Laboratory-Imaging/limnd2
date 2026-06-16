@@ -1127,6 +1127,18 @@ class Nd2Writer:
         """
         return self._chunker.setImage(seq_index, data)
 
+    def setImageTile(
+        self,
+        seq_index: int,
+        x: int,
+        y: int,
+        data: NumpyArrayLike
+    ) -> None:
+        """
+        Set image tile data using specified frame index and pixel coordinates.
+        """
+        return self._chunker.setImageTile(seq_index, x, y, data)
+
     def setBinaryRasterData(
         self,
         bin_id: int,
