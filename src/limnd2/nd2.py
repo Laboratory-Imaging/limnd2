@@ -1139,6 +1139,20 @@ class Nd2Writer:
         self._chunker.setBinaryRasterData(bin_id, seq_index, data)
         self._chunker.generateAndSetDownsampledBinaryRasterData(bin_id, seq_index, data)
 
+    def setBinaryRasterDataTile(
+        self,
+        bin_id: int,
+        seq_index: int,
+        x: int,
+        y: int,
+        data: NumpyArrayLike
+    ) -> None:
+        """
+        Set one binary raster data tile using specified binary layer, frame index,
+        and tile-aligned pixel coordinates.
+        """
+        self._chunker.setBinaryRasterDataTile(bin_id, seq_index, x, y, data)
+
     def finalize(self) -> None:
         """
         Explicitly finalize the file, this is not needed if you use `with` statement.

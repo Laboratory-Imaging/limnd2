@@ -5,7 +5,7 @@ import abc, copy, datetime, io, itertools, mmap, os, re, struct, typing, zlib
 import numpy as np
 from typing import Any
 from .attributes import ImageAttributes, NumpyArrayLike
-from .binary import BinaryRleMetadata, BinaryRasterMetadata
+from .binary import BinaryRleMetadata, BinaryRasterMetadata, BinaryRasterMetadataItem
 from .experiment import ExperimentLevel, ExperimentLoopType, ExperimentSpectralLoop
 from .metadata import PictureMetadata
 from .textinfo import ImageTextInfo
@@ -431,16 +431,45 @@ class BaseChunker(abc.ABC):
     def binaryRasterData(self, binid: int, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
-    @abc.abstractmethod
     def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
+        if self.is_readonly:
+            raise PermissionError("Cannot set binary raster data to readonly chunker")
+
+        binmeta = self._binary_raster_metadata_item(binid)
+        for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
+            for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
+                y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
+                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
+                self.setBinaryRasterDataTile(binid, seqindex, x, y, binimage[y_slice, x_slice])
+
+    @abc.abstractmethod
+    def setBinaryRasterDataTile(self, binid: int, seqindex: int, x: int, y: int, binimage: NumpyArrayLike) -> None:
         pass
 
     @abc.abstractmethod
     def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         pass
 
-    @abc.abstractmethod
     def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
+        if self.is_readonly:
+            raise PermissionError("Cannot set downsampled binary raster data to readonly chunker")
+
+        binmeta = self._binary_raster_metadata_item(binid, downsample_level=downsample_level)
+        for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
+            for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
+                y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
+                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
+                self.setDownsampledBinaryRasterDataTile(
+                    binid,
+                    seqindex,
+                    x,
+                    y,
+                    binimage[y_slice, x_slice],
+                    downsample_level=downsample_level
+                )
+
+    @abc.abstractmethod
+    def setDownsampledBinaryRasterDataTile(self, binid: int, seqindex: int, x: int, y: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
         pass
 
     @abc.abstractmethod
@@ -470,6 +499,16 @@ class BaseChunker(abc.ABC):
         data = val.to_lv()
         self.setChunk(ND2_CHUNK_NAME_ImageAttributesLV, data)
         self._image_attributes = val
+
+    def _binary_raster_metadata_item(self, binid: int, *, downsample_level: int = 0) -> BinaryRasterMetadataItem:
+        if self.binaryRasterMetadata is None:
+            raise BinaryIdNotFountError(binid)
+        binmeta = self.binaryRasterMetadata.findItemById(binid)
+        if binmeta is None:
+            raise BinaryIdNotFountError(binid)
+        if downsample_level:
+            return binmeta.makeDownsampled(downsample_level)
+        return binmeta
 
 
     @property
@@ -951,4 +990,3 @@ def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
 def _downsample_2x_00(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
     s0, s1 = dst.shape[0:2]
     np.copyto(dst, src[0:2*s0:2, 0:2*s1:2])
-

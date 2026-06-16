@@ -173,6 +173,46 @@ def test_writer_set_binary_raster_data_writes_downsampled_chunks(tmp_path: Path)
     assert np.array_equal(downsampled, data[::2, ::2])
 
 
+def test_writer_set_binary_raster_data_tile_writes_single_tile(tmp_path: Path):
+    out_path = tmp_path / "writer_binary_raster_data_tile.nd2"
+    width, height = 48, 40
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=width,
+        height=height,
+        component_count=1,
+        bits=8,
+        sequence_count=1,
+    )
+    binary_metadata = BinaryRasterMetadata(
+        [
+            BinaryRasterMetadataItem(
+                binWidth=width,
+                binHeight=height,
+                binTileWidth=16,
+                binTileHeight=16,
+                binLayerId=1,
+                binName="Layer 1",
+                binUuid="uuid-1",
+                binComp="",
+                binColor=0xFF0000,
+            )
+        ]
+    )
+    tile = np.arange(8 * 16, dtype=np.uint32).reshape(8, 16)
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.imageAttributes = attrs
+        nd2.binaryRasterMetadata = binary_metadata
+        nd2.setBinaryRasterDataTile(1, 0, 32, 32, tile)
+        with pytest.raises(ValueError, match="align to tile boundaries"):
+            nd2.setBinaryRasterDataTile(1, 0, 1, 0, tile)
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        actual = reader.chunker.readBinaryRasterData(1, 0, rect=(32, 32, 16, 8))
+
+    assert np.array_equal(actual, tile)
+
+
 def test_write_wellplate_chunks_roundtrip(tmp_path: Path):
     out_path = tmp_path / "writer_wellplate_chunks.nd2"
 

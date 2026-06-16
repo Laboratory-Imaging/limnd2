@@ -584,28 +584,40 @@ class LimBinaryIOChunker(BaseChunker):
         return np.zeros(shape=(y1-y0, x1-x0), dtype=np.uint32)
 
 
-    def setBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:
-        if self.binaryRasterMetadata is None:
-            raise BinaryIdNotFountError(binid)
-        binmeta = self.binaryRasterMetadata.findItemById(binid)
-        if binmeta is None:
-            raise BinaryIdNotFountError(binid)
-        for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
-            for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
-                name = ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p % (binid, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
-                y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
-                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
-                buffer = bytearray(binmeta.tileBytes)
-                tile = np.ndarray(
-                    buffer=buffer,
-                    dtype=binmeta.dtype,
-                    shape=binmeta.tileShape,
-                    strides=binmeta.tileStrides
-                )
-                tile[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start] = binimage[y_slice, x_slice]
-                data = zlib.compress(buffer, binmeta.binCompressionLevel)
-                with self._lock:
-                    self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
+    def setBinaryRasterDataTile(self, binid: int, seqindex: int, x: int, y: int, binimage: NumpyArrayLike) -> None:
+        if self.is_readonly or not self._store.io.writable():
+            raise PermissionError("Writable file handle required for setBinaryRasterDataTile.")
+
+        binmeta = self._binary_raster_metadata_item(binid)
+        tile_h, tile_w = binmeta.tileShape
+        if x < 0 or y < 0:
+            raise ValueError("Tile coordinates must be non-negative.")
+        if x % tile_w != 0 or y % tile_h != 0:
+            raise ValueError("Binary raster tile coordinates must align to tile boundaries.")
+
+        binimage_arr = np.asarray(binimage, dtype=binmeta.dtype)
+        if binimage_arr.ndim != 2:
+            raise ValueError("Binary raster tile data must be a 2D array.")
+        image_h, image_w = binimage_arr.shape
+        if image_h <= 0 or image_w <= 0:
+            raise ValueError("Binary raster tile width and height must be > 0.")
+        if image_h > tile_h or image_w > tile_w:
+            raise ValueError("Binary raster tile data is larger than the configured tile size.")
+        if x + image_w > binmeta.shape[1] or y + image_h > binmeta.shape[0]:
+            raise ValueError("Binary raster tile coordinates are out of bounds.")
+
+        name = ND2_CHUNK_FORMAT_TiledRasterBinaryData_4p % (binid, y // tile_h, x // tile_w, seqindex)
+        buffer = bytearray(binmeta.tileBytes)
+        tile = np.ndarray(
+            buffer=buffer,
+            dtype=binmeta.dtype,
+            shape=binmeta.tileShape,
+            strides=binmeta.tileStrides
+        )
+        tile[0:image_h, 0:image_w] = binimage_arr
+        data = zlib.compress(buffer, binmeta.binCompressionLevel)
+        with self._lock:
+            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
 
     def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         if self.binaryRasterMetadata is None:
@@ -644,29 +656,40 @@ class LimBinaryIOChunker(BaseChunker):
                     raise
         return ret
 
-    def setDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
-        if self.binaryRasterMetadata is None:
-            raise BinaryIdNotFountError(binid)
-        binmeta = self.binaryRasterMetadata.findItemById(binid)
-        if binmeta is None:
-            raise BinaryIdNotFountError(binid)
-        binmeta = binmeta.makeDownsampled(downsample_level)
-        for y in range(0, binmeta.shape[0], binmeta.tileShape[0]):
-            for x in range(0, binmeta.shape[1], binmeta.tileShape[1]):
-                name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, binmeta.powSize, y // binmeta.tileShape[0], x // binmeta.tileShape[1], seqindex)
-                y_slice = slice(y, min(binmeta.shape[0], y + binmeta.tileShape[0]))
-                x_slice = slice(x, min(binmeta.shape[1], x + binmeta.tileShape[1]))
-                buffer = bytearray(binmeta.tileBytes)
-                tile = np.ndarray(
-                    buffer=buffer,
-                    dtype=binmeta.dtype,
-                    shape=binmeta.tileShape,
-                    strides=binmeta.tileStrides
-                )
-                tile[0:y_slice.stop-y_slice.start, 0:x_slice.stop-x_slice.start] = binimage[y_slice, x_slice]
-                data = zlib.compress(buffer, binmeta.binCompressionLevel)
-                with self._lock:
-                    self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
+    def setDownsampledBinaryRasterDataTile(self, binid: int, seqindex: int, x: int, y: int, binimage: NumpyArrayLike, *, downsample_level: int) -> None:
+        if self.is_readonly or not self._store.io.writable():
+            raise PermissionError("Writable file handle required for setDownsampledBinaryRasterDataTile.")
+
+        binmeta = self._binary_raster_metadata_item(binid, downsample_level=downsample_level)
+        tile_h, tile_w = binmeta.tileShape
+        if x < 0 or y < 0:
+            raise ValueError("Tile coordinates must be non-negative.")
+        if x % tile_w != 0 or y % tile_h != 0:
+            raise ValueError("Downsampled binary raster tile coordinates must align to tile boundaries.")
+
+        binimage_arr = np.asarray(binimage, dtype=binmeta.dtype)
+        if binimage_arr.ndim != 2:
+            raise ValueError("Downsampled binary raster tile data must be a 2D array.")
+        image_h, image_w = binimage_arr.shape
+        if image_h <= 0 or image_w <= 0:
+            raise ValueError("Downsampled binary raster tile width and height must be > 0.")
+        if image_h > tile_h or image_w > tile_w:
+            raise ValueError("Downsampled binary raster tile data is larger than the configured tile size.")
+        if x + image_w > binmeta.shape[1] or y + image_h > binmeta.shape[0]:
+            raise ValueError("Downsampled binary raster tile coordinates are out of bounds.")
+
+        name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, binmeta.powSize, y // tile_h, x // tile_w, seqindex)
+        buffer = bytearray(binmeta.tileBytes)
+        tile = np.ndarray(
+            buffer=buffer,
+            dtype=binmeta.dtype,
+            shape=binmeta.tileShape,
+            strides=binmeta.tileStrides
+        )
+        tile[0:image_h, 0:image_w] = binimage_arr
+        data = zlib.compress(buffer, binmeta.binCompressionLevel)
+        with self._lock:
+            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
 
 
     def finalize(self) -> None:

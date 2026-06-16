@@ -1235,6 +1235,11 @@ class LimJpeg2000Chunker(BaseChunker):
     ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
+    def setBinaryRasterDataTile(
+        self, binid: int, seqindex: int, x: int, y: int, binimage: NumpyArrayLike
+    ) -> None:
+        raise PermissionError("Legacy JPEG2000 chunker is read-only.")
+
     def readDownsampledBinaryRasterData(
         self,
         binid: int,
@@ -1247,6 +1252,18 @@ class LimJpeg2000Chunker(BaseChunker):
 
     def setDownsampledBinaryRasterData(
         self, binid: int, seqindex: int, binimage: NumpyArrayLike, *, downsample_level: int
+    ) -> None:
+        raise PermissionError("Legacy JPEG2000 chunker is read-only.")
+
+    def setDownsampledBinaryRasterDataTile(
+        self,
+        binid: int,
+        seqindex: int,
+        x: int,
+        y: int,
+        binimage: NumpyArrayLike,
+        *,
+        downsample_level: int,
     ) -> None:
         raise PermissionError("Legacy JPEG2000 chunker is read-only.")
 
