@@ -6,6 +6,7 @@ import limnd2
 import limnd2.experiment_factory  # ensure submodule is loaded under limnd2
 import limnd2.metadata_factory    # ensure submodule is loaded under limnd2
 from limnd2.binary import BinaryRasterMetadata, BinaryRasterMetadataItem
+from limnd2.base import NameNotInChunkmapError
 
 
 def _create_random_noise(width: int, height: int, channels: int, bits: int) -> np.ndarray:
@@ -213,7 +214,7 @@ def test_writer_set_binary_raster_data_tile_writes_single_tile(tmp_path: Path):
     assert np.array_equal(actual, tile)
 
 
-def test_writer_set_binary_raster_data_tile_writes_downsampled_tile(tmp_path: Path):
+def test_writer_set_binary_raster_data_tile_downsampled_falls_back_to_full_tiles(tmp_path: Path):
     out_path = tmp_path / "writer_binary_raster_data_tile_downsampled.nd2"
     width, height = 2048, 1024
     attrs = limnd2.attributes.ImageAttributes.create(
@@ -248,12 +249,61 @@ def test_writer_set_binary_raster_data_tile_writes_downsampled_tile(tmp_path: Pa
         nd2.setBinaryRasterDataTile(1, 0, 1024, 0, right_tile)
 
     with limnd2.Nd2Reader(out_path) as reader:
-        downsampled = reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
+        with pytest.raises(NameNotInChunkmapError):
+            reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
+        downsampled = reader.binaryRasterData(1, 0, downsample_level=1)
 
     expected = np.zeros((512, 1024), dtype=np.uint32)
     expected[:, :512] = left_tile[::2, ::2]
     expected[:, 512:] = right_tile[::2, ::2]
     assert np.array_equal(downsampled, expected)
+
+
+def test_writer_set_downsampled_binary_raster_data_tile_replaces_without_reading(tmp_path: Path):
+    out_path = tmp_path / "writer_downsampled_binary_raster_data_tile_replace.nd2"
+    width, height = 2048, 1024
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=width,
+        height=height,
+        component_count=1,
+        bits=8,
+        sequence_count=1,
+    )
+    binary_metadata = BinaryRasterMetadata(
+        [
+            BinaryRasterMetadataItem(
+                binWidth=width,
+                binHeight=height,
+                binTileWidth=1024,
+                binTileHeight=1024,
+                binLayerId=1,
+                binName="Layer 1",
+                binUuid="uuid-1",
+                binComp="",
+                binColor=0xFF0000,
+            )
+        ]
+    )
+    first_tile = np.full((512, 1024), 5, dtype=np.uint32)
+    replacement_tile = np.full((512, 1024), 9, dtype=np.uint32)
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.imageAttributes = attrs
+        nd2.binaryRasterMetadata = binary_metadata
+        nd2._chunker.setDownsampledBinaryRasterDataTile(1, 0, 0, 0, first_tile, downsample_level=1)
+
+        def fail_read(*args, **kwargs):
+            raise AssertionError("setDownsampledBinaryRasterDataTile must not read an existing tile")
+
+        nd2._chunker._read_chunk = fail_read
+        nd2._chunker.setDownsampledBinaryRasterDataTile(1, 0, 0, 0, replacement_tile, downsample_level=1)
+        with pytest.raises(ValueError, match="align to tile boundaries"):
+            nd2._chunker.setDownsampledBinaryRasterDataTile(1, 0, 512, 0, replacement_tile[:, :512], downsample_level=1)
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        actual = reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
+
+    assert np.array_equal(actual, replacement_tile)
 
 
 def test_write_wellplate_chunks_roundtrip(tmp_path: Path):

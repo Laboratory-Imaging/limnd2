@@ -664,6 +664,8 @@ class LimBinaryIOChunker(BaseChunker):
         tile_h, tile_w = binmeta.tileShape
         if x < 0 or y < 0:
             raise ValueError("Tile coordinates must be non-negative.")
+        if x % tile_w != 0 or y % tile_h != 0:
+            raise ValueError("Downsampled binary raster tile coordinates must align to tile boundaries.")
 
         binimage_arr = np.asarray(binimage, dtype=binmeta.dtype)
         if binimage_arr.ndim != 2:
@@ -676,28 +678,15 @@ class LimBinaryIOChunker(BaseChunker):
         if x + image_w > binmeta.shape[1] or y + image_h > binmeta.shape[0]:
             raise ValueError("Downsampled binary raster tile coordinates are out of bounds.")
 
-        tile_x = x // tile_w * tile_w
-        tile_y = y // tile_h * tile_h
-        tile_x_offset = x - tile_x
-        tile_y_offset = y - tile_y
-        if tile_x_offset + image_w > tile_w or tile_y_offset + image_h > tile_h:
-            raise ValueError("Downsampled binary raster tile data must fit within a single configured tile.")
-
-        name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, binmeta.powSize, tile_y // tile_h, tile_x // tile_w, seqindex)
+        name = ND2_CHUNK_FORMAT_DownsampledTiledRasterBinaryData_5p % (binid, binmeta.powSize, y // tile_h, x // tile_w, seqindex)
         buffer = bytearray(binmeta.tileBytes)
-        try:
-            decompressed = zlib.decompress(self._read_chunk(self._chunk_pos(name)))
-            buffer[:min(len(decompressed), len(buffer))] = decompressed[:len(buffer)]
-        except NameNotInChunkmapError:
-            pass
-
         tile = np.ndarray(
             buffer=buffer,
             dtype=binmeta.dtype,
             shape=binmeta.tileShape,
             strides=binmeta.tileStrides
         )
-        tile[tile_y_offset:tile_y_offset+image_h, tile_x_offset:tile_x_offset+image_w] = binimage_arr
+        tile[0:image_h, 0:image_w] = binimage_arr
         data = zlib.compress(buffer, binmeta.binCompressionLevel)
         with self._lock:
             self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
