@@ -12,7 +12,7 @@ __all__ = [
     "__version__",
     "ImageAttributesCompression", "ImageAttributesPixelType", "ImageAttributes",
     "FileStore", "MemoryStore","BaseChunker", "FileLikeObject", "Nd2LoggerEnabled", "NumpyArrayLike", "NameNotInChunkmapError", "NotNd2Format", "UnsupportedChunkmapError", "UnexpectedCallError",
-    "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata",
+    "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata", "BinaryRasterMetadataFactory",
     "CustomDescription", "RecordedData", "RecordedDataItem", "RecordedDataType",
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
     "ExperimentFactory", "WellplateFactory",
@@ -29,7 +29,7 @@ __all__ = [
 
 from .attributes import ImageAttributesCompression, ImageAttributesPixelType, ImageAttributes
 from .base import FileStore, MemoryStore, BaseChunker, FileLikeObject, NumpyArrayLike, Nd2LoggerEnabled, NameNotInChunkmapError, NotNd2Format, UnsupportedChunkmapError, UnexpectedCallError
-from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadataItem, BinaryRleMetadata, BinaryRasterMetadataItem, BinaryRasterMetadata
+from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadataItem, BinaryRleMetadata, BinaryRasterMetadataItem, BinaryRasterMetadata, BinaryRasterMetadataFactory
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .experiment_factory import ExperimentFactory
