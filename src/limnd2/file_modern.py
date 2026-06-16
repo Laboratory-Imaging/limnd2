@@ -155,10 +155,25 @@ class LimBinaryIOChunker(BaseChunker):
             raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
         return self._get_buffer_and_offset(pos + STRUCT_CHUNK_HEADER.size + name_length, data_length)
 
-    def _write_chunk(self, pos: int, name: bytes, data1: bytes|bytearray|None, data2: bytes|bytearray|None = None, *, data2_len_override: int | None = None, sparse_data2: bool = False, zero_chunk_size: int = 1024 * 1024) -> tuple[int, int]:
+    def _write_chunk(
+        self,
+        name: bytes,
+        data1: bytes|bytearray|None,
+        data2: bytes|bytearray|None = None,
+        *,
+        pos: int | None = None,
+        data2_len_override: int | None = None,
+        sparse_data2: bool = False,
+        zero_chunk_size: int = 1024 * 1024,
+    ) -> tuple[int, int]:
         if not self._store.io.writable():
             raise PermissionError("Writable file handle required for _write_chunk.")
         with self._lock:
+            if pos is None:
+                self._store.io.seek(0, os.SEEK_END)
+                pos = self._store.io.tell()
+            else:
+                self._store.io.seek(pos, os.SEEK_SET)
             name_len = len(name)
             data1_len = len(data1) if data1 is not None else 0
             data2_len = len(data2) if data2 is not None else (data2_len_override or 0)
@@ -320,7 +335,7 @@ class LimBinaryIOChunker(BaseChunker):
         if isinstance(data, memoryview):
             data = data.tobytes()
         with self._lock:
-            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
+            self._update_chunkmap(name, self._write_chunk(name, data))
             self._set_metadata(name, data)
 
     def image(self, seqindex: int, *, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
@@ -388,7 +403,7 @@ class LimBinaryIOChunker(BaseChunker):
             _validate_pixel_range(img_arr, self.imageAttributes)
             np.copyto(tmp, img_arr)
         with self._lock:
-            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, struct.pack("d", acqtime), buffer))
+            self._update_chunkmap(name, self._write_chunk(name, struct.pack("d", acqtime), buffer))
 
     def setImageTile(self, seqindex: int, x: int, y: int, tile: NumpyArrayLike, *, acqtime: float | None = None) -> None:
         if self.is_readonly or not self._store.io.writable():
@@ -440,11 +455,9 @@ class LimBinaryIOChunker(BaseChunker):
                     raise ValueError("Existing image chunk is smaller than expected.")
                 data_start = pos + STRUCT_CHUNK_HEADER.size + name_len
             except NameNotInChunkmapError:
-                pos = self._store.io.tell()
                 timestamp_value = -1.0 if acqtime is None else acqtime
                 timestamp_bytes = struct.pack("d", timestamp_value)
                 write_pos, _ = self._write_chunk(
-                    pos,
                     name,
                     timestamp_bytes,
                     data2=None,
@@ -511,7 +524,7 @@ class LimBinaryIOChunker(BaseChunker):
         )
         np.copyto(tmp, image)
         with self._lock:
-            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, buffer))
+            self._update_chunkmap(name, self._write_chunk(name, buffer))
 
     def readBinaryRleData(self, binid: int, seqindex: int, rect : tuple[int, int, int, int]|None = None, *, no_obj_info: bool = False) -> tuple[NumpyArrayLike, dict[int, dict|None]]:
         binmeta = self.binaryRleMetadata.findItemById(binid)
@@ -617,7 +630,7 @@ class LimBinaryIOChunker(BaseChunker):
         tile[0:image_h, 0:image_w] = binimage_arr
         data = zlib.compress(buffer, binmeta.binCompressionLevel)
         with self._lock:
-            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
+            self._update_chunkmap(name, self._write_chunk(name, data))
 
     def readDownsampledBinaryRasterData(self, binid: int, seqindex: int, *, downsample_level: int, rect : tuple[int, int, int, int]|None = None) -> NumpyArrayLike:
         if self.binaryRasterMetadata is None:
@@ -689,7 +702,7 @@ class LimBinaryIOChunker(BaseChunker):
         tile[0:image_h, 0:image_w] = binimage_arr
         data = zlib.compress(buffer, binmeta.binCompressionLevel)
         with self._lock:
-            self._update_chunkmap(name, self._write_chunk(self._store.io.tell(), name, data))
+            self._update_chunkmap(name, self._write_chunk(name, data))
 
 
     def finalize(self) -> None:
@@ -697,8 +710,10 @@ class LimBinaryIOChunker(BaseChunker):
             logger.info(f"Finalizing {self._store.filename}")
         with self._lock:
             if not self.is_readonly and self._chunkmap_is_dirty and self._chunkmap is not None:
-                data = self._write_chunkmap(self._store.io.tell(), self._chunkmap)
-                self._write_chunk(self._store.io.tell(), ND2_FILEMAP_SIGNATURE, data)
+                self._store.io.seek(0, os.SEEK_END)
+                chunkmap_pos = self._store.io.tell()
+                data = self._write_chunkmap(chunkmap_pos, self._chunkmap)
+                self._write_chunk(ND2_FILEMAP_SIGNATURE, data, pos=chunkmap_pos)
                 if Nd2LoggerEnabled:
                     logger.debug(f"CHUNKMAP written: itemcount={len(self._chunkmap)}")
                 self._chunkmap_is_dirty = False
@@ -717,8 +732,11 @@ class LimBinaryIOChunker(BaseChunker):
                     logger.debug(f"Deleting {self._store.filename}")
                 self._store.remove()
                 return
-            self._store.io.seek(self._original_chunkmap_offset)
-            self._write_chunk(self._store.io.tell(), ND2_FILEMAP_SIGNATURE, self._original_chunkmap_chunk)
+            self._write_chunk(
+                ND2_FILEMAP_SIGNATURE,
+                self._original_chunkmap_chunk,
+                pos=self._original_chunkmap_offset,
+            )
             if Nd2LoggerEnabled:
                 logger.debug(f"ORIGINAL CHUNKMAP written")
             self._chunkmap_is_dirty = False

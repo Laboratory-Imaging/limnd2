@@ -292,15 +292,23 @@ def test_writer_create_downsampled_binary_raster_data_from_tiles(tmp_path: Path)
         nd2.binaryRasterMetadata = binary_metadata
         nd2.setBinaryRasterDataTile(1, 0, 0, 0, left_tile)
         nd2.setBinaryRasterDataTile(1, 0, 1024, 0, right_tile)
+        nd2.setChunk(b"CustomData|AfterBinaryTiles!", b"sentinel")
         nd2.createDownsampledBinaryRasterData(1, 0)
 
     with limnd2.Nd2Reader(out_path) as reader:
+        full_res = reader.binaryRasterData(1, 0)
         actual = reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
+        sentinel = reader.chunk(b"CustomData|AfterBinaryTiles!")
 
     expected = np.zeros((512, 1024), dtype=np.uint32)
     expected[:, :512] = left_tile[::2, ::2]
     expected[:, 512:] = right_tile[::2, ::2]
+    expected_full_res = np.zeros((1024, 2048), dtype=np.uint32)
+    expected_full_res[:, :1024] = left_tile
+    expected_full_res[:, 1024:] = right_tile
+    assert np.array_equal(full_res, expected_full_res)
     assert np.array_equal(actual, expected)
+    assert sentinel == b"sentinel"
 
 
 def test_writer_set_downsampled_binary_raster_data_tile_replaces_without_reading(tmp_path: Path):
@@ -348,6 +356,38 @@ def test_writer_set_downsampled_binary_raster_data_tile_replaces_without_reading
         actual = reader.chunker.readDownsampledBinaryRasterData(1, 0, downsample_level=1)
 
     assert np.array_equal(actual, replacement_tile)
+
+
+def test_writer_finalize_after_read_on_writable_chunker(tmp_path: Path):
+    out_path = tmp_path / "writer_finalize_after_read.nd2"
+    first_name = b"CustomData|FirstChunk!"
+    second_name = b"CustomData|SecondChunk!"
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.setChunk(first_name, b"first")
+        assert nd2.chunker.chunk(first_name) == b"first"
+        nd2.setChunk(second_name, b"second")
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        assert reader.chunk(first_name) == b"first"
+        assert reader.chunk(second_name) == b"second"
+
+
+def test_writer_rollback_restores_original_chunkmap(tmp_path: Path):
+    out_path = tmp_path / "writer_rollback_append.nd2"
+    original_name = b"CustomData|OriginalChunk!"
+    appended_name = b"CustomData|RolledBackChunk!"
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.setChunk(original_name, b"original")
+
+    nd2 = limnd2.Nd2Writer(out_path)
+    nd2.setChunk(appended_name, b"appended")
+    nd2.rollback()
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        assert reader.chunk(original_name) == b"original"
+        assert reader.chunk(appended_name) is None
 
 
 def test_write_wellplate_chunks_roundtrip(tmp_path: Path):
