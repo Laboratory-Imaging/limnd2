@@ -988,6 +988,11 @@ class Nd2Writer:
         else:
             return self._chunker.binaryRasterMetadata
 
+    @binaryRasterMetadata.setter
+    def binaryRasterMetadata(self, val: BinaryRasterMetadata) -> None:
+        if val != None:
+            self._chunker.binaryRasterMetadata = val
+
     @property
     def chunker(self):
         return self._chunker

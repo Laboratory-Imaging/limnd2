@@ -545,6 +545,14 @@ class BaseChunker(abc.ABC):
                 self._binary_tiled_raster_metadata = BinaryRasterMetadata([])
         return self._binary_tiled_raster_metadata
 
+    @binaryRasterMetadata.setter
+    def binaryRasterMetadata(self, val: BinaryRasterMetadata) -> None:
+        if self.is_readonly:
+            raise PermissionError("Cannot set BinaryRasterMetadata to readonly chunker")
+        data = val.to_json()
+        self.setChunk(ND2_CHUNK_NAME_BinaryMetadata_v2, data)
+        self._binary_tiled_raster_metadata = val
+
     @property
     def hasDownsampledImages(self) -> bool:
         attrs = self.imageAttributes
@@ -943,5 +951,4 @@ def _downsample_2x_linear(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
 def _downsample_2x_00(dst: NumpyArrayLike, src: NumpyArrayLike) -> None:
     s0, s1 = dst.shape[0:2]
     np.copyto(dst, src[0:2*s0:2, 0:2*s1:2])
-
 

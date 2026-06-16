@@ -5,6 +5,7 @@ from pathlib import Path
 import limnd2
 import limnd2.experiment_factory  # ensure submodule is loaded under limnd2
 import limnd2.metadata_factory    # ensure submodule is loaded under limnd2
+from limnd2.binary import BinaryRasterMetadata, BinaryRasterMetadataItem
 
 
 def _create_random_noise(width: int, height: int, channels: int, bits: int) -> np.ndarray:
@@ -94,6 +95,40 @@ def test_write_basic_nd2(tmp_path: Path):
         assert len(md.channels) == components
         names = [c.sDescription for c in md.channels]
         assert names == ["Blue channel", "Red channel"]
+
+
+def test_writer_binary_raster_metadata_setter(tmp_path: Path):
+    out_path = tmp_path / "writer_binary_raster_metadata.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=32,
+        height=24,
+        component_count=1,
+        bits=8,
+        sequence_count=1,
+    )
+    binary_metadata = BinaryRasterMetadata(
+        [
+            BinaryRasterMetadataItem(
+                binWidth=32,
+                binHeight=24,
+                binLayerId=1,
+                binName="Layer 1",
+                binUuid="uuid-1",
+                binComp="",
+                binColor=0xFF0000,
+            )
+        ]
+    )
+
+    with limnd2.Nd2Writer(out_path) as nd2:
+        nd2.imageAttributes = attrs
+        nd2.binaryRasterMetadata = binary_metadata
+
+    with limnd2.Nd2Reader(out_path) as reader:
+        persisted = reader.binaryRasterMetadata
+
+    assert len(persisted) == 1
+    assert persisted[0] == binary_metadata[0]
 
 
 def test_write_wellplate_chunks_roundtrip(tmp_path: Path):

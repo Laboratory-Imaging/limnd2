@@ -15,7 +15,7 @@ from limnd2.base import (
     ND2_CHUNK_NAME_AcqFramesCache,
     BaseChunker,
 )
-from limnd2.binary import BinaryRasterMetadataItem, BinaryRasterMetadata, BinaryItemColorMode
+from limnd2.binary import BinaryRasterMetadataFactory, BinaryRasterMetadataItem, BinaryRasterMetadata, BinaryItemColorMode
 
 
 def test_chunker_properties_and_chunk_access(nd2_path: Path):
@@ -214,6 +214,51 @@ def test_binary_raster_downsample_workflow(tmp_path: Path):
         fb = c.downsampledBinaryRasterData(binid, 0, downsample_level=1)
         rd = c.readDownsampledBinaryRasterData(binid, 0, downsample_level=1)
         assert rd.shape == fb.shape and rd.dtype == fb.dtype
+
+
+def test_binary_raster_metadata_factory_add_new_item():
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=64,
+        height=48,
+        component_count=1,
+        bits=8,
+        sequence_count=1,
+    )
+    factory = BinaryRasterMetadataFactory(
+        [
+            BinaryRasterMetadataItem(
+                binWidth=32,
+                binHeight=24,
+                binLayerId=3,
+                binName="Existing",
+                binUuid="uuid-1",
+                binComp="Comp",
+            )
+        ],
+        imageAttributes=attrs,
+    )
+
+    item = factory.addNewItem("Layer 4", "blue", binTileWidth=16, binTileHeight=16)
+
+    assert item is factory[-1]
+    assert item.binLayerId == 4
+    assert item.binName == "Layer 4"
+    assert item.binWidth == attrs.width
+    assert item.binHeight == attrs.height
+    assert item.binTileWidth == 16
+    assert item.binTileHeight == 16
+    assert item.binColor == 0xFF0000
+    assert item.binComp == ""
+    assert item.binUuid
+
+    factory.addNewItem("Layer 5", (1, 2, 3), binWidth=10, binHeight=20)
+    assert factory[-1].binLayerId == 5
+    assert factory[-1].binWidth == 10
+    assert factory[-1].binHeight == 20
+    assert factory[-1].binColor == 0x030201
+
+    with pytest.raises(TypeError):
+        factory.addNewItem("Reserved", "red", binLayerId=9)
 
 
 def test_rle_detection_and_version_on_existing_files(nd2_path: Path):

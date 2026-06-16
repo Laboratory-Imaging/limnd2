@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import collections, enum, functools, json, re
+import collections, enum, functools, json, re, uuid
 from typing_extensions import Literal
 import numpy as np
 from .attributes import ImageAttributes
 from dataclasses import dataclass, asdict
 from .attributes import full_res_size
+from .metadata import calculateColor
 from .variant import decode_var
 
 
@@ -220,3 +221,32 @@ class BinaryRasterMetadataFactory(BinaryRasterMetadata):
         assert 0 < imageAttributes.width*imageAttributes.height, "Invalid Image attributes"
         super().__init__(iterable)
         self._imageAttributes = imageAttributes
+
+    def addNewItem(
+            self,
+            name: str,
+            color: str|int|tuple[int,int,int],
+            /,
+            **kwargs: object) -> BinaryRasterMetadataItem:
+        reserved = {"binName", "binColor", "binLayerId", "binUuid"}
+        if invalid := reserved.intersection(kwargs):
+            names = ", ".join(sorted(invalid))
+            raise TypeError(f"Generated item fields cannot be provided in kwargs: {names}")
+
+        bin_color = color if isinstance(color, int) else calculateColor(color)
+        bin_layer_id = max(0, *(item.binLayerId for item in self.data)) + 1
+
+        item_kwargs = {
+            "binWidth": self._imageAttributes.width,
+            "binHeight": self._imageAttributes.height,
+            "binLayerId": bin_layer_id,
+            "binName": name,
+            "binUuid": str(uuid.uuid4()),
+            "binComp": "",
+            "binColor": bin_color,
+        }
+        item_kwargs.update(kwargs)
+
+        item = BinaryRasterMetadataItem(**item_kwargs)
+        self.append(item)
+        return item
