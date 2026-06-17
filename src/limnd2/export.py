@@ -4,6 +4,7 @@ from pathlib import Path
 from itertools import product
 import datetime
 import threading
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from typing import TYPE_CHECKING, Any, Callable, TypeAlias, cast, Optional, Union
 
@@ -16,6 +17,13 @@ _COMMON_FF_HINT = (
 
 ExportTarget: TypeAlias = str | Path | None
 ExportProgressCallback: TypeAlias = Callable[[int, int, ExportTarget, str], None]
+
+
+def _current_limnd2_version() -> str:
+    try:
+        return package_version("limnd2")
+    except PackageNotFoundError:  # pragma: no cover
+        return "unknown"
 
 
 class ExportProgressReporter:
@@ -909,7 +917,7 @@ def metadataAsJSON(
     metadata_dict: dict[str, Any] = {
         "_schema_version": "1.0",
         "_export_info": {
-            "limnd2_version": "0.3.0",
+            "limnd2_version": _current_limnd2_version(),
             "export_timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
             "source_file": str(nd2_reader.store.filename) if nd2_reader.store.filename else "unknown"
         }

@@ -1,0 +1,29 @@
+include LICENSE
+include README.md
+include CHANGELOG.toml
+include pyproject.toml
+
+graft src/limnd2
+
+prune .github
+prune .vscode
+prune docs
+prune examples
+prune src/limnd2/brainpi
+prune src/nd2
+prune tests
+prune tests_compatability
+prune tst
+
+exclude .gitignore
+exclude .pypirc
+exclude CLAUDE.md
+exclude METADATA_JSON_EXPORT.md
+exclude README_dev.md
+exclude mkdocs.yml
+exclude uv.lock
+
+exclude src/limnd2/nd2_compatability/README.md
+exclude src/limnd2/tools/conversion/README.md
+
+global-exclude __pycache__ *.py[cod] .gitignore *.log

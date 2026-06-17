@@ -207,4 +207,3 @@ Costs and follow-up work:
    warning.
 9. Add `CHANGELOG.toml` entry for `0.4.0`.
 10. Configure GitHub branch and tag protection.
-

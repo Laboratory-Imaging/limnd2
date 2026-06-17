@@ -6,8 +6,8 @@ Built upon [tlambert03/nd2](https://github.com/tlambert03/nd2) with a compatible
 
 !!! warning
     This library is still in active development.
-    Current version: `0.3.0`.
-    Until `1.0`, behavior and API can change, and some changes may be released without a version number bump.
+    Package versions are derived from Git tags. Check the installed version with `python -c "import limnd2; print(limnd2.__version__)"`.
+    Until `1.0`, behavior and API can change between releases.
     GitHub Issues and Pull Requests are currently disabled.
     If you have a problem or question, contact: `techsupp@lim.cz`.
 
