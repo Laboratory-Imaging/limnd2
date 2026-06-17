@@ -85,6 +85,8 @@ markdown_extensions:
 
 nav:
   - QuickStart: index.md
+  - Development:
+    - ADR 0001 - Release, Versioning, and CI Strategy: adr/0001-release-versioning-ci.md
   - API Reference:
     - nd2.py: nd2.md
     - attributes.py: attributes.md
