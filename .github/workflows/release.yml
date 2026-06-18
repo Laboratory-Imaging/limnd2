@@ -1,0 +1,252 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Validate, Test, And Build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.changelog.outputs.prerelease }}
+      has_custom_body: ${{ steps.changelog.outputs.has_custom_body }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify tag points to a commit on main
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -r --contains "$GITHUB_SHA" | grep -q "origin/main"
+
+      - name: Install development dependencies
+        run: uv sync --extra dev
+
+      - name: Read tag and expected version
+        id: version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Prefetch ND2 fixtures
+        run: uv run python -c "import sys; from tests.conftest import LOCAL_ROOT, S3_TEST_DATA_ZIP_URL, _download_and_extract_zip_archive; sys.exit('Failed to prefetch ND2 fixtures from S3 ZIP.') if not _download_and_extract_zip_archive(LOCAL_ROOT, url=S3_TEST_DATA_ZIP_URL) else None"
+
+      - name: Run fast test suite
+        shell: bash
+        run: |
+          echo "Expected fixture paths:"
+          for path in \
+            tests/test_files/nd2_files/multipage.nd2 \
+            tests/test_files/nd2_files/md2.nd2 \
+            tests/test_files/nd2_files/wells.nd2
+          do
+            if [ -f "$path" ]; then
+              echo "FOUND: $path"
+            else
+              echo "MISSING: $path"
+            fi
+          done
+          echo "--- first ND2 files under tests/test_files ---"
+          find tests/test_files -type f -name '*.nd2' | sort | sed -n '1,120p' || true
+          uv run pytest -m "not slow"
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Verify built artifact version matches tag
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python - <<'PY'
+          import glob
+          import os
+          import pathlib
+          import sys
+
+          expected = os.environ["EXPECTED_VERSION"]
+          artifacts = [pathlib.Path(p).name for p in glob.glob("dist/*")]
+          if not artifacts:
+              raise SystemExit("No artifacts were built.")
+          if not all(expected in name for name in artifacts):
+              raise SystemExit(f"Built artifacts do not match expected version {expected}: {artifacts}")
+          print("\n".join(artifacts))
+          PY
+
+      - name: Smoke test built wheel
+        shell: bash
+        run: |
+          uv venv .wheel-smoke
+          WHEEL_PATH="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL_PATH"
+          uv pip install --python .wheel-smoke/bin/python "${WHEEL_PATH}[ome-zarr]"
+          .wheel-smoke/bin/python -c "import limnd2; print(limnd2.__version__)"
+          .wheel-smoke/bin/limnd2-index --help >/dev/null
+
+      - name: Build release body from changelog
+        id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+
+          version = os.environ["VERSION"]
+          changelog_path = pathlib.Path("CHANGELOG.toml")
+          prerelease = "rc" in version.lower()
+          has_custom_body = False
+          lines: list[str] = []
+
+          if changelog_path.exists():
+              data = tomllib.loads(changelog_path.read_text(encoding="utf-8"))
+              releases = data.get("releases", {}) if isinstance(data, dict) else {}
+              entry = releases.get(version) if isinstance(releases, dict) else None
+
+              if isinstance(entry, dict):
+                  title = str(entry.get("title", "") or "").strip()
+                  message = str(entry.get("message", "") or "").strip()
+                  raw_prerelease = entry.get("prerelease", prerelease)
+                  prerelease = raw_prerelease if isinstance(raw_prerelease, bool) else prerelease
+                  raw_changes = entry.get("changes", [])
+                  changes = [str(item).strip() for item in raw_changes if str(item).strip()] if isinstance(raw_changes, list) else []
+
+                  if title:
+                      lines.append(title)
+                  if message:
+                      if lines:
+                          lines.append("")
+                      lines.append(message)
+                  if changes:
+                      if lines:
+                          lines.append("")
+                      lines.append("## Changes")
+                      for item in changes:
+                          lines.append(f"- {item}")
+
+                  if lines:
+                      lines.append("")
+                      pathlib.Path("RELEASE_BODY.md").write_text("\n".join(lines), encoding="utf-8")
+                      has_custom_body = True
+
+          if not has_custom_body and not prerelease:
+              raise SystemExit(
+                  f"Final release {version} requires a matching CHANGELOG.toml entry with content."
+              )
+
+          out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with out.open("a", encoding="utf-8") as fh:
+              fh.write(f"prerelease={'true' if prerelease else 'false'}\n")
+              fh.write(f"has_custom_body={'true' if has_custom_body else 'false'}\n")
+          PY
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist
+          path: dist/*
+
+      - name: Upload release body
+        if: steps.changelog.outputs.has_custom_body == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-body
+          path: RELEASE_BODY.md
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-release
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Download release body
+        if: needs.build-release.outputs.has_custom_body == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-body
+          path: .
+
+      - name: Create GitHub Release (changelog body)
+        if: needs.build-release.outputs.has_custom_body == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-release.outputs.tag }}
+          name: ${{ needs.build-release.outputs.tag }}
+          body_path: RELEASE_BODY.md
+          prerelease: ${{ needs.build-release.outputs.prerelease }}
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release (auto notes)
+        if: needs.build-release.outputs.has_custom_body != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-release.outputs.tag }}
+          name: ${{ needs.build-release.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.build-release.outputs.prerelease }}
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-aws-pypi:
+    name: Publish To AWS PyPI
+    runs-on: ubuntu-latest
+    needs: build-release
+    if: ${{ vars.ENABLE_AWS_PUBLISH == 'true' }}
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-dist
+          path: dist
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Validate publish credentials
+        env:
+          AWS_PYPI_USERNAME: ${{ secrets.AWS_PYPI_USERNAME }}
+          AWS_PYPI_PASSWORD: ${{ secrets.AWS_PYPI_PASSWORD }}
+        run: |
+          if [ -z "$AWS_PYPI_USERNAME" ] || [ -z "$AWS_PYPI_PASSWORD" ]; then
+            echo "Missing required secrets AWS_PYPI_USERNAME and/or AWS_PYPI_PASSWORD."
+            exit 1
+          fi
+
+      - name: Publish to AWS PyPI index
+        env:
+          AWS_PYPI_USERNAME: ${{ secrets.AWS_PYPI_USERNAME }}
+          AWS_PYPI_PASSWORD: ${{ secrets.AWS_PYPI_PASSWORD }}
+        run: |
+          uv publish --publish-url https://pypi.laboratory-imaging.com --username "$AWS_PYPI_USERNAME" --password "$AWS_PYPI_PASSWORD" dist/*

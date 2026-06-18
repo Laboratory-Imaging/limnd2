@@ -7,8 +7,9 @@ Talley Lambert's `nd2` package) and related helpers.
 
 - `test_*.py`: pytest suites that mirror nd2 behavior and verify metadata,
   read paths, dask/xarray adapters, and I/O helpers.
-- `nd2/`: a lightweight shim package used by the tests to prefer the local
-  `limnd2.nd2file` implementation.
+- `conftest.py`: installs a runtime-only `nd2` module shim so the borrowed
+  compatibility tests exercise `limnd2.nd2_compatability` instead of the
+  external `nd2` package.
 - `data/`: sample ND2 files used by the test suite (downloaded on demand).
 
 ## Running the tests (manual)
@@ -33,9 +34,8 @@ tests_compatability\run_compatability_tests.bat
 ```
 
 It writes:
-- `tests_compatability/test_report/report.html`
-- `tests_compatability/test_report/pytest_output.txt`
-- `tests_compatability/test_report/coverage_output.txt`
+- `test_results/nd2_compatability_test_report.html`
+- `test_results/nd2_compatability_coverage/index.html`
 
 ## Test data
 

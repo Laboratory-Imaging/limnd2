@@ -11,11 +11,11 @@ pip install pytest-cov
 ## Run tests + generate test report
 
 ```sh
-pytest --html=report.html --self-contained-html
+tests\run_tests.bat
 ```
 
 ### Generate coverage report
 
 ```sh
-coverage html
+test_results/limnd2_coverage/index.html
 ```

@@ -20,6 +20,7 @@ import shutil
 import sys
 import zipfile
 from pathlib import Path
+from posixpath import normpath
 from tempfile import TemporaryDirectory
 from urllib.request import urlretrieve
 
@@ -105,6 +106,28 @@ def _locate_extracted_zip_root(extracted_root: Path) -> Path | None:
     return extracted_root if any(extracted_root.iterdir()) else None
 
 
+def _extract_zip_archive_portably(archive_path: Path, destination: Path) -> None:
+    """Extract ZIP contents while normalizing Windows path separators."""
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        for member in archive.infolist():
+            raw_name = member.filename.replace("\\", "/")
+            is_directory = raw_name.endswith("/")
+            normalized_name = normpath(raw_name)
+
+            if normalized_name in ("", ".") or normalized_name.startswith("../") or normalized_name == "..":
+                continue
+
+            target_path = destination / Path(normalized_name)
+
+            if member.is_dir() or is_directory:
+                target_path.mkdir(parents=True, exist_ok=True)
+                continue
+
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member, "r") as src, open(target_path, "wb") as dst:
+                shutil.copyfileobj(src, dst)
+
+
 def _download_and_extract_zip_archive(
     local_root: Path,
     *,
@@ -122,8 +145,7 @@ def _download_and_extract_zip_archive(
             with TemporaryDirectory() as tmpdir:
                 extract_dir = Path(tmpdir) / "extracted"
                 extract_dir.mkdir(parents=True, exist_ok=True)
-                with zipfile.ZipFile(archive_path, "r") as archive:
-                    archive.extractall(extract_dir)
+                _extract_zip_archive_portably(archive_path, extract_dir)
                 src_root = _locate_extracted_zip_root(extract_dir)
                 if src_root is None:
                     print("Failed to locate extracted root directory inside ZIP archive.")
@@ -140,8 +162,7 @@ def _download_and_extract_zip_archive(
             extract_dir = tmpdir_path / "extracted"
             extract_dir.mkdir(parents=True, exist_ok=True)
             print(f"Extracting ZIP archive to {extract_dir}")
-            with zipfile.ZipFile(archive_path, "r") as archive:
-                archive.extractall(extract_dir)
+            _extract_zip_archive_portably(archive_path, extract_dir)
 
             src_root = _locate_extracted_zip_root(extract_dir)
             if src_root is None:

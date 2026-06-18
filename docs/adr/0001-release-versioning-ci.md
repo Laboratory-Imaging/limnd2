@@ -19,8 +19,7 @@ The current project state has several release and CI gaps:
 - Package publishing is manually triggered.
 - There is no required PR workflow that runs the default `pytest` suite.
 - Type checking is advisory and uploads a log artifact.
-- Python support metadata is inconsistent: some files refer to Python 3.10,
-  while `pyproject.toml` currently requires Python 3.11 or newer.
+- Python support metadata is inconsistent across the project and workflows.
 
 These issues make it possible for Git tags, package versions, GitHub Releases,
 and published artifacts to drift apart.
@@ -78,16 +77,29 @@ fix it in a new version.
 
 ### Python Support
 
-The minimum supported Python version is 3.10.
+The minimum supported Python version is 3.11.
 
 Package metadata should declare:
 
 ```toml
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 ```
 
-Classifiers should cover Python 3.10 through 3.14. CI should test a pragmatic
-matrix of Python 3.10, 3.12, and 3.14.
+Classifiers should cover Python 3.11 through 3.13. CI should test a pragmatic
+matrix of Python 3.11, 3.12, and 3.13.
+
+Python 3.10 is not currently supported because the development and test
+dependency set pulls in `zarr>=3` through optional extras used by CI, and the
+currently resolved `zarr` stack does not produce a workable environment for
+Python 3.10.
+
+Python 3.14 is not currently supported because the `ome-types` -> `pydantic`
+-> `pydantic-core` dependency path still reaches a `PyO3` toolchain version
+that fails to build against Python 3.14 in the current CI environment.
+
+These limits are dependency constraints, not intentional product exclusions.
+When the upstream dependency chain supports wider coverage cleanly, the project
+may expand its supported Python range again.
 
 ### Package Publishing
 
@@ -136,7 +148,7 @@ Pull requests and pushes to `main` should run required fast checks:
 - Smoke-test package import and CLI entry points.
 - Build documentation with `mkdocs build --strict`.
 
-The default required CI matrix should include Python 3.10, 3.12, and 3.14.
+The default required CI matrix should include Python 3.11, 3.12, and 3.13.
 Linux and Windows should both be represented, because the project handles file
 formats and paths that may behave differently across platforms.
 
@@ -196,7 +208,7 @@ Costs and follow-up work:
 ## Required Implementation Steps
 
 1. Update `pyproject.toml` to use `setuptools_scm` and `dynamic = ["version"]`.
-2. Set `requires-python = ">=3.10"` and update Python classifiers.
+2. Set `requires-python = ">=3.11"` and update Python classifiers.
 3. Replace release and publish workflows with a single tag-triggered
    `release.yml`.
 4. Add required PR CI for tests, build, wheel smoke test, and docs build.
