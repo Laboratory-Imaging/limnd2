@@ -18,11 +18,14 @@ message = "This release migrates limnd2 to tag-derived versioning and a repeatab
 prerelease = false
 changes = [
   "Versions are now derived from immutable Git tags.",
-  "CI now runs the fast test suite on Linux and Windows for Python 3.11, 3.12, and 3.13.",
+  "CI now runs the fast test suite on Linux and Windows for Python 3.11 through 3.14.",
+  "Added Python 3.14 support, including compatible locked dependencies.",
   "CI now validates package builds, wheel installation, and documentation builds.",
   "Releases are now created from pushed version tags through a single GitHub workflow.",
   "Added an advisory mypy workflow and a separate compatibility test workflow.",
   "Updated release messaging to match the new tag-based release process.",
+  "Added direct downsampled decoding for RLE binary label chunks.",
+  "Image information now reports complete or partial multi-resolution image data.",
   "Aligned Python support metadata and maintainer workflow documentation with the current release process.",
 ]
 
