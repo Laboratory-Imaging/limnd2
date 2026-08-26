@@ -13,6 +13,7 @@ decoder_types.txt
 /docs_sphinx
 /tst/_*
 .coverage
+/test_results
 
 # Test data files
 /tests/test_files/nd2_files/

@@ -1,26 +1,143 @@
 from pathlib import Path
+from types import ModuleType
 import sys
 import zipfile
 from urllib.request import urlretrieve
 
 import pytest
 
-# Ensure repo src/ is used for limnd2
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# Ensure repo src/ is used for limnd2 compat sources
+REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 if SRC_ROOT.exists() and str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-# Ensure compat shim package is used instead of any installed nd2
-SHIM_ROOT = Path(__file__).parent
-if str(SHIM_ROOT) not in sys.path:
-    sys.path.insert(0, str(SHIM_ROOT))
-
 # If nd2/limnd2 were imported before we adjusted sys.path, drop them to
-# guarantee tests use the local shim + repo sources.
+# guarantee tests use the local repo sources.
 for _mod in list(sys.modules):
     if _mod == "nd2" or _mod.startswith("nd2.") or _mod == "limnd2" or _mod.startswith("limnd2."):
         sys.modules.pop(_mod, None)
+
+from importlib.metadata import PackageNotFoundError, version
+
+from limnd2.nd2_compatability import _parse as compat_parse_pkg
+from limnd2.nd2_compatability import _readers as compat_readers_pkg
+from limnd2.nd2_compatability._parse import _chunk_decode as compat_chunk_decode
+from limnd2.nd2_compatability._parse import _clx_lite as compat_clx_lite
+from limnd2.nd2_compatability._parse import _clx_xml as compat_clx_xml
+from limnd2.nd2_compatability._parse import _legacy_xml as compat_legacy_xml
+from limnd2.nd2_compatability._parse import _parse as compat_parse_mod
+from limnd2.nd2_compatability.nd2file import AXIS, ND2File
+from limnd2.nd2_compatability import nd2file_types as compat_structures
+
+
+def _install_nd2_runtime_shim() -> None:
+    nd2_mod = ModuleType("nd2")
+    nd2_mod.__path__ = []  # type: ignore[attr-defined]
+    nd2_mod.AXIS = AXIS
+    nd2_mod.ND2File = ND2File
+    try:
+        nd2_mod.__version__ = version("limnd2")
+    except PackageNotFoundError:  # pragma: no cover
+        nd2_mod.__version__ = "unknown"
+
+    def imread(path, *args, **kwargs):
+        with ND2File(path, *args, **kwargs) as f:
+            return f.asarray()
+
+    def nd2_to_tiff(
+        source,
+        dest,
+        *,
+        include_unstructured_metadata: bool = True,
+        progress: bool = False,
+        on_frame=None,
+        modify_ome=None,
+    ) -> None:
+        import tifffile as tf
+
+        dest_path = Path(dest).expanduser().resolve()
+        output_ome = ".ome." in dest_path.name
+
+        close_when_done = False
+        if isinstance(source, (str, Path)):
+            nd2f = ND2File(source)
+            close_when_done = True
+        else:
+            nd2f = source
+            if close_when_done := nd2f.closed:
+                nd2f.open()
+
+        try:
+            sizes = dict(nd2f.sizes)
+            n_positions = sizes.pop(AXIS.POSITION, 1)
+            axes, shape = zip(*sizes.items())
+            metadata = {"axes": "".join(axes).upper().replace(AXIS.UNKNOWN, "Q")}
+
+            ome_xml: bytes | None = None
+            if output_ome and not nd2f.is_legacy:
+                ome = nd2f.ome_metadata()
+                if modify_ome:
+                    modify_ome(ome)
+                ome_xml = ome.to_xml(exclude_unset=True).encode("utf-8")
+
+            total_frames = nd2f._frame_count
+            p_groups: dict[int, list[tuple[int, dict[str, int]]]] = {}
+            for f_num, f_index in enumerate(nd2f.loop_indices):
+                p_groups.setdefault(f_index.get(AXIS.POSITION, 0), []).append((f_num, f_index))
+
+            def position_iter(position_index: int):
+                for f_num, f_index in p_groups[position_index]:
+                    if on_frame is not None:
+                        on_frame(f_num, total_frames, f_index)
+                    yield nd2f.read_frame(f_num)
+
+            tf_ome = False if ome_xml else None
+            pixel_size = nd2f.voxel_size().x
+            photometric = tf.PHOTOMETRIC.RGB if nd2f.is_rgb else tf.PHOTOMETRIC.MINISBLACK
+            with tf.TiffWriter(dest_path, bigtiff=True, ome=tf_ome) as tif:
+                for position_index in range(n_positions):
+                    tif.write(
+                        iter(position_iter(position_index)),
+                        shape=shape,
+                        dtype=nd2f.dtype,
+                        resolution=(1 / pixel_size, 1 / pixel_size),
+                        resolutionunit=tf.RESUNIT.MICROMETER,
+                        photometric=photometric,
+                        metadata=metadata,
+                        description=ome_xml,
+                    )
+        finally:
+            if close_when_done:
+                nd2f.close()
+
+    util_mod = ModuleType("nd2._util")
+    util_mod.AXIS = AXIS
+    util_mod.is_supported_file = ND2File.is_supported_file
+    util_mod.is_new_format = lambda path: Path(path).read_bytes()[:4] == b"\xda\xce\xbe\n"
+    util_mod.is_legacy = lambda path: Path(path).read_bytes()[:4] == b"\x00\x00\x00\x0c"
+
+    nd2_mod.imread = imread
+    nd2_mod.nd2_to_tiff = nd2_to_tiff
+    nd2_mod.is_supported_file = util_mod.is_supported_file
+    nd2_mod.is_new_format = util_mod.is_new_format
+    nd2_mod.is_legacy = util_mod.is_legacy
+    nd2_mod.structures = compat_structures
+    nd2_mod.rescue_nd2 = getattr(compat_chunk_decode, "rescue_nd2", None)
+
+    sys.modules["nd2"] = nd2_mod
+    sys.modules["nd2._util"] = util_mod
+    sys.modules["nd2.structures"] = compat_structures
+    sys.modules["nd2._parse"] = compat_parse_pkg
+    sys.modules["nd2._parse._chunk_decode"] = compat_chunk_decode
+    sys.modules["nd2._parse._clx_lite"] = compat_clx_lite
+    sys.modules["nd2._parse._clx_xml"] = compat_clx_xml
+    sys.modules["nd2._parse._legacy_xml"] = compat_legacy_xml
+    sys.modules["nd2._parse._parse"] = compat_parse_mod
+    sys.modules["nd2._readers"] = compat_readers_pkg
+
+
+_install_nd2_runtime_shim()
 
 from nd2._util import is_new_format
 

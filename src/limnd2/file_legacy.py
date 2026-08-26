@@ -488,7 +488,7 @@ class LimJpeg2000Chunker(BaseChunker):
             chunk = chunk.tobytes()
 
         try:
-            from nd2._parse._legacy_xml import parse_xml_block  # type: ignore
+            from limnd2.nd2_compatability._parse._legacy_xml import parse_xml_block
         except Exception:
             return {}
 
@@ -771,7 +771,7 @@ class LimJpeg2000Chunker(BaseChunker):
 
         # Local import to avoid hard dependency at module import time
         try:
-            from nd2._parse._legacy_xml import parse_xml_block  # type: ignore
+            from limnd2.nd2_compatability._parse._legacy_xml import parse_xml_block
         except Exception:
             # No XML parser available – cannot reconstruct experiment
             return None

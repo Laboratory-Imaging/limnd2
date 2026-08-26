@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from time import perf_counter
 
 import numpy as np
@@ -33,6 +33,20 @@ def _normalize_output_name(value: str | None, source: Path) -> str:
     if trimmed.endswith(".zarr"):
         return trimmed[:-5] + ".ome.zarr"
     return f"{trimmed}.ome.zarr"
+
+
+def _normalize_output_folder(value: Path | None, source: Path) -> Path:
+    if value is None:
+        return source.parent
+
+    text = str(value).strip()
+    if "\\" in text:
+        windows_path = PureWindowsPath(text)
+        if windows_path.is_absolute():
+            return Path(*windows_path.parts).expanduser().resolve()
+        return Path(*windows_path.parts).expanduser().resolve()
+
+    return value.expanduser().resolve()
 
 
 def _upload_local_ome_zarr(local_path: Path, dest_uri: str) -> None:
@@ -144,7 +158,7 @@ def main() -> None:
     chunks = _parse_int_tuple(args.chunks, 5, allow_empty=False)
     shard_shape = _parse_int_tuple(args.shard_shape, 5, allow_empty=True)
 
-    local_folder = args.output_folder.expanduser().resolve() if args.output_folder else source.parent
+    local_folder = _normalize_output_folder(args.output_folder, source)
     local_dest = local_folder / output_name
 
     s3_prefix = args.s3_prefix.rstrip("/") if args.s3_prefix else None

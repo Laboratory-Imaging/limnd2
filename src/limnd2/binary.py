@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import collections, enum, functools, json, re, uuid
+import collections, enum, functools, io, json, re, struct, uuid, zlib
 from typing_extensions import Literal
 import numpy as np
 from .attributes import ImageAttributes
@@ -8,6 +8,61 @@ from dataclasses import dataclass, asdict
 from .attributes import full_res_size
 from .metadata import calculateColor
 from .variant import decode_var
+
+
+def rle_chunk_to_downsampled_array(
+    data: bytes | memoryview,
+    downsample_factor: int,
+) -> np.ndarray:
+    """Decode an RLE binary chunk directly onto a strided output grid.
+
+    The result is exactly equivalent to ``rleChunkToArray(data)[::factor,
+    ::factor]`` without allocating the full-resolution uint32 label image.
+    This is intended for previews, mesh generation, and any other path that
+    only needs regularly sampled binary labels.
+    """
+    if downsample_factor < 1:
+        raise ValueError("downsample_factor must be at least 1")
+    if len(data) < 4:
+        return np.zeros((0, 0), dtype=np.uint32)
+
+    uncompressed_size = struct.unpack_from("<I", data)[0]
+    decompressed = zlib.decompress(memoryview(data)[4:])
+    if len(decompressed) != uncompressed_size:
+        raise ValueError("RLE binary chunk decompressed to an unexpected size")
+    stream = io.BytesIO(decompressed)
+    header = struct.Struct("<IIIIIII")
+    version, width, height, object_count, _nbytes, _last_object_offset, _custom_data_size = header.unpack(
+        stream.read(header.size)
+    )
+    if version not in (2, 3):
+        raise NotImplementedError(f"Unsupported RLE binary version {version}")
+
+    result = np.zeros(
+        ((height + downsample_factor - 1) // downsample_factor,
+         (width + downsample_factor - 1) // downsample_factor),
+        dtype=np.uint32,
+    )
+    object_struct = struct.Struct("<IIIIIIIIIII") if version == 2 else struct.Struct("<IIIIIIIII")
+    row_struct = segment_struct = struct.Struct("<II")
+    for _ in range(object_count):
+        object_values = object_struct.unpack(stream.read(object_struct.size))
+        object_id, _left, _top, _right, _bottom, _object_nbytes, row_count, _last_row_offset, _status, *_ = object_values
+        for _ in range(row_count):
+            y, segment_count = row_struct.unpack(stream.read(row_struct.size))
+            if y % downsample_factor:
+                stream.seek(segment_count * segment_struct.size, 1)
+                continue
+            output_y = y // downsample_factor
+            for _ in range(segment_count):
+                x, length = segment_struct.unpack(stream.read(segment_struct.size))
+                first_sample = ((x + downsample_factor - 1) // downsample_factor) * downsample_factor
+                if first_sample >= x + length:
+                    continue
+                output_x_start = first_sample // downsample_factor
+                output_x_stop = (x + length - 1) // downsample_factor + 1
+                result[output_y, output_x_start:output_x_stop] = object_id
+    return result
 
 
 class BinaryItemStateFlags(enum.IntFlag):

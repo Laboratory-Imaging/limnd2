@@ -1,7 +1,7 @@
 import os
 from typing import Any
 from .attributes import ImageAttributesPixelType
-from .base import FileLikeObject
+from .base import FileLikeObject, ND2_CHUNK_FORMAT_DownsampledColorData_2p
 from .custom_data import RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel
 from .metadata import PictureMetadataPicturePlanes
@@ -33,7 +33,25 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
     calibration = f"{reader.pictureMetadata.dCalibration:.3f} µm/px" if reader.pictureMetadata.bCalibrated else "Uncalibrated"
 
     mtime = f"{reader.store.lastModified.strftime('%x %X')}"
-    app_created = reader.appInfo.software
+    app_created = reader.appInfo.software.strip() or "N/A"
+    chunk_names = set(reader.chunker.chunk_names)
+    has_downsampled_images = False
+    has_complete_downsampled_images = bool(ia.downsampleLevels)
+    for level in ia.downsampleLevels:
+        downsampled_attrs = ia.makeDownsampled(level)
+        for seq_index in range(ia.frameCount):
+            chunk_name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (
+                downsampled_attrs.powSize,
+                seq_index,
+            )
+            if chunk_name in chunk_names:
+                has_downsampled_images = True
+            else:
+                has_complete_downsampled_images = False
+    if has_complete_downsampled_images:
+        app_created += ", multi-res"
+    elif has_downsampled_images:
+        app_created += ", multi-res (partial)"
 
     sizes = format_general_info_sizes(reader.store.sizeOnDisk, ia.widthBytes*ia.height, ia.widthBytes*ia.height*exp.dims.get('z', 0) if exp is not None else 0)
 

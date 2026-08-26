@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: ubuntu-latest
+            python-version: "3.14"
+          - os: windows-latest
+            python-version: "3.11"
+          - os: windows-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.14"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install development dependencies
+        run: uv sync --extra dev
+
+      - name: Prefetch ND2 fixtures
+        run: uv run python -c "import sys; from tests.conftest import LOCAL_ROOT, S3_TEST_DATA_ZIP_URL, _download_and_extract_zip_archive; sys.exit('Failed to prefetch ND2 fixtures from S3 ZIP.') if not _download_and_extract_zip_archive(LOCAL_ROOT, url=S3_TEST_DATA_ZIP_URL) else None"
+
+      - name: Debug expected ND2 fixtures
+        shell: bash
+        run: |
+          echo "Expected fixture paths:"
+          for path in \
+            tests/test_files/nd2_files/multipage.nd2 \
+            tests/test_files/nd2_files/md2.nd2 \
+            tests/test_files/nd2_files/wells.nd2
+          do
+            if [ -f "$path" ]; then
+              echo "FOUND: $path"
+            else
+              echo "MISSING: $path"
+            fi
+          done
+          echo "--- first ND2 files under tests/test_files ---"
+          find tests/test_files -type f -name '*.nd2' | sort | sed -n '1,120p' || true
+
+      - name: Run fast test suite
+        run: uv run pytest -m "not slow"
+
+  package:
+    name: Build And Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install development dependencies
+        run: uv sync --extra dev
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Smoke test built wheel
+        shell: bash
+        run: |
+          uv venv .wheel-smoke
+          WHEEL_PATH="$(find dist -maxdepth 1 -name '*.whl' -print -quit)"
+          test -n "$WHEEL_PATH"
+          uv pip install --python .wheel-smoke/bin/python "${WHEEL_PATH}[ome-zarr]"
+          .wheel-smoke/bin/python -c "import limnd2; print(limnd2.__version__)"
+          .wheel-smoke/bin/limnd2-index --help >/dev/null
+
+      - name: Upload built distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-dist
+          path: dist/*
+
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install development dependencies
+        run: uv sync --extra dev
+
+      - name: Build documentation
+        run: uv run mkdocs build --strict

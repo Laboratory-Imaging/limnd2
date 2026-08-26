@@ -1,5 +1,7 @@
 # limnd2
 
+[![CI](https://github.com/Laboratory-Imaging/limnd2/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Laboratory-Imaging/limnd2/actions/workflows/ci.yml)
+
 A Python library for reading and writing Nikon NIS-Elements `.nd2` files.
 
 The `limnd2` is inspired by the [tlambert03/nd2](https://github.com/tlambert03/nd2) implementation.
@@ -13,8 +15,8 @@ as [tlambert03/nd2](https://github.com/tlambert03/nd2), so it can be used as a d
 
 > [!WARNING]
 > This library is still in active development.
-> Current version: `0.3.0`.
-> Until `1.0`, behavior and APIs can change, and some changes may be released without a version bump.
+> Released versions are derived from immutable Git tags.
+> Until `1.0`, behavior and APIs can still change between releases.
 > GitHub Issues and Pull Requests are currently disabled.
 > If you have a problem or question, contact: `techsupp@lim.cz`.
 
