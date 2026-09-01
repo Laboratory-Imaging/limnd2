@@ -29,6 +29,15 @@ changes = [
   "Aligned Python support metadata and maintainer workflow documentation with the current release process.",
 ]
 
+[releases."0.4.1"]
+title = "Improved OME-Zarr display windows"
+message = "OME-Zarr exports now derive useful display windows from image data when an ND2 file does not provide a channel-specific display range."
+prerelease = false
+changes = [
+  "OME-Zarr exports now sample image data to set display windows for channels with fallback ND2 ranges.",
+  "Preserved independent channel display metadata for each exported image group.",
+]
+
 # Template for the next release:
 # [releases."0.3.1"]
 # title = "Short release title"

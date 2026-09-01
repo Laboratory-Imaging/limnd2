@@ -5,6 +5,7 @@ import inspect
 import re
 import shutil
 import threading
+from copy import deepcopy
 from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -222,6 +223,7 @@ def to_ome_zarr(
         axes = _axes_metadata()
         label_axes = _label_axes_metadata()
         channel_metadata = _omero_channels(nd2_reader, nc)
+        auto_window_channels = _default_window_channels(channel_metadata)
         max_layer = _max_layer_count(nx, ny, min_layer_size)
         scale_factors = _xy_scale_factors(max_layer)
         supports_scale_factors = "scale_factors" in inspect.signature(write_image).parameters
@@ -277,6 +279,7 @@ def to_ome_zarr(
                 chunks=chunks,
                 shard_shape=shard_shape,
                 channel_metadata=channel_metadata,
+                auto_window_channels=auto_window_channels,
                 supports_scale_factors=supports_scale_factors,
                 include_binaries=include_binaries,
                 use_dask=resolved_use_dask,
@@ -301,7 +304,7 @@ def to_ome_zarr(
             omero_metadata = {
                 "name": pos.label,
                 "version": "0.4",
-                "channels": channel_metadata,
+                "channels": deepcopy(channel_metadata),
                 "rdefs": {
                     "model": "color" if nc > 1 else "greyscale",
                     "defaultT": 0,
@@ -322,6 +325,7 @@ def to_ome_zarr(
                 omero_metadata=omero_metadata,
                 supports_scale_factors=supports_scale_factors,
                 progress=progress,
+                auto_window_channels=auto_window_channels,
             )
             if include_binaries:
                 _write_position_labels(
@@ -360,7 +364,7 @@ def to_ome_zarr(
                 omero_metadata = {
                     "name": pos.label,
                     "version": "0.4",
-                    "channels": channel_metadata,
+                    "channels": deepcopy(channel_metadata),
                     "rdefs": {
                         "model": "color" if nc > 1 else "greyscale",
                         "defaultT": 0,
@@ -381,6 +385,7 @@ def to_ome_zarr(
                     omero_metadata=omero_metadata,
                     supports_scale_factors=supports_scale_factors,
                     progress=progress,
+                    auto_window_channels=auto_window_channels,
                 )
                 if include_binaries:
                     _write_position_labels(
@@ -521,6 +526,7 @@ def _write_plate_layout(
     chunks: tuple[int, int, int, int, int],
     shard_shape: tuple[int, int, int, int, int] | None,
     channel_metadata: list[dict[str, Any]],
+    auto_window_channels: list[bool],
     supports_scale_factors: bool,
     include_binaries: bool,
     use_dask: bool,
@@ -572,7 +578,7 @@ def _write_plate_layout(
             omero_metadata = {
                 "name": display_name,
                 "version": "0.4",
-                "channels": channel_metadata,
+                "channels": deepcopy(channel_metadata),
                 "rdefs": {
                     "model": "color" if nc > 1 else "greyscale",
                     "defaultT": 0,
@@ -593,6 +599,7 @@ def _write_plate_layout(
                 omero_metadata=omero_metadata,
                 supports_scale_factors=supports_scale_factors,
                 progress=progress,
+                auto_window_channels=auto_window_channels,
             )
             if include_binaries:
                 _write_position_labels(
@@ -628,6 +635,7 @@ def _write_image_compat(
     omero_metadata: dict[str, Any],
     supports_scale_factors: bool,
     progress: _ProgressTracker,
+    auto_window_channels: list[bool] | None = None,
 ) -> None:
     _write_image_numeric_levels(
         data=data,
@@ -642,6 +650,12 @@ def _write_image_compat(
         omero_metadata=omero_metadata,
         supports_scale_factors=supports_scale_factors,
     )
+    if auto_window_channels and any(auto_window_channels):
+        _apply_sampled_display_windows(
+            group=group,
+            omero_metadata=omero_metadata,
+            auto_window_channels=auto_window_channels,
+        )
     progress.advance("write-image-group")
 
 
@@ -1430,6 +1444,74 @@ def _channel_ranges(
     while len(ranges) < channel_count:
         ranges.append((float(min_value), float(max_value), float(min_value), float(max_value)))
     return ranges[:channel_count]
+
+
+def _default_window_channels(channels: list[dict[str, Any]]) -> list[bool]:
+    """Identify channels whose ND2 display range fell back to the dtype range."""
+    result = []
+    for channel in channels:
+        window = channel.get("window", {})
+        result.append(
+            float(window.get("start", 0.0)) == float(window.get("min", 0.0))
+            and float(window.get("end", 0.0)) == float(window.get("max", 0.0))
+        )
+    return result
+
+
+def _apply_sampled_display_windows(
+    *,
+    group: Any,
+    omero_metadata: dict[str, Any],
+    auto_window_channels: list[bool],
+    max_frames: int = 64,
+    samples_per_frame: int = 4096,
+) -> None:
+    """Replace missing ND2 display windows with sampled data percentiles.
+
+    The image has already been written at this point. Sampling level 0 avoids
+    rereading the ND2 while bounding the additional I/O and memory use.
+    """
+    array = group["0"]
+    nt, nc, nz, ny, nx = array.shape
+    frame_count = max(1, nt * nz)
+    frame_step = max(1, int(np.ceil(np.sqrt(frame_count / max_frames))))
+    spatial_step = max(1, int(np.ceil(np.sqrt((ny * nx) / samples_per_frame))))
+    channels = omero_metadata.get("channels", [])
+
+    for channel_index, needs_window in enumerate(auto_window_channels[:nc]):
+        if not needs_window or channel_index >= len(channels):
+            continue
+        samples = []
+        for t in range(0, nt, frame_step):
+            for z in range(0, nz, frame_step):
+                values = np.asarray(
+                    array[t, channel_index, z, ::spatial_step, ::spatial_step]
+                ).reshape(-1)
+                if np.issubdtype(values.dtype, np.floating):
+                    values = values[np.isfinite(values)]
+                if values.size:
+                    samples.append(values)
+        if not samples:
+            continue
+        values = np.concatenate(samples)
+        observed_min = float(np.min(values))
+        observed_max = float(np.max(values))
+        start, end = np.percentile(values, (0.01, 99.9))
+        if start >= end:
+            start, end = observed_min, observed_max
+        window = channels[channel_index].setdefault("window", {})
+        window.update(
+            {
+                "start": float(start),
+                "end": float(end),
+                "min": observed_min,
+                "max": observed_max,
+            }
+        )
+
+    ome = dict(group.attrs.get("ome", {}))
+    ome["omero"] = omero_metadata
+    group.attrs["ome"] = ome
 
 
 def _write_image_numeric_levels(
