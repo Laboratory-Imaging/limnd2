@@ -20,6 +20,7 @@ __all__ = [
     "to_ome_zarr", "to_ome_types", "to_ome_xml", "to_ome_tiff",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX", "generalImageInfo",
     "Nd2Reader", "Nd2Writer",
+    "downsample_info", "generate_downsamples", "remove_downsamples",
     "ND2File",
     "PictureMetadata",
     "MetadataFactory",
@@ -39,6 +40,7 @@ from .export_ome_tiff import to_ome_tiff, to_ome_types, to_ome_xml
 from .export_ome_zarr import to_ome_zarr
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX, generalImageInfo
 from .nd2 import Nd2Reader, Nd2Writer
+from .downsamples import downsample_info, generate_downsamples, remove_downsamples
 from .nd2file import ND2File
 from .metadata import PictureMetadata
 from .metadata_factory import MetadataFactory

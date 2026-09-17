@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import shutil
 from pathlib import Path
 
@@ -16,6 +17,165 @@ from limnd2.base import (
     BaseChunker,
 )
 from limnd2.binary import BinaryRasterMetadataFactory, BinaryRasterMetadataItem, BinaryRasterMetadata, BinaryItemColorMode
+
+
+def test_downsample_info_reports_absent_partial_and_complete_pyramids(tmp_path: Path):
+    path = tmp_path / "downsample_info.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=2048,
+        height=1024,
+        component_count=1,
+        bits=8,
+        sequence_count=2,
+    )
+    image = np.zeros(attrs.shape, dtype=attrs.dtype)
+
+    with limnd2.Nd2Writer(path) as writer:
+        writer.imageAttributes = attrs
+        writer.setImage(0, image)
+        writer.setImage(1, image)
+
+    with limnd2.Nd2Reader(path) as reader:
+        report = reader.downsampleInfo(include_frames=True)
+    assert limnd2.downsample_info(path, include_frames=True) == report
+    assert json.loads(json.dumps(report)) == report
+    assert report["image"]["expected_levels"] == [1]
+    assert report["image"]["status"] == "absent"
+    assert report["image"]["levels"] == [{
+        "level": 1,
+        "factor": 2,
+        "width": 1024,
+        "height": 512,
+        "expected_frames": 2,
+        "stored_frames": 0,
+        "status": "absent",
+        "stored_frame_indices": [],
+        "missing_frame_indices": [0, 1],
+    }]
+
+    downsampled_attrs = attrs.makeDownsampled(1)
+    downsampled_image = np.zeros(downsampled_attrs.shape, dtype=downsampled_attrs.dtype)
+    with limnd2.Nd2Writer(path) as writer:
+        writer.chunker.setDownsampledImage(0, downsampled_image, downsample_level=1)
+
+    with limnd2.Nd2Reader(path) as reader:
+        report = reader.downsampleInfo(include_frames=True)
+    assert report["image"]["status"] == "partial"
+    assert report["image"]["levels"][0]["stored_frame_indices"] == [0]
+    assert report["image"]["levels"][0]["missing_frame_indices"] == [1]
+
+    with limnd2.Nd2Writer(path) as writer:
+        writer.chunker.setDownsampledImage(1, downsampled_image, downsample_level=1)
+
+    with limnd2.Nd2Reader(path) as reader:
+        report = reader.downsampleInfo()
+    assert report["image"]["status"] == "complete"
+    assert report["image"]["levels"][0]["status"] == "complete"
+
+
+def test_generate_downsamples_copies_or_updates_color_pyramid(tmp_path: Path):
+    source = tmp_path / "source.nd2"
+    destination = tmp_path / "destination.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=2048,
+        height=1024,
+        component_count=1,
+        bits=8,
+        sequence_count=2,
+    )
+    image = np.zeros(attrs.shape, dtype=attrs.dtype)
+    downsampled_attrs = attrs.makeDownsampled(1)
+    preserved = np.full(downsampled_attrs.shape, 17, dtype=downsampled_attrs.dtype)
+
+    with limnd2.Nd2Writer(source) as writer:
+        writer.imageAttributes = attrs
+        writer.setImage(0, image)
+        writer.setImage(1, image)
+        writer.chunker.setDownsampledImage(0, preserved, downsample_level=1)
+
+    assert limnd2.generate_downsamples(source, output=destination) == destination.resolve()
+    with limnd2.Nd2Reader(source) as reader:
+        assert reader.downsampleInfo()["image"]["status"] == "partial"
+    with limnd2.Nd2Reader(destination) as reader:
+        assert reader.downsampleInfo()["image"]["status"] == "complete"
+        assert np.array_equal(reader.image(0, downsample_level=1), preserved)
+
+    with pytest.raises(FileExistsError):
+        limnd2.generate_downsamples(source, output=destination)
+
+    assert limnd2.generate_downsamples(source) == source.resolve()
+    with limnd2.Nd2Reader(source) as reader:
+        assert reader.downsampleInfo()["image"]["status"] == "complete"
+
+
+def test_generate_downsamples_reports_progress_after_each_frame_and_finalizes(tmp_path: Path):
+    source = tmp_path / "source.nd2"
+    destination = tmp_path / "destination.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=2048,
+        height=1024,
+        component_count=1,
+        bits=8,
+        sequence_count=2,
+    )
+    image = np.zeros(attrs.shape, dtype=attrs.dtype)
+    with limnd2.Nd2Writer(source) as writer:
+        writer.imageAttributes = attrs
+        writer.setImage(0, image)
+        writer.setImage(1, image)
+
+    events: list[tuple[int, int, Path | None, str]] = []
+    limnd2.generate_downsamples(
+        source,
+        output=destination,
+        progress_callback=lambda current, total, file, message: events.append(
+            (current, total, file, message)
+        ),
+    )
+
+    assert [(current, total) for current, total, _, _ in events] == [(1, 2), (2, 2), (2, 2)]
+    assert all(file == destination.resolve() for _, _, file, _ in events)
+    assert "Processed frame 1 of 2" in events[0][3]
+    assert "Finished generating downsamples" in events[-1][3]
+
+
+def test_remove_downsamples_compacts_color_pyramid_to_output(tmp_path: Path):
+    source = tmp_path / "source.nd2"
+    destination = tmp_path / "without_pyramid.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=2048, height=1024, component_count=1, bits=8, sequence_count=1
+    )
+    image = np.arange(np.prod(attrs.shape), dtype=attrs.dtype).reshape(attrs.shape)
+    with limnd2.Nd2Writer(source) as writer:
+        writer.imageAttributes = attrs
+        writer.setImage(0, image)
+    limnd2.generate_downsamples(source)
+
+    assert limnd2.remove_downsamples(source, output=destination) == destination.resolve()
+    with limnd2.Nd2Reader(source) as reader:
+        assert reader.downsampleInfo()["image"]["status"] == "complete"
+    with limnd2.Nd2Reader(destination) as reader:
+        assert reader.downsampleInfo()["image"]["status"] == "absent"
+        assert np.array_equal(reader.image(0), image)
+
+
+def test_remove_downsamples_compacts_color_pyramid_in_place(tmp_path: Path):
+    source = tmp_path / "source.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=2048, height=1024, component_count=1, bits=8, sequence_count=1
+    )
+    image = np.arange(np.prod(attrs.shape), dtype=attrs.dtype).reshape(attrs.shape)
+    with limnd2.Nd2Writer(source) as writer:
+        writer.imageAttributes = attrs
+        writer.setImage(0, image)
+    limnd2.generate_downsamples(source)
+    size_with_pyramid = source.stat().st_size
+
+    assert limnd2.remove_downsamples(source) == source.resolve()
+    assert source.stat().st_size < size_with_pyramid
+    with limnd2.Nd2Reader(source) as reader:
+        assert reader.downsampleInfo()["image"]["status"] == "absent"
+        assert np.array_equal(reader.image(0), image)
 
 
 def test_chunker_properties_and_chunk_access(nd2_path: Path):

@@ -604,6 +604,76 @@ class BaseChunker(abc.ABC):
                     return False
         return True
 
+    def downsampleInfo(self, *, include_frames: bool = False) -> dict:
+        """Return JSON-serializable information about stored color-image pyramids.
+
+        The report inspects the chunk map only; it does not decode image data.
+        ``include_frames`` adds the stored and missing sequence indices for each
+        downsample level.
+        """
+        attrs = self.imageAttributes
+        frame_count = attrs.frameCount
+        chunk_names = set(self.chunk_names)
+        expected_levels = attrs.downsampleLevels
+        levels = []
+
+        for level in expected_levels:
+            downsampled_attrs = attrs.makeDownsampled(level)
+            stored_frame_indices = [
+                seqindex
+                for seqindex in range(frame_count)
+                if ND2_CHUNK_FORMAT_DownsampledColorData_2p
+                % (downsampled_attrs.powSize, seqindex) in chunk_names
+            ]
+            stored_frame_index_set = set(stored_frame_indices)
+            stored_frames = len(stored_frame_indices)
+            status = (
+                "complete"
+                if stored_frames == frame_count
+                else "absent" if stored_frames == 0 else "partial"
+            )
+            report = {
+                "level": level,
+                "factor": 1 << level,
+                "width": downsampled_attrs.width,
+                "height": downsampled_attrs.height,
+                "expected_frames": frame_count,
+                "stored_frames": stored_frames,
+                "status": status,
+            }
+            if include_frames:
+                report["stored_frame_indices"] = stored_frame_indices
+                report["missing_frame_indices"] = [
+                    seqindex for seqindex in range(frame_count)
+                    if seqindex not in stored_frame_index_set
+                ]
+            levels.append(report)
+
+        overall_status = (
+            "not-applicable"
+            if not expected_levels
+            else "complete"
+            if all(level["status"] == "complete" for level in levels)
+            else "absent"
+            if all(level["status"] == "absent" for level in levels)
+            else "partial"
+        )
+        return {
+            "schema_version": 1,
+            "image": {
+                "base": {
+                    "width": attrs.width,
+                    "height": attrs.height,
+                    "frames": frame_count,
+                    "components": attrs.componentCount,
+                    "dtype": np.dtype(attrs.dtype).name,
+                },
+                "expected_levels": expected_levels,
+                "status": overall_status,
+                "levels": levels,
+            },
+        }
+
     @property
     def hasDownsampledBinaryRasterData(self) -> bool:
         attrs, binmeta = self.imageAttributes, self.binaryRasterMetadata
@@ -661,13 +731,26 @@ class BaseChunker(abc.ABC):
             img = self.binaryRasterData(binid, seqindex, rect=rect)
         return self.scale_2xN_down_00(img, additional_downsample_level) if img is not None else img
 
-    def generateAndSetDownsampledImages(self, seqindex: int, image: NumpyArrayLike) -> None:
+    def generateAndSetDownsampledImages(
+        self, seqindex: int, image: NumpyArrayLike, *, overwrite: bool = True
+    ) -> None:
+        """Generate color-image downsample levels and store their chunks.
+
+        When ``overwrite`` is false, already stored level chunks are preserved.
+        """
         attrs, src_image = self.imageAttributes, image
+        chunk_names = set(self.chunk_names)
         for level in attrs.downsampleLevels:
             downsampled_attrs = attrs.makeDownsampled(level)
             downsampled_image = np.zeros(shape=downsampled_attrs.shape, dtype=downsampled_attrs.safe_dtype)
             _downsample_2x_linear(downsampled_image, src_image)
-            self.setDownsampledImage(seqindex, downsampled_image.astype(dtype=downsampled_attrs.dtype), downsample_level=level)
+            name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (downsampled_attrs.powSize, seqindex)
+            if overwrite or name not in chunk_names:
+                self.setDownsampledImage(
+                    seqindex,
+                    downsampled_image.astype(dtype=downsampled_attrs.dtype),
+                    downsample_level=level,
+                )
             src_image = downsampled_image
 
     def generateAndSetDownsampledBinaryRasterData(self, binid: int, seqindex: int, binimage: NumpyArrayLike) -> None:

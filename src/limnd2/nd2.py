@@ -168,6 +168,15 @@ class Nd2Reader:
         """
         return self._chunker.imageAttributes
 
+    def downsampleInfo(self, *, include_frames: bool = False) -> dict:
+        """Return JSON-serializable information about stored color-image pyramids.
+
+        The report records chunk-map presence only; it does not decode image
+        data. Set ``include_frames`` to include stored and missing sequence
+        indices for each level.
+        """
+        return self._chunker.downsampleInfo(include_frames=include_frames)
+
     @property
     def pictureMetadata(self) -> PictureMetadata:
         """

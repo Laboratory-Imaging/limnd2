@@ -287,7 +287,10 @@ class LimBinaryIOChunker(BaseChunker):
         data : bytes = b''
         QQ = struct.Struct("QQ")
         for chunk_name in reversed(sorted(chmap.keys())):
-            data += chunk_name + QQ.pack(*chmap[chunk_name])
+            offset, size = chmap[chunk_name]
+            # The on-disk chunk map represents an unknown size by storing the
+            # offset in both fields. _read_chunkmap exposes that as ``-1``.
+            data += chunk_name + QQ.pack(offset, offset if size == -1 else size)
         data += ND2_CHUNKMAP_SIGNATURE
         data += struct.pack("Q", pos)
         if chunk_len < chunk_4k_len:
