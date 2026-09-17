@@ -756,7 +756,7 @@ class BaseChunker(abc.ABC):
                     self._comp_range[comp, :, :] = np.moveaxis(pairs, 1, 0)
                 else:
                     self._comp_range[comp, 0, :] = 0
-                    self._comp_range[comp, 1, :] = (1 << self.imageAttributes.uiBpcInMemory) - 1
+                    self._comp_range[comp, 1, :] = (1 << self.imageAttributes.uiBpcSignificant) - 1
         return self._comp_range
 
     @property

@@ -142,6 +142,39 @@ def test_to_ome_tiff_single_position_rgb(nd2_base_dir: Path, tmp_path: Path) -> 
         assert len(ome.images[0].pixels.tiff_data_blocks) == nt * nz
 
 
+def test_frame_export_ome_tiff_writes_selected_frame_metadata(
+    nd2_base_dir: Path, tmp_path: Path
+) -> None:
+    source = _sample_path(nd2_base_dir, "multipage.nd2")
+    dest = tmp_path / "frame.ome.tiff"
+
+    with limnd2.Nd2Reader(source) as reader:
+        expected = reader.image(0)
+        expected_channel = reader.to_ome_types().images[0].pixels.channels[0]
+        limnd2.frameExport(reader, 0, dest, ome_tiff=True)
+        calibration = reader.pictureMetadata.dCalibration
+
+    with tifffile.TiffFile(dest) as tif:
+        assert len(tif.series) == 1
+        assert tif.series[0].shape == expected.shape
+        assert tif.series[0].axes == "YXS"
+        ome = from_xml(tif.ome_metadata)
+        pixels = ome.images[0].pixels
+        assert pixels.size_t == 1
+        assert pixels.size_z == 1
+        assert pixels.size_c == expected.shape[-1]
+        assert pixels.size_y == expected.shape[0]
+        assert pixels.size_x == expected.shape[1]
+        assert pixels.significant_bits == 8
+        expected_calibration = calibration if calibration > 0 else None
+        assert pixels.physical_size_x == expected_calibration
+        assert pixels.physical_size_y == expected_calibration
+        channel = pixels.channels[0]
+        assert channel.name == expected_channel.name
+        assert channel.samples_per_pixel == expected_channel.samples_per_pixel
+        assert channel.color.as_rgb_tuple() == expected_channel.color.as_rgb_tuple()
+
+
 def test_to_ome_tiff_multipoint_becomes_multiple_series(nd2_base_dir: Path, tmp_path: Path) -> None:
     source = _sample_path(nd2_base_dir, "md2.nd2")
     dest = tmp_path / "md2.ome.tif"

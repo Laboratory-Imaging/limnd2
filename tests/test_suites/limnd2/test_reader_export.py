@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 import limnd2
+from limnd2.base import BaseChunker
 from limnd2.export import (
     map_dim_name,
     get_dim_sizes,
@@ -123,6 +124,24 @@ def test_frame_to_rgb_grayscale_and_alias():
     assert rgb[0, 0].tolist() == [0, 0, 0]
     assert rgb[0, 1].tolist() == [255, 255, 255]
     assert np.array_equal(rgb, frame_to_rgb(reader, 0))
+
+
+def test_comp_frame_range_falls_back_to_significant_bit_depth():
+    class _DummyImageAttributes:
+        uiComp = 1
+        uiSequenceCount = 1
+        uiBpcInMemory = 16
+        uiBpcSignificant = 12
+
+    class _DummyChunker:
+        _comp_range = None
+        imageAttributes = _DummyImageAttributes()
+
+        def chunk(self, _name: str):
+            return None
+
+    ranges = BaseChunker.compFrameRange.fget(_DummyChunker())
+    assert ranges.tolist() == [[[0.0], [4095.0]]]
 
 
 def test_frame_to_rgb_reorders_native_rgb_bgr():

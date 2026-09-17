@@ -22,6 +22,85 @@ if TYPE_CHECKING:
 _ANNOTATION_NAMESPACE = "urn:limnd2:nd2"
 
 
+def frame_to_ome_tiff(
+    nd2_reader: "Nd2Reader",
+    frame_index: int,
+    path: str | Path,
+    *,
+    overwrite: bool = False,
+    progress_callback: ExportProgressCallback | None = None,
+) -> Path:
+    """Export one raw ND2 frame as an OME-TIFF with mapped ND2 metadata."""
+    import tifffile
+
+    output_path = Path(path)
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"Output file already exists: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    frame_lookup = _frame_lookup(nd2_reader)
+    try:
+        t_index, position_index, z_index = next(
+            indexes for indexes, index in frame_lookup.items() if index == frame_index
+        )
+    except StopIteration as exc:
+        raise IndexError(f"Frame index is not present in this ND2: {frame_index}") from exc
+
+    # Start from the same rich OME model as the full-dataset exporter, then
+    # retain only the position and T/Z plane selected for this export.
+    ome = to_ome_types(
+        nd2_reader,
+        include_unstructured=True,
+        tiff_file_name=output_path.name,
+    )
+    image = ome.images[position_index].model_copy(deep=True)
+    pixels = image.pixels
+    pixels.size_t = 1
+    pixels.size_z = 1
+    pixels.significant_bits = nd2_reader.imageAttributes.uiBpcSignificant
+    pixels.planes = [
+        plane.model_copy(update={"the_t": 0, "the_z": 0})
+        for plane in pixels.planes
+        if plane.the_t == t_index and plane.the_z == z_index
+    ]
+    pixels.tiff_data_blocks = [
+        block.model_copy(update={"ifd": ifd, "first_t": 0, "first_z": 0})
+        for ifd, block in enumerate(pixels.tiff_data_blocks)
+        if block.first_t == t_index and block.first_z == z_index
+    ]
+    single_frame_ome = ome.model_copy(update={"images": [image], "plates": []})
+    ome_xml = ome_to_xml(single_frame_ome, exclude_unset=True, indent=2)
+    try:
+        ome_xml.encode("ascii")
+    except UnicodeEncodeError:
+        ome_xml = ome_xml.encode("ascii", "xmlcharrefreplace").decode("ascii")
+
+    calibration = _positive_or_none(nd2_reader.pictureMetadata.dCalibration)
+    resolution = (1.0 / calibration, 1.0 / calibration) if calibration is not None else None
+    resolutionunit = tifffile.RESUNIT.MICROMETER if calibration is not None else None
+    frame = np.asarray(nd2_reader.image(frame_index))
+    if nd2_reader.isRgb:
+        data = frame[..., ::-1]
+        axes = "YXS"
+        photometric = tifffile.PHOTOMETRIC.RGB
+    else:
+        data = np.moveaxis(frame, -1, 0)
+        axes = "CYX"
+        photometric = tifffile.PHOTOMETRIC.MINISBLACK
+
+    with tifffile.TiffWriter(output_path, ome=False) as tif:
+        tif.write(
+            data,
+            photometric=photometric,
+            resolution=resolution,
+            resolutionunit=resolutionunit,
+            metadata={"axes": axes},
+            description=ome_xml,
+        )
+    ExportProgressReporter(progress_callback).emit(1, 1, output_path, f"Finished exporting OME-TIFF frame {frame_index} to {output_path}")
+    return output_path
+
+
 def to_ome_types(
     nd2_reader: "Nd2Reader",
     *,

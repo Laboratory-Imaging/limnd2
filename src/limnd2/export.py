@@ -536,6 +536,7 @@ def frameExport(
     output_path: str | Path | None = None,
     target_bit_depth: int | None = None,
     *,
+    ome_tiff: bool = False,
     overwrite: bool = False,
     progress_callback: ExportProgressCallback | None = None,
 ):
@@ -562,6 +563,12 @@ def frameExport(
     if output_path.exists() and not overwrite:
         raise FileExistsError(f"Output file already exists: {output_path}")
     reporter = ExportProgressReporter(progress_callback)
+    if ome_tiff:
+        if output_path.suffix.lower() not in {'.tif', '.tiff'}:
+            raise ValueError("OME-TIFF frame export requires a .tif or .tiff output path.")
+        from .export_ome_tiff import frame_to_ome_tiff
+        frame_to_ome_tiff(nd2_reader, frame_index, output_path, overwrite=overwrite, progress_callback=progress_callback)
+        return
     _export_single_frame_to_path(
         nd2_reader,
         frame_index=frame_index,
