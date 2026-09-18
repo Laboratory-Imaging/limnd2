@@ -38,12 +38,12 @@ changes = [
   "Preserved independent channel display metadata for each exported image group.",
 ]
 
-# Template for the next release:
-# [releases."0.3.1"]
-# title = "Short release title"
-# message = "One short summary paragraph for this release."
-# prerelease = false
-# changes = [
-#   "Describe the first user-visible change.",
-#   "Describe the second user-visible change.",
-# ]
+[releases."0.4.2"]
+title = "Several bug fixes and improvements"
+prerelease = false
+changes = [
+  "BUG FIX: In .nd2 -> .png / .jpg image export (fixed issues with incorect bit depth).",
+  "FEATURE: Added code to generate / check / remove downsamples (use `limnd2.generate_downsamples`, `limnd2.remove_downsamples` and `limnd2.downsample_info`).",
+  "FEATURE: Image info can now also be read from .tiff and .ome.tiff files.",
+]
+
