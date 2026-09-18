@@ -18,6 +18,7 @@ __all__ = [
     "ExperimentFactory", "WellplateFactory",
     "frameExport", "seriesExport", "metadataAsJSON", "frameToRGB", "frame_to_rgb",
     "to_ome_zarr", "to_ome_types", "to_ome_xml", "to_ome_tiff",
+    "NIS_PICTURE_METADATA_TAG", "picture_metadata_from_tiff_tag", "picture_metadata_from_tiff_file", "picture_metadata_from_ome_xml", "picture_metadata_from_ome_tiff_file", "nd2_metadata_to_ome_xml",
     "gatherImageInformation", "imageInformationAsJSON", "imageInformationAsTXT", "imageInformationAsXLSX", "generalImageInfo",
     "Nd2Reader", "Nd2Writer",
     "downsample_info", "generate_downsamples", "remove_downsamples",
@@ -37,6 +38,7 @@ from .experiment_factory import ExperimentFactory
 from .wellplate_factory import WellplateFactory
 from .export import frameExport, frameToRGB, frame_to_rgb, seriesExport, metadataAsJSON
 from .export_ome_tiff import to_ome_tiff, to_ome_types, to_ome_xml
+from .metadata_tiff import NIS_PICTURE_METADATA_TAG, nd2_metadata_to_ome_xml, picture_metadata_from_ome_tiff_file, picture_metadata_from_ome_xml, picture_metadata_from_tiff_file, picture_metadata_from_tiff_tag
 from .export_ome_zarr import to_ome_zarr
 from .image_info import gatherImageInformation, imageInformationAsJSON, imageInformationAsTXT, imageInformationAsXLSX, generalImageInfo
 from .nd2 import Nd2Reader, Nd2Writer

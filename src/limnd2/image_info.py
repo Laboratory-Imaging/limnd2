@@ -1,10 +1,10 @@
-import os
 from typing import Any
+from pathlib import Path
 from .attributes import ImageAttributesPixelType
 from .base import FileLikeObject, ND2_CHUNK_FORMAT_DownsampledColorData_2p
 from .custom_data import RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLevel
-from .metadata import PictureMetadataPicturePlanes
+from .metadata import PictureMetadataPicturePlanes, PicturePlaneModalityFlags
 from .nd2 import Nd2Reader
 
 import hashlib, itertools, json
@@ -57,12 +57,51 @@ def generalImageInfo(reader: Nd2Reader) -> dict[str, Any]:
 
     return dict(filename=filename, path=path, bit_depth=bit_depth, loops=loops, dimension=dimension, calibration=calibration, mtime=mtime, app_created=app_created, **sizes)
 
-def imageInformationAsJSON(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> str:
-    return json.dumps(gatherImageInformation(file_like, filename=filename, last_modified=last_modified))
+def imageInformationAsJSON(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None, format_hint: str|None = None) -> str:
+    """Return display-ready Image Information JSON for ND2 or TIFF input.
 
-def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None) -> dict[str, Any]:
+    ``format_hint=None`` deliberately preserves the historic ND2-only
+    behavior.  TIFF support is opt-in so existing callers cannot be redirected
+    by an extension-based guess.
+    """
+    info = gatherImageInformation(file_like, filename=filename, last_modified=last_modified, format_hint=format_hint)
+    return json.dumps(_round_image_info_numbers(info))
+
+
+def _round_image_info_numbers(value: Any) -> Any:
+    """Round display-only JSON floats to three decimals without mutating metadata.
+
+    Image Information is a human-facing summary.  Applying this at the JSON
+    boundary prevents binary floating-point residue from appearing in any
+    table while leaving reader APIs and internal metadata lossless.
+    """
+    if isinstance(value, float):
+        return round(value, 3)
+    if isinstance(value, dict):
+        return {key: _round_image_info_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_round_image_info_numbers(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_round_image_info_numbers(item) for item in value)
+    return value
+
+def gatherImageInformation(file_like: FileLikeObject, *, filename: str|None = None, last_modified: str|None = None, format_hint: str|None = None) -> dict[str, Any]:
+    """Return Image Information data, preserving ND2 behavior unless hinted TIFF."""
+    if format_hint == "tiff":
+        if isinstance(file_like, (str, Path)):
+            path = Path(file_like)
+        elif filename:
+            path = Path(filename)
+        else:
+            raise ValueError("TIFF Image Information requires a filename when file_like is a buffer.")
+        # Kept lazy: importing this module must not require optional tifffile.
+        from .image_info_tiff import gather_image_info_from_tiff
+        return gather_image_info_from_tiff(path, last_modified=last_modified)
+    if format_hint not in (None, "nd2"):
+        raise ValueError(f"Unsupported image-info format hint: {format_hint!r}")
     with Nd2Reader(file_like, chunker_kwargs=dict(filename=filename, last_modified=last_modified)) as reader:
         return gatherImageInfoFromNd2(reader)
+
 
 def gatherImageInfoFromNd2(file_object: Nd2Reader) -> dict[str, Any]:
     ret = {}
@@ -168,6 +207,7 @@ def _experiment_to_table(exp: ExperimentLevel) -> dict[str, Any]:
     return dict(coldefs=col_defs, rowdata=exp.uLoopPars.info)
 
 def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, Any]:
+    """Build acquisition details, representing unavailable values as ``N/A``."""
     rows=[]
     col_defs=[ dict(id="id", hidden=True), dict(id="camera", title="Camera"), dict(id="channel", title="Channel"), dict(id="feature", title="Feature"), dict(id="value", title="Value") ]
     settings = planes.sSampleSetting
@@ -181,6 +221,8 @@ def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, 
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value=setting.objectiveMagnification))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value=setting.objectiveNumericAperture))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value=setting.refractiveIndex))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Modality:", value=", ".join(PicturePlaneModalityFlags.to_str_list(plane.uiModalityMask))))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Pinhole diameter:", value=(f"{plane.dPinholeDiameter:g} µm" if plane.dPinholeDiameter >= 0 else "N/A")))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Emission wavelength:", value=(plane.emissionWavelengthNm if plane.emissionWavelengthNm else 'N/A')))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Excitation wavelength:", value=(plane.excitationWavelengthNm if plane.excitationWavelengthNm else 'N/A')))
         else:
@@ -191,8 +233,20 @@ def _picture_planes_to_table(planes: PictureMetadataPicturePlanes) -> dict[str, 
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective magnification:", value='N/A'))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Objective numerical aperture:", value='N/A'))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Refractive index:", value='N/A'))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Modality:", value=", ".join(PicturePlaneModalityFlags.to_str_list(plane.uiModalityMask))))
+            rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Pinhole diameter:", value=(f"{plane.dPinholeDiameter:g} µm" if plane.dPinholeDiameter >= 0 else "N/A")))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Emission wavelength:", value='N/A'))
             rows.append(dict(id=str(len(rows)+1), camera=camera, channel=plane.sDescription, feature="Excitation wavelength:", value='N/A'))
+    for row in rows:
+        value = row["value"]
+        # NIS uses empty strings and zero-valued objective fields as its
+        # unpopulated sentinels.  Do not hide valid numerical fields such as
+        # wavelengths, NA, refractive index, or a measured pinhole diameter.
+        if value is None or value == "" or (
+            row["feature"] in {"Objective magnification:", "Objective numerical aperture:", "Refractive index:"}
+            and isinstance(value, (int, float)) and value <= 0
+        ):
+            row["value"] = "N/A"
     rows.sort(key=lambda row: row["camera"])
     groupedBy = ['camera', 'channel']
     d = dict(coldefs=col_defs, groups=_create_treeview_grouping(rows, groupedBy.copy()), rowdata=rows, groupedby=groupedBy)
