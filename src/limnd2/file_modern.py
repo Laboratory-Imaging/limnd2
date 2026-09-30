@@ -181,7 +181,7 @@ class LimBinaryIOChunker(BaseChunker):
             header_and_data1_len = header_len + data1_len
             header_and_data1_4k_len = _ceil_align(header_and_data1_len, ND2_CHUNK_ALIGNMENT)
             blank_len = header_and_data1_4k_len - header_and_data1_len + ND2_CHUNK_NAME_RESERVE
-            if 0 < data1_len and 0 < blank_len:
+            if 0 < (data1_len + data2_len) and 0 < blank_len:
                 name_len += blank_len
             # writing 1st part: Header, name, data1
             data_written_len = 0
@@ -356,6 +356,9 @@ class LimBinaryIOChunker(BaseChunker):
                 x0, x1 = x, min(x+w, attrs.shape[1])
                 return np.zeros(shape=(y1-y0, x1-x0, attrs.shape[2]), dtype=attrs.dtype)
 
+        if rect is not None and attrs.eCompression == ImageAttributesCompression.ictNone:
+            return self._read_image_rect(pos, attrs, rect, payload_offset=8)
+
         buffer, offset  = None, 0
         if attrs.eCompression == ImageAttributesCompression.ictLossLess:
             buffer = zlib.decompress(self._read_chunk(pos)[8:])
@@ -384,6 +387,52 @@ class LimBinaryIOChunker(BaseChunker):
             dtype = attrs.dtype,
             strides = attrs.strides,
         )
+
+    def _read_image_rect(
+        self,
+        pos: int,
+        attrs: ImageAttributes,
+        rect: tuple[int, int, int, int],
+        *,
+        payload_offset: int = 0,
+    ) -> NumpyArrayLike:
+        """Read an uncompressed rectangular image region without loading its full chunk."""
+        x, y, w, h = rect
+        y0, y1 = y, min(y + h, attrs.shape[0])
+        x0, x1 = x, min(x + w, attrs.shape[1])
+        shape = (y1 - y0, x1 - x0, attrs.shape[2])
+        if self._store.mem:
+            _magic, name_len, _data_len = STRUCT_CHUNK_HEADER.unpack(
+                self._read_struct_at(STRUCT_CHUNK_HEADER, pos)
+            )
+            return np.ndarray(
+                buffer=self._store.mem,
+                offset=(
+                    pos
+                    + STRUCT_CHUNK_HEADER.size
+                    + name_len
+                    + payload_offset
+                    + y0 * attrs.widthBytes
+                    + x0 * attrs.pixelBytes
+                ),
+                shape=shape,
+                dtype=attrs.dtype,
+                strides=attrs.strides,
+            )
+
+        row_bytes = (x1 - x0) * attrs.pixelBytes
+        buffer = bytearray((y1 - y0) * row_bytes)
+        _magic, name_len, _data_len = STRUCT_CHUNK_HEADER.unpack(
+            self._read_struct_at(STRUCT_CHUNK_HEADER, pos)
+        )
+        data_start = pos + STRUCT_CHUNK_HEADER.size + name_len + payload_offset
+        with self._lock:
+            for row in range(y1 - y0):
+                self._store.io.seek(
+                    data_start + (y0 + row) * attrs.widthBytes + x0 * attrs.pixelBytes
+                )
+                self._store.io.readinto(memoryview(buffer)[row * row_bytes : (row + 1) * row_bytes])
+        return np.ndarray(buffer=buffer, shape=shape, dtype=attrs.dtype)
 
 
     def setImage(self, seqindex: int, image: NumpyArrayLike, *, acqtime: float = -1.0) -> None:
@@ -493,6 +542,8 @@ class LimBinaryIOChunker(BaseChunker):
         attrs = self.imageAttributes.makeDownsampled(downsample_level)
         name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (attrs.powSize, seqindex)
         pos = self._chunk_pos(name)
+        if rect is not None:
+            return self._read_image_rect(pos, attrs, rect)
         buffer, offset = self._get_chunk_buffer_and_offset(pos)
 
         shape = None
@@ -514,6 +565,64 @@ class LimBinaryIOChunker(BaseChunker):
             dtype=attrs.dtype,
             strides=attrs.strides,
         )
+
+    def setDownsampledImageTile(
+        self,
+        seqindex: int,
+        x: int,
+        y: int,
+        tile: NumpyArrayLike,
+        *,
+        downsample_level: int,
+    ) -> None:
+        """Write a rectangular region of an uncompressed color pyramid chunk."""
+        if self.is_readonly or not self._store.io.writable():
+            raise PermissionError("Writable file handle required for setDownsampledImageTile.")
+
+        attrs = self.imageAttributes.makeDownsampled(downsample_level)
+        tile_arr = np.asarray(tile)
+        if tile_arr.ndim != 3 or tile_arr.shape[2] != attrs.componentCount:
+            raise ValueError("Tile must have a matching component axis.")
+        tile_h, tile_w = tile_arr.shape[:2]
+        if tile_h <= 0 or tile_w <= 0:
+            raise ValueError("Tile width and height must be > 0.")
+        if x < 0 or y < 0 or x + tile_w > attrs.width or y + tile_h > attrs.height:
+            raise ValueError("Tile coordinates are out of bounds.")
+
+        tile_arr = np.ascontiguousarray(tile_arr, dtype=attrs.dtype)
+        _validate_pixel_range(tile_arr, attrs)
+        name = ND2_CHUNK_FORMAT_DownsampledColorData_2p % (attrs.powSize, seqindex)
+
+        with self._lock:
+            try:
+                pos = self._chunk_pos(name)
+                magic, name_len, data_len = STRUCT_CHUNK_HEADER.unpack(
+                    self._read_struct_at(STRUCT_CHUNK_HEADER, pos)
+                )
+                if magic != ND2_CHUNK_MAGIC:
+                    raise RuntimeError(f"Invalid nd2 chunk header '{magic:x}' at pos {pos}")
+                if data_len < attrs.imageBytes:
+                    raise ValueError("Existing downsample chunk is smaller than expected.")
+                data_start = pos + STRUCT_CHUNK_HEADER.size + name_len
+            except NameNotInChunkmapError:
+                pos, _ = self._write_chunk(
+                    name,
+                    None,
+                    data2=None,
+                    data2_len_override=attrs.imageBytes,
+                    sparse_data2=True,
+                )
+                _magic, name_len, _data_len = STRUCT_CHUNK_HEADER.unpack(
+                    self._read_struct_at(STRUCT_CHUNK_HEADER, pos)
+                )
+                data_start = pos + STRUCT_CHUNK_HEADER.size + name_len
+                self._update_chunkmap(name, (pos, attrs.imageBytes))
+
+            for row in range(tile_h):
+                offset = data_start + (y + row) * attrs.widthBytes + x * attrs.pixelBytes
+                self._store.io.seek(offset)
+                self._store.io.write(tile_arr[row].tobytes(order="C"))
+            self._store.io.seek(0, os.SEEK_END)
 
     def setDownsampledImage(self, seqindex: int, image: NumpyArrayLike, *, downsample_level: int) -> None:
         attrs = self.imageAttributes.makeDownsampled(downsample_level)

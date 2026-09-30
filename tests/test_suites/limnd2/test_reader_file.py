@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from limnd2.base import (
     ND2_CHUNK_NAME_AcqTimes2Cache,
     ND2_CHUNK_NAME_AcqFramesCache,
     BaseChunker,
+    _downsample_2x_linear,
 )
 from limnd2.binary import BinaryRasterMetadataFactory, BinaryRasterMetadataItem, BinaryRasterMetadata, BinaryItemColorMode
 
@@ -135,8 +137,50 @@ def test_generate_downsamples_reports_progress_after_each_frame_and_finalizes(tm
 
     assert [(current, total) for current, total, _, _ in events] == [(1, 2), (2, 2), (2, 2)]
     assert all(file == destination.resolve() for _, _, file, _ in events)
-    assert "Processed frame 1 of 2" in events[0][3]
+    assert "All 1 levels, frame 1/2" in events[0][3]
     assert "Finished generating downsamples" in events[-1][3]
+
+
+def test_generate_downsamples_in_stripes_matches_full_frame_result(tmp_path: Path):
+    source = tmp_path / "source.nd2"
+    destination = tmp_path / "destination.nd2"
+    attrs = limnd2.attributes.ImageAttributes.create(
+        width=2052, height=1030, component_count=3, bits=8, sequence_count=1
+    )
+    image = np.arange(np.prod(attrs.shape), dtype=attrs.dtype).reshape(attrs.shape)
+    with limnd2.Nd2Writer(source) as writer:
+        writer.imageAttributes = attrs
+        writer.setImage(0, image)
+
+    expected = []
+    current = image
+    for level in attrs.downsampleLevels:
+        level_attrs = attrs.makeDownsampled(level)
+        downsampled = np.zeros(level_attrs.shape, dtype=level_attrs.safe_dtype)
+        _downsample_2x_linear(downsampled, current)
+        expected.append(downsampled.astype(level_attrs.dtype))
+        current = downsampled
+
+    events: list[tuple[int, int, Path | None, str]] = []
+    limnd2.generate_downsamples(
+        source,
+        output=destination,
+        tile_height=73,
+        progress_callback=lambda current, total, file, message: events.append(
+            (current, total, file, message)
+        ),
+    )
+
+    alignment = 2 ** (len(attrs.downsampleLevels) - 1)
+    effective_tile_height = max(alignment, 73 // alignment * alignment)
+    stripe_count = math.ceil(attrs.makeDownsampled(1).height / effective_tile_height)
+    assert [(current, total) for current, total, _, _ in events] == [
+        *( (current, stripe_count) for current in range(1, stripe_count + 1) ),
+        (stripe_count, stripe_count),
+    ]
+    with limnd2.Nd2Reader(destination) as reader:
+        for level, expected_image in zip(attrs.downsampleLevels, expected):
+            assert np.array_equal(reader.image(0, downsample_level=level), expected_image)
 
 
 def test_remove_downsamples_compacts_color_pyramid_to_output(tmp_path: Path):

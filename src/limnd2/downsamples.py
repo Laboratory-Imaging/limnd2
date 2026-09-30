@@ -5,8 +5,13 @@ from __future__ import annotations
 import shutil
 import os
 import uuid
+import math
 from pathlib import Path
 
+import numpy as np
+
+from .attributes import ImageAttributesCompression
+from .base import ND2_CHUNK_FORMAT_DownsampledColorData_2p, _downsample_2x_linear
 from .export import ExportProgressCallback, ExportProgressReporter
 from .nd2 import Nd2Writer
 from .nd2 import Nd2Reader
@@ -30,6 +35,7 @@ def generate_downsamples(
     output: str | Path | None = None,
     overwrite: bool = False,
     overwrite_output: bool = False,
+    tile_height: int | None = 512,
     progress_callback: ExportProgressCallback | None = None,
 ) -> Path:
     """Generate stored color-image downsample chunks for an ND2 file.
@@ -38,8 +44,11 @@ def generate_downsamples(
     With ``output``, the input file is copied first and the copy is modified.
     Existing downsample chunks are preserved unless ``overwrite`` is true.
     An existing output file is rejected unless ``overwrite_output`` is true.
-    ``progress_callback`` receives ``(current, total, file, message)`` after
-    each processed frame and once more after the file is finalized.
+    ``tile_height`` bounds memory use by generating all pyramid levels from one
+    source stripe before moving to the next. It defaults to 512 level-1 output
+    rows; pass ``None`` to use the legacy full-frame implementation. The value
+    is rounded down to a pyramid-aligned stripe height. ``progress_callback``
+    receives progress after each stripe and once more after finalization.
 
     Binary raster pyramids are intentionally not handled by this helper.
     """
@@ -64,6 +73,9 @@ def generate_downsamples(
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
+    if tile_height is not None and tile_height <= 0:
+        raise ValueError("tile_height must be a positive integer or None")
+
     reporter = ExportProgressReporter(progress_callback)
     writer = Nd2Writer(destination)
     try:
@@ -73,17 +85,53 @@ def generate_downsamples(
                 "Generating downsample chunks requires a writable modern ND2 file."
             )
         frame_count = writer.imageAttributes.frameCount
+        level_count = len(writer.imageAttributes.downsampleLevels)
+        effective_tile_height = (
+            _aligned_tile_height(writer.imageAttributes, tile_height)
+            if tile_height is not None
+            else None
+        )
+        tiles_per_frame = (
+            math.ceil(
+                writer.imageAttributes.makeDownsampled(1).height
+                / effective_tile_height
+            )
+            if effective_tile_height is not None and level_count
+            else 1
+        )
+        total_work = max(1, frame_count * tiles_per_frame)
+        completed_work = 0
         for seqindex in range(frame_count):
-            image = chunker.image(seqindex)
-            chunker.generateAndSetDownsampledImages(
-                seqindex, image, overwrite=overwrite
+            can_tile = (
+                tile_height is not None
+                and writer.imageAttributes.eCompression == ImageAttributesCompression.ictNone
+                and callable(getattr(chunker, "setDownsampledImageTile", None))
             )
-            reporter.emit(
-                seqindex + 1,
-                frame_count,
-                destination,
-                f"Processed frame {seqindex + 1} of {frame_count} for downsample generation",
-            )
+            if can_tile:
+                for y, stripe_height in _generate_downsampled_frame_tiled(
+                    chunker, seqindex, effective_tile_height, overwrite=overwrite
+                ):
+                    completed_work += 1
+                    reporter.emit(
+                        completed_work,
+                        total_work,
+                        destination,
+                        f"All {level_count} levels, frame {seqindex + 1}/{frame_count}: "
+                        f"level-1 rows {y}-{y + stripe_height} of "
+                        f"{writer.imageAttributes.makeDownsampled(1).height}",
+                    )
+            else:
+                image = chunker.image(seqindex)
+                chunker.generateAndSetDownsampledImages(
+                    seqindex, image, overwrite=overwrite
+                )
+                completed_work += 1
+                reporter.emit(
+                    completed_work,
+                    total_work,
+                    destination,
+                    f"Processed frame {seqindex + 1} of {frame_count} for downsample generation",
+                )
         writer.finalize()
     except Exception:
         try:
@@ -92,12 +140,66 @@ def generate_downsamples(
             pass
         raise
     reporter.emit(
-        frame_count,
-        frame_count,
+        total_work,
+        total_work,
         destination,
         f"Finished generating downsamples in {destination}",
     )
     return destination
+
+
+def _generate_downsampled_frame_tiled(
+    chunker,
+    seqindex: int,
+    tile_height: int,
+    *,
+    overwrite: bool,
+):
+    """Yield level-1 stripes while generating every pyramid level from each one."""
+    attrs = chunker.imageAttributes
+    chunk_names = set(chunker.chunk_names)
+    write_tile = chunker.setDownsampledImageTile
+    level_attrs = attrs.makeDownsampled(1)
+    write_levels = {
+        level: overwrite
+        or ND2_CHUNK_FORMAT_DownsampledColorData_2p
+        % (attrs.makeDownsampled(level).powSize, seqindex)
+        not in chunk_names
+        for level in attrs.downsampleLevels
+    }
+    for y in range(0, level_attrs.height, tile_height):
+        stripe_height = min(tile_height, level_attrs.height - y)
+        current = chunker.image(
+            seqindex,
+            rect=(0, 2 * y, 2 * level_attrs.width, 2 * stripe_height),
+        )
+        for level in attrs.downsampleLevels:
+            current_height, current_width = current.shape[:2]
+            if current_height < 2 or current_width < 2:
+                break
+            current_attrs = attrs.makeDownsampled(level)
+            downsampled = np.zeros(
+                (current_height // 2, current_width // 2, current_attrs.componentCount),
+                dtype=current_attrs.safe_dtype,
+            )
+            _downsample_2x_linear(downsampled, current)
+            if write_levels[level]:
+                level_y = y // (2 ** (level - 1))
+                write_tile(
+                    seqindex,
+                    0,
+                    level_y,
+                    downsampled.astype(current_attrs.dtype),
+                    downsample_level=level,
+                )
+            current = downsampled
+        yield y, stripe_height
+
+
+def _aligned_tile_height(attrs, requested_tile_height: int) -> int:
+    """Return a level-1 stripe height aligned for every stored pyramid level."""
+    alignment = 2 ** max(0, len(attrs.downsampleLevels) - 1)
+    return max(alignment, requested_tile_height // alignment * alignment)
 
 
 def remove_downsamples(
