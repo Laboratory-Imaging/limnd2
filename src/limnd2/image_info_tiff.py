@@ -48,6 +48,7 @@ def gather_image_info_from_tiff(path: str | Path, *, last_modified: str | None =
     with tifffile.TiffFile(file_path) as tif:
         height, width, components, frame_count, dtype = _tiff_image_layout(tif, file_path)
         ome_xml, is_ome = tif.ome_metadata, bool(tif.ome_metadata)
+        pyramid_status = _tiff_pyramid_status(tif)
         text_tags = {tag.name: str(tag.value) for tag in tif.pages[0].tags.values()
                      if tag.name in {"Artist", "Copyright", "DateTime", "DocumentName", "ImageDescription", "Software"}}
         native_text_info = _nis_image_text_info_from_tiff(tif)
@@ -70,12 +71,15 @@ def gather_image_info_from_tiff(path: str | Path, *, last_modified: str | None =
     pixel_type = "float" if dtype.kind == "f" else "int" if dtype.kind == "i" else "uint"
     bit_depth = f"{dtype.itemsize * 8}bit {pixel_type}"
     dimension = f"{width} x {height} ({components} {'comps' if components > 1 else 'comp'} {bit_depth})" + (f" x {frame_count} frames" if frame_count > 1 else "")
+    app_created = native_created_by or ("OME-TIFF" if is_ome else "TIFF")
+    if pyramid_status:
+        app_created += f", {pyramid_status}"
     return {
         "generalInfo": {
             "filename": file_path.name, "path": str(file_path.parent) + os.sep,
             "bit_depth": bit_depth, "loops": "", "dimension": dimension,
             "calibration": f"{picture_metadata.dCalibration:.3f} µm/px" if picture_metadata.bCalibrated else "Uncalibrated",
-            "mtime": last_modified or "", "app_created": native_created_by or ("OME-TIFF" if is_ome else "TIFF"),
+            "mtime": last_modified or "", "app_created": app_created,
             **format_general_info_sizes(file_path.stat().st_size, width * height * components * dtype.itemsize, 0),
         },
         "imageTextInfo": native_text_info or _tiff_image_text_info(ome_info, text_tags),
@@ -107,6 +111,33 @@ def _tiff_image_layout(tif: Any, file_path: Path) -> tuple[int, int, int, int, A
     samples = int(shape.get("S", 0))
     components = samples if samples else int(shape.get("C", 1))
     return height, width, components, max(1, len(series.pages)), series.dtype
+
+
+def _tiff_pyramid_status(tif: Any) -> str | None:
+    """Return the Image Information pyramid suffix for readable TIFF series.
+
+    ``tifffile`` exposes a TIFF/OME-TIFF pyramid as ``series.levels``, where
+    the first entry is the full-resolution image.  A mixed file with some
+    pyramidal series and some single-resolution series mirrors ND2's partial
+    downsample status.
+    """
+    try:
+        series = tuple(tif.series)
+    except (RuntimeError, ValueError):
+        return None
+    if not series:
+        return None
+
+    has_pyramid = []
+    for item in series:
+        try:
+            has_pyramid.append(len(item.levels) > 1)
+        except (AttributeError, RuntimeError, ValueError):
+            has_pyramid.append(False)
+
+    if not any(has_pyramid):
+        return None
+    return "multi-res" if all(has_pyramid) else "multi-res (partial)"
 
 
 def _nis_image_text_info_from_tiff(tif: Any) -> dict[str, str] | None:
