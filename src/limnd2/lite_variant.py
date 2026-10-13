@@ -1,12 +1,52 @@
 from __future__ import annotations
 
 import enum
-import io, struct, zlib, abc, logging
+import base64
+import io, struct, zlib, abc, json, logging
 from typing import Any, Callable, cast, Union, ClassVar, overload
 from dataclasses import MISSING, field, fields, asdict, is_dataclass
 from collections.abc import Mapping
 
 logger = logging.getLogger("limnd2")
+
+_JSON_BYTES_TYPE = "__limnd2_bytes__"
+_JSON_UNKNOWN_FIELDS = "__limnd2_unknown_fields__"
+
+
+def _to_jsonable(value: Any) -> Any:
+    """Convert metadata values to JSON-compatible, lossless Python values."""
+    if isinstance(value, bytes):
+        return {_JSON_BYTES_TYPE: base64.b64encode(value).decode("ascii")}
+    if isinstance(value, enum.Enum):
+        return value.value
+    if is_dataclass(value):
+        result = {field.name: _to_jsonable(getattr(value, field.name)) for field in fields(value)}
+        unknown_fields = getattr(value, "_unknown_fields", {})
+        if isinstance(value, LVSerializable) and unknown_fields:
+            result[_JSON_UNKNOWN_FIELDS] = _to_jsonable(unknown_fields)
+        return result
+    if isinstance(value, Mapping):
+        return {str(key): _to_jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(item) for item in value]
+    return value
+
+
+def _from_jsonable(value: Any) -> Any:
+    """Restore the values encoded by :func:`_to_jsonable`."""
+    if isinstance(value, list):
+        return [_from_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        if set(value) == {_JSON_BYTES_TYPE}:
+            return base64.b64decode(value[_JSON_BYTES_TYPE])
+        result = {key: _from_jsonable(item) for key, item in value.items()}
+        unknown_fields = result.pop(_JSON_UNKNOWN_FIELDS, None)
+        if unknown_fields is not None:
+            if not isinstance(unknown_fields, dict):
+                raise ValueError(f"{_JSON_UNKNOWN_FIELDS} must be an object")
+            result.update(unknown_fields)
+        return result
+    return value
 
 strctBB = struct.Struct("<BB")  # 2x uint8_t
 strctIQ = struct.Struct("<IQ")  # 1x uint32_t, 1x uint64_t
@@ -388,6 +428,37 @@ class LVSerializable(abc.ABC, Mapping):
         if not parent_path:
             parent_path += self.__class__.__name__
         return self._to_serializable_dict(self, parent_path=parent_path)
+
+    def toDict(self) -> dict[str, Any]:
+        """Return this metadata object in its lossless JSON-compatible form.
+
+        Unlike :meth:`to_serializable_dict`, this representation is intended for
+        interchange with JSON rather than ND2 lite-variant encoding.
+        """
+        result = _to_jsonable(self)
+        if not isinstance(result, dict):  # pragma: no cover - dataclass invariant
+            raise TypeError(f"{self.__class__.__name__}.toDict() must produce an object")
+        return result
+
+    @classmethod
+    def fromDict(cls, data: dict[str, Any]) -> "LVSerializable":
+        """Create this metadata class from :meth:`toDict` output."""
+        decoded = _from_jsonable(data)
+        if not isinstance(decoded, dict):  # pragma: no cover - type guard
+            raise ValueError(f"{cls.__name__}.fromDict() expects a JSON object")
+        return cls(**decoded)
+
+    def toJson(self, *, indent: int | None = None) -> str:
+        """Serialize :meth:`toDict` output to JSON."""
+        return json.dumps(self.toDict(), ensure_ascii=False, indent=indent)
+
+    @classmethod
+    def fromJson(cls, data: str) -> "LVSerializable":
+        """Create this metadata class from JSON produced by :meth:`toJson`."""
+        decoded = json.loads(data)
+        if not isinstance(decoded, dict):
+            raise ValueError(f"{cls.__name__}.fromJson() expects a JSON object")
+        return cls.fromDict(decoded)
 
     def __iter__(self):
         if not is_dataclass(self):

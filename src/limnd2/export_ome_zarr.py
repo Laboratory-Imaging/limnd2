@@ -161,6 +161,7 @@ def to_ome_zarr(
     progress_callback: ExportProgressCallback | None = None,
     include_binaries: bool = False,
     include_well_info: bool = True,
+    include_nd2_metadata: bool = True,
     overwrite: bool = False,
     # include_ome_xml: bool = False,
 ) -> str | Path:
@@ -404,6 +405,14 @@ def to_ome_zarr(
                         progress=progress,
                         label_infos=label_infos,
                     )
+        if include_nd2_metadata:
+            metadata_path: str | Path
+            if _is_s3_path(out_path):
+                metadata_path = f"{str(out_path).rstrip('/')}/nd2_chunks"
+            else:
+                metadata_path = Path(out_path) / "nd2_chunks"
+            nd2_reader.exportMetadataJson(metadata_path)
+
         progress.advance(
             "finalize-export",
             step=0,

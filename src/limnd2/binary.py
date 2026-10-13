@@ -143,6 +143,27 @@ class BinaryRleMetadata(collections.UserList):
     def makeRasterMetadata(self, width: int, height: int, tilesize: int = 1024, bitdepth: int = 32) -> BinaryRasterMetadata:
         return BinaryRasterMetadata([item.makeRasterMetadata(width, height, tilesize, bitdepth) for item in self.data])
 
+    def toJson(self, *, indent: int | None = None) -> str:
+        """Serialize binary RLE-layer metadata to JSON."""
+        return json.dumps(self.toDict(), indent=indent)
+
+    def toDict(self) -> list[dict]:
+        """Return binary RLE-layer metadata in its JSON-compatible form."""
+        return [asdict(item) for item in self.data]
+
+    @classmethod
+    def fromDict(cls, data: list[dict]) -> "BinaryRleMetadata":
+        """Create binary RLE-layer metadata from :meth:`toDict` output."""
+        return cls(data)
+
+    @classmethod
+    def fromJson(cls, data: str) -> "BinaryRleMetadata":
+        """Create binary RLE-layer metadata from :meth:`toJson` output."""
+        decoded = json.loads(data)
+        if not isinstance(decoded, list):
+            raise ValueError("BinaryRleMetadata.fromJson() expects a JSON array")
+        return cls.fromDict(decoded)
+
     @staticmethod
     def from_var(data: bytes|memoryview) -> BinaryRleMetadata:
         decoded = decode_var(data)
@@ -263,14 +284,35 @@ class BinaryRasterMetadata(collections.UserList):
         return [item.binColor for item in self.data]
 
     def to_json(self) -> bytes:
-        return json.dumps([asdict(item) for item in self.data]).encode('utf-8')
+        return json.dumps(self.toDict()).encode('utf-8')
+
+    def toJson(self, *, indent: int | None = None) -> str:
+        """Serialize binary raster-layer metadata to JSON."""
+        return json.dumps(self.toDict(), indent=indent)
+
+    def toDict(self) -> list[dict]:
+        """Return binary raster-layer metadata in its JSON-compatible form."""
+        return [asdict(item) for item in self.data]
+
+    @classmethod
+    def fromDict(cls, data: list[dict]) -> "BinaryRasterMetadata":
+        """Create binary raster-layer metadata from :meth:`toDict` output."""
+        return cls(data)
 
     @staticmethod
     def from_json(data: bytes|memoryview) -> BinaryRasterMetadata:
         if type(data) == memoryview:
             data = data.tobytes()
         decoded = json.loads(data.decode('utf-8'))
-        return BinaryRasterMetadata(decoded)
+        return BinaryRasterMetadata.fromDict(decoded)
+
+    @classmethod
+    def fromJson(cls, data: str) -> "BinaryRasterMetadata":
+        """Create binary raster-layer metadata from :meth:`toJson` output."""
+        decoded = json.loads(data)
+        if not isinstance(decoded, list):
+            raise ValueError("BinaryRasterMetadata.fromJson() expects a JSON array")
+        return cls.fromDict(decoded)
 
 class BinaryRasterMetadataFactory(BinaryRasterMetadata):
     def __init__(self, iterable, /, imageAttributes: ImageAttributes):

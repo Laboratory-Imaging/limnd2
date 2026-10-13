@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from .lite_variant import decode_lv
+from .lite_variant import decode_lv, encode_lv, ELxLiteVariantType as LVType
 from .variant import decode_var
 
 
@@ -69,6 +70,50 @@ class ImageTextInfo:
             info1=self.sInfo1,
             info2=self.sInfo2,
             optics=self.sOptics)
+
+    def toDict(self) -> dict[str, str]:
+        """Return the public image-text metadata representation."""
+        return self.to_dict()
+
+    @classmethod
+    def fromDict(cls, data: dict[str, str]) -> "ImageTextInfo":
+        """Create image text information from :meth:`toDict` output."""
+        fields = (
+            "imageId", "type", "group", "sampleId", "author", "description",
+            "capturing", "sampling", "location", "date", "conclusion", "info1",
+            "info2", "optics",
+        )
+        return cls(**{
+            f"TextInfoItem_{index}": data.get(name, "")
+            for index, name in enumerate(fields)
+        })
+
+    def toJson(self, *, indent: int | None = None) -> str:
+        """Serialize the image text fields to JSON."""
+        return json.dumps(self.toDict(), ensure_ascii=False, indent=indent)
+
+    @classmethod
+    def fromJson(cls, data: str) -> "ImageTextInfo":
+        """Create image text information from JSON produced by :meth:`toJson`."""
+        decoded = json.loads(data)
+        if not isinstance(decoded, dict):
+            raise ValueError("ImageTextInfo.fromJson() expects a JSON object")
+
+        return cls.fromDict(decoded)
+
+    def to_lv(self) -> bytes:
+        """Encode this object as an ND2 ``ImageTextInfoLV`` chunk."""
+        return encode_lv({
+            "SLxImageTextInfo": {
+                f"TextInfoItem_{index}": (value, LVType.STRING)
+                for index, value in enumerate((
+                    self.sImageID, self.sType, self.sGroup, self.sSampleID,
+                    self.sAuthor, self.sDescription, self.sCapturing,
+                    self.sSampling, self.sLocation, self.sDate,
+                    self.sConclusion, self.sInfo1, self.sInfo2, self.sOptics,
+                ))
+            }
+        })
 
     @staticmethod
     def from_lv(data: bytes|memoryview) -> ImageTextInfo:

@@ -259,6 +259,11 @@ def _s3_write_check(dest_prefix: str) -> None:
             capture_output=True,
             text=True,
         )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(
+            f"S3 write check failed for s3://{bucket}/{test_key}: {detail}"
+        ) from exc
     finally:
         temp_path.unlink(missing_ok=True)
 

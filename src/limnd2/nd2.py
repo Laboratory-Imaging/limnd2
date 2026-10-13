@@ -413,6 +413,12 @@ class Nd2Reader:
         """
         return self._chunker.chunk(name)
 
+    def exportMetadataJson(self, output_dir: str | Path) -> str | Path:
+        """Export metadata chunks to a chunk-faithful JSON directory tree."""
+        from .nd2_metadata_json import export_nd2_metadata_json
+
+        return export_nd2_metadata_json(self, output_dir)
+
     def image(
         self,
         seq_index: int,
@@ -592,6 +598,7 @@ class Nd2Reader:
         progress_callback: ExportProgressCallback | None = None,
         include_binaries: bool = False,
         include_well_info: bool = True,
+        include_nd2_metadata: bool = True,
         overwrite: bool = False,
         # include_ome_xml: bool = False,
     ) -> str | Path:
@@ -614,6 +621,7 @@ class Nd2Reader:
             progress_callback=progress_callback,
             include_binaries=include_binaries,
             include_well_info=include_well_info,
+            include_nd2_metadata=include_nd2_metadata,
             overwrite=overwrite,
             # include_ome_xml=include_ome_xml,
         )

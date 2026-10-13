@@ -230,6 +230,9 @@ def test_to_ome_zarr_single_position_rgb_roundtrip(
         root_meta = _load_json(dest / "zarr.json")
         ome = root_meta["attributes"]["ome"]
         assert "multiscales" in ome
+        nd2_chunks_manifest = _load_json(dest / "nd2_chunks" / "manifest.json")
+        assert nd2_chunks_manifest["sourceFormat"] == "nd2"
+        assert nd2_chunks_manifest["chunkCount"] > 0
         assert not (dest / "OME").exists()
         _assert_numeric_level_paths(dest)
 
