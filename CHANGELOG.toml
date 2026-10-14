@@ -47,3 +47,14 @@ changes = [
   "FEATURE: Image info can now also be read from .tiff and .ome.tiff files.",
 ]
 
+[releases."0.4.3"]
+title = "Metadata export and large-image improvements"
+message = "This release improves OME-Zarr exports and TIFF image inspection, and makes downsample generation more practical for large uncompressed ND2 images."
+prerelease = false
+changes = [
+  "FEATURE: Added import and export support for the ND2 metadata JSON sidecar format.",
+  "FEATURE: OME-Zarr exports now include a versioned `nd2_chunks` JSON files containing decoded ND2 metadata.",
+  "FEATURE: Image info now reports multi-resolution pyramid data for TIFF and OME-TIFF files.",
+  "FEATURE: Downsample generation now processes large uncompressed ND2 images in memory-bounded stripes, with tiled pyramid writes and progress updates.",
+]
+
