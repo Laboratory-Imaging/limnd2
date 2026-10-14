@@ -274,7 +274,7 @@ def test_to_ome_zarr_multi_position_layout_and_pixels(
         child_groups = sorted(
             item.name
             for item in dest.iterdir()
-            if item.is_dir() and item.name != "OME"
+            if item.is_dir() and item.name not in {"OME", "nd2_chunks"}
         )
         assert series_paths == child_groups
         assert len(child_groups) == nm
