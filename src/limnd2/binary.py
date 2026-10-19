@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import collections, enum, functools, io, json, re, struct, uuid, zlib
+from xml.etree.ElementTree import Element, SubElement, tostring
 from typing_extensions import Literal
 import numpy as np
 from .attributes import ImageAttributes
@@ -146,6 +147,25 @@ class BinaryRleMetadata(collections.UserList):
     def toJson(self, *, indent: int | None = None) -> str:
         """Serialize binary RLE-layer metadata to JSON."""
         return json.dumps(self.toDict(), indent=indent)
+
+    def to_var(self) -> bytes:
+        """Encode the supported BinaryMetadata_v1 XML Variant chunk."""
+        root = Element("variant", {"version": "1.0"})
+        container = SubElement(root, "BinaryMetadata_v1", {"runtype": "CLxListVariant"})
+        for item in self.data:
+            entry = SubElement(container, "BinaryItem", {"runtype": "CLxListVariant"})
+            for name, value, runtype in (
+                ("uiBinLayerID", item.uiBinLayerID, "lx_uint32"),
+                ("uiState", int(item.uiState), "lx_uint32"),
+                ("uiColor", item.uiColor, "lx_uint32"),
+                ("uiCompOrder", item.uiCompOrder, "lx_uint32"),
+                ("strName", item.strName, "CLxStringW"),
+                ("strFileTag", item.strFileTag, "CLxStringW"),
+                ("strCompName", item.strCompName, "CLxStringW"),
+                ("uiColorMode", int(item.uiColorMode), "lx_uint32"),
+            ):
+                SubElement(entry, name, {"runtype": runtype, "value": str(value)})
+        return b'<?xml version="1.0" encoding="UTF-8"?>' + tostring(root, encoding="utf-8")
 
     def toDict(self) -> list[dict]:
         """Return binary RLE-layer metadata in its JSON-compatible form."""

@@ -13,6 +13,7 @@ import limnd2
 from limnd2.base import (
     ND2_CHUNK_FORMAT_ImageDataSeq_1p,
     UnexpectedCallError,
+    ND2_CHUNK_NAME_AcqTimesCache,
     ND2_CHUNK_NAME_AcqTimes2Cache,
     ND2_CHUNK_NAME_AcqFramesCache,
     BaseChunker,
@@ -351,6 +352,25 @@ def test_acq_times_and_frames_caches(tmp_path: Path):
         f = r.chunker.acqFrames
         assert (t2 is None) or (isinstance(t2, np.ndarray) and t2.shape == (count,))
         assert (f is None) or (isinstance(f, np.ndarray) and f.shape == (count,))
+
+
+def test_acq_times_ignores_cache_with_wrong_frame_count(tmp_path: Path):
+    out = tmp_path / "short_acq_cache.nd2"
+    count = 5
+    with limnd2.Nd2Writer(out) as writer:
+        attrs = limnd2.attributes.ImageAttributes.create(
+            width=8, height=6, component_count=1, bits=8, sequence_count=count
+        )
+        writer.imageAttributes = attrs
+        for i in range(count):
+            writer.setImage(i, np.zeros((6, 8, 1), dtype=np.uint8))
+        # A stale one-value cache cannot describe all five declared frames.
+        writer.chunker.setChunk(ND2_CHUNK_NAME_AcqTimesCache, np.array([123.0]).tobytes())
+
+    with limnd2.Nd2Reader(out) as reader:
+        times = reader.acqTimes
+        assert times.shape == (count,)
+        assert np.array_equal(times, np.arange(count, dtype=np.float64) * 10.0)
 
 
 def test_binary_raster_downsample_workflow(tmp_path: Path):

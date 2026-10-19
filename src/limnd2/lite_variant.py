@@ -398,6 +398,37 @@ class LVSerializable(abc.ABC, Mapping):
         pass
 
     @staticmethod
+    def _encode_unknown_value(value: Any) -> Any:
+        """Infer Lite Variant scalar types for decoded, otherwise-unknown data."""
+        if isinstance(value, Mapping):
+            return {
+                str(key): LVSerializable._encode_unknown_value(item)
+                for key, item in value.items()
+                if item is not None
+            }
+        if isinstance(value, (list, tuple)):
+            return {
+                index: LVSerializable._encode_unknown_value(item)
+                for index, item in enumerate(value)
+                if item is not None
+            }
+        if isinstance(value, bool):
+            return (value, ELxLiteVariantType.BOOL)
+        if isinstance(value, int):
+            if value >= 0:
+                kind = ELxLiteVariantType.UINT32 if value <= 0xFFFFFFFF else ELxLiteVariantType.UINT64
+            else:
+                kind = ELxLiteVariantType.INT32 if value >= -0x80000000 else ELxLiteVariantType.INT64
+            return (value, kind)
+        if isinstance(value, float):
+            return (value, ELxLiteVariantType.DOUBLE)
+        if isinstance(value, str):
+            return (value, ELxLiteVariantType.STRING)
+        if isinstance(value, bytes):
+            return (value, ELxLiteVariantType.BYTEARRAY)
+        return value
+
+    @staticmethod
     def _to_serializable_dict( obj: Mapping[Any, Any] | "LVSerializable", parent_path: str = "") -> dict:
         types = {}
 
@@ -427,7 +458,22 @@ class LVSerializable(abc.ABC, Mapping):
     def to_serializable_dict(self, parent_path = "") -> dict:
         if not parent_path:
             parent_path += self.__class__.__name__
-        return self._to_serializable_dict(self, parent_path=parent_path)
+        result = self._to_serializable_dict(self, parent_path=parent_path)
+        if is_dataclass(self):
+            for item in fields(self):
+                value = getattr(self, item.name, None)
+                if (
+                    item.metadata.get("LVType") == ELxLiteVariantType.ENCODING_NOT_IMPLEMENTED
+                    and item.name != "sAFBefore"
+                    and value is not None
+                ):
+                    encoded = self._encode_unknown_value(value)
+                    if encoded not in ({}, [], None):
+                        result[item.name] = encoded
+        for key, value in getattr(self, "_unknown_fields", {}).items():
+            if key not in result and value is not None:
+                result[key] = self._encode_unknown_value(value)
+        return result
 
     def toDict(self) -> dict[str, Any]:
         """Return this metadata object in its lossless JSON-compatible form.

@@ -448,6 +448,33 @@ class ExperimentSpectralLoopPoint(LVSerializable):
         if "pPlaneDesc" in self._unknown_fields:
             self._unknown_fields.pop("pPlaneDesc")
 
+    @staticmethod
+    def _encode_variant_mapping(value: dict[str, Any]) -> dict[str, Any]:
+        """Convert autofocus variant dictionaries into typed Lite Variant data."""
+        encoded: dict[str, Any] = {}
+        for key, item in value.items():
+            if item is None:
+                continue
+            if isinstance(item, dict):
+                encoded[key] = ExperimentSpectralLoopPoint._encode_variant_mapping(item)
+            elif isinstance(item, bool):
+                encoded[key] = (item, LVType.BOOL)
+            elif isinstance(item, int):
+                encoded[key] = (item, LVType.UINT32 if item >= 0 else LVType.INT32)
+            elif isinstance(item, float):
+                encoded[key] = (item, LVType.DOUBLE)
+            elif isinstance(item, str):
+                encoded[key] = (item, LVType.STRING)
+            elif isinstance(item, bytes):
+                encoded[key] = (item, LVType.BYTEARRAY)
+        return encoded
+
+    def to_serializable_dict(self, parent_path="") -> dict:
+        result = super().to_serializable_dict(parent_path)
+        if self.pAutoFocus:
+            result["pAutoFocus"] = self._encode_variant_mapping(self.pAutoFocus)
+        return result
+
 
 @dataclass(frozen=True, kw_only=True, init=False)
 class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
@@ -464,6 +491,13 @@ class ExperimentSpectralLoop(ExperimentLoop, LVSerializable):
     def __post_init__(self):
         if isinstance(self.Points, dict):
             points = [ExperimentSpectralLoopPoint(**point) for point in self.Points.values()]
+            object.__setattr__(self, "Points", points)
+        elif isinstance(self.Points, list):
+            points = [
+                point if isinstance(point, ExperimentSpectralLoopPoint)
+                else ExperimentSpectralLoopPoint(**point)
+                for point in self.Points
+            ]
             object.__setattr__(self, "Points", points)
 
         object.__setattr__(self, "pPlanes", PictureMetadataPicturePlanes(**self.pPlanes))
@@ -634,6 +668,17 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
         if "uiRelativeIdx" in self._unknown_fields:
             self._unknown_fields.pop("uiRelativeIdx")
+
+    def to_serializable_dict(self, parent_path="") -> dict:
+        result = super().to_serializable_dict(parent_path)
+        if self.sAFBefore:
+            # ND2 stores this model as a vendor Lite Variant dictionary under
+            # its original field name. Keep it in the JSON model as plain data,
+            # then explicitly encode each scalar when rebuilding the LV.
+            result["sAutoFocusBeforeCapture"] = (
+                ExperimentSpectralLoopPoint._encode_variant_mapping(self.sAFBefore)
+            )
+        return result
 
 
     @property
@@ -843,6 +888,14 @@ class ExperimentLevel(LVSerializable):
     # External data (liquid handling)
 
     iRecipeDSCPort: int                     = LV_field(None,                              LVType.INT32)
+
+    def to_serializable_dict(self, parent_path="") -> dict:
+        result = super().to_serializable_dict(parent_path)
+        if self.sAutoFocusBeforeLoop:
+            result["sAutoFocusBeforeLoop"] = ExperimentSpectralLoopPoint._encode_variant_mapping(
+                self.sAutoFocusBeforeLoop
+            )
+        return result
 
     def __post_init__(self):
         if isinstance(self.pItemValid, dict):

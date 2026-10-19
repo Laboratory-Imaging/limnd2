@@ -128,6 +128,12 @@ def create_parser() -> argparse.ArgumentParser:
                         help="File extension to match. If none is provided, program tries to detect extension from regular expression.")
 
     parser.add_argument("--multiprocessing", action="store_true", help="Write into ND2 file using several threads.")
+    parser.add_argument(
+        "--generate-downsamples", "--generate_downsamples",
+        dest="generate_downsamples",
+        action="store_true",
+        help="Generate stored image pyramid chunks after the ND2 conversion is complete.",
+    )
     parser.add_argument("--flatten_duplicates", action="store_true", help="Flatten duplicate logical dimensions (for example repeated regex mappings, regex + in-file channel, or multipoint_x/multipoint_y + multipoint).")
     parser.add_argument("--allow_missing_files", action="store_true", help="Allow missing combinations in file sequence and fill missing frames/channels with black data.")
     parser.add_argument(
@@ -442,6 +448,7 @@ def convert_sequence_parse(args: list[str] | None = None, require_output: bool =
                           channels_user_provided = channels_user_provided,
                           unknown_dim = parsed_args.extra_dimension,
                           multiprocessing = parsed_args.multiprocessing,
+                          generate_downsamples = parsed_args.generate_downsamples,
                           flatten_duplicates = parsed_args.flatten_duplicates,
                           allow_missing_files = parsed_args.allow_missing_files,
                           wellplate_mode = parsed_args.wellplate_mode,

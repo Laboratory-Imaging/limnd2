@@ -598,9 +598,10 @@ class Nd2Reader:
         progress_callback: ExportProgressCallback | None = None,
         include_binaries: bool = False,
         include_well_info: bool = True,
-        include_nd2_metadata: bool = True,
+        include_nd2_chunks: bool = True,
+        include_ome_xml: bool = True,
+        include_nd2_metadata: bool | None = None,
         overwrite: bool = False,
-        # include_ome_xml: bool = False,
     ) -> str | Path:
         """
         Export this ND2 file to OME-Zarr.
@@ -621,9 +622,10 @@ class Nd2Reader:
             progress_callback=progress_callback,
             include_binaries=include_binaries,
             include_well_info=include_well_info,
+            include_nd2_chunks=include_nd2_chunks,
+            include_ome_xml=include_ome_xml,
             include_nd2_metadata=include_nd2_metadata,
             overwrite=overwrite,
-            # include_ome_xml=include_ome_xml,
         )
 
     def to_ome_types(

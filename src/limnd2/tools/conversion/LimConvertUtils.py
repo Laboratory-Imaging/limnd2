@@ -90,6 +90,7 @@ class ConvertSequenceArgs:
     multiprocessing: bool = False
     flatten_duplicates: bool = False
     allow_missing_files: bool = False
+    generate_downsamples: bool = False
     wellplate_mode: str = "auto"
     wellplate_rows: int | None = None
     wellplate_columns: int | None = None

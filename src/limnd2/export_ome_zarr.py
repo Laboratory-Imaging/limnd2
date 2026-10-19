@@ -161,9 +161,10 @@ def to_ome_zarr(
     progress_callback: ExportProgressCallback | None = None,
     include_binaries: bool = False,
     include_well_info: bool = True,
-    include_nd2_metadata: bool = True,
+    include_nd2_chunks: bool = True,
+    include_ome_xml: bool = True,
+    include_nd2_metadata: bool | None = None,
     overwrite: bool = False,
-    # include_ome_xml: bool = False,
 ) -> str | Path:
     """
     Export an ND2 file to OME-Zarr 0.5 / Zarr v3 groups.
@@ -173,6 +174,9 @@ def to_ome_zarr(
     ``t, c, z, y, x``.
     """
     _validate_chunks(chunks)
+    # Backwards-compatible spelling retained for callers of earlier releases.
+    if include_nd2_metadata is not None:
+        include_nd2_chunks = include_nd2_metadata
     _validate_shard_shape(shard_shape, chunks)
     ensure_ome_zarr_dependencies(
         require_s3=_is_s3_path(path),
@@ -405,7 +409,14 @@ def to_ome_zarr(
                         progress=progress,
                         label_infos=label_infos,
                     )
-        if include_nd2_metadata:
+        if include_ome_xml:
+            ome_xml_path: str | Path
+            if _is_s3_path(out_path):
+                ome_xml_path = f"{str(out_path).rstrip('/')}/XML/METADATA.ome.xml"
+            else:
+                ome_xml_path = Path(out_path) / "XML" / "METADATA.ome.xml"
+            _write_ome_xml(ome_xml_path, nd2_reader=nd2_reader)
+        if include_nd2_chunks:
             metadata_path: str | Path
             if _is_s3_path(out_path):
                 metadata_path = f"{str(out_path).rstrip('/')}/nd2_chunks"
@@ -824,8 +835,17 @@ def _wellplate_layout_info(
             )
         )
 
-    row_labels = sorted({field.row for field in fields}, key=_row_sort_key)
-    col_labels = sorted({field.col for field in fields}, key=lambda value: int(value))
+    # Keep the actual plate dimensions in NGFF metadata, not only the bounding
+    # box of wells used in this acquisition. This preserves empty edge rows and
+    # columns when another application reopens the exported plate.
+    row_labels = [
+        _row_label_from_index(index)
+        for index in range(max(int(getattr(wellplate_desc, "rows", 0)), 0))
+    ] or sorted({field.row for field in fields}, key=_row_sort_key)
+    col_labels = [
+        str(index + 1)
+        for index in range(max(int(getattr(wellplate_desc, "columns", 0)), 0))
+    ] or sorted({field.col for field in fields}, key=lambda value: int(value))
     plate_name = getattr(wellplate_desc, "name", "") or None
     return _WellplateLayoutInfo(
         rows=row_labels,
@@ -1835,10 +1855,24 @@ def _write_position_labels(
             progress.advance("write-label-group")
             continue
 
-        # Keep label metadata minimal. The integer label array itself is the
-        # authoritative data; incomplete per-value styling metadata can confuse
-        # viewers, especially for instance labels with many object ids.
-        label_metadata: dict[str, Any] = {}
+        # ND2 has one display color per binary layer, whereas NGFF colors are
+        # associated with individual integer label values.  Apply the ND2 layer
+        # color to every non-zero value present in this exported field, keeping
+        # the zero/background value transparent.  This preserves the intended
+        # layer appearance for both binary masks and instance-label images.
+        label_metadata: dict[str, Any] = {
+            "source": {"image": "../../"},
+        }
+        if label.color is not None:
+            rgba = _hex_to_rgba(label.color)
+            label_metadata["colors"] = [
+                {"label-value": 0, "rgba": [0, 0, 0, 0]},
+                *(
+                    {"label-value": int(value), "rgba": rgba}
+                    for value in np.unique(label_data)
+                    if int(value) != 0
+                ),
+            ]
 
         _write_labels_numeric_levels(
             labels=label_data,
@@ -1918,50 +1952,25 @@ def _write_labels_numeric_levels(
     )
 
 
-def _write_legacy_ome_xml(
-    path: Path,
+def _write_ome_xml(
+    path: str | Path,
     *,
     nd2_reader: "Nd2Reader",
-    positions: list[_PositionInfo],
-    shape: tuple[int, int, int, int, int],
-    scale: tuple[float, float, float, float, float],
-    channel_metadata: list[dict[str, Any]],
 ) -> None:
-    import ome_types.model as m  # type: ignore
+    # Keep OME-TIFF and OME-Zarr metadata serialization on the same mapping so
+    # channel optics, instrument data and limnd2 annotations stay consistent.
+    from .export_ome_tiff import to_ome_xml
 
-    nt, nc, nz, ny, nx = shape
-    images = []
-    dtype = str(np.dtype(nd2_reader.imageAttributes.dtype))
-    for pos in positions:
-        channels = [
-            m.Channel(
-                id=f"Channel:{pos.index}:{index}",
-                name=str(channel.get("label", f"Channel_{index + 1}")),
-            )
-            for index, channel in enumerate(channel_metadata)
-        ]
-        pixels_kwargs: dict[str, Any] = {
-            "id": f"Pixels:{pos.index}",
-            "dimension_order": m.Pixels_DimensionOrder.XYZCT,
-            "type": dtype,
-            "size_x": nx,
-            "size_y": ny,
-            "size_z": nz,
-            "size_c": nc,
-            "size_t": nt,
-            "significant_bits": nd2_reader.imageAttributes.uiBpcSignificant,
-            "physical_size_x": scale[4],
-            "physical_size_y": scale[3],
-            "physical_size_x_unit": m.UnitsLength.MICROMETER,
-            "physical_size_y_unit": m.UnitsLength.MICROMETER,
-            "channels": channels,
-        }
-        if nz > 1:
-            pixels_kwargs["physical_size_z"] = scale[2]
-            pixels_kwargs["physical_size_z_unit"] = m.UnitsLength.MICROMETER
-        pixels = m.Pixels(**pixels_kwargs)
-        images.append(m.Image(id=f"Image:{pos.index}", name=pos.label, pixels=pixels))
+    xml = to_ome_xml(nd2_reader)
+    if _is_s3_path(path):
+        import fsspec
 
-    ome = m.OME(images=images, creator="limnd2")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(ome.to_xml(exclude_unset=True), encoding="utf-8")
+        filesystem, target = fsspec.core.url_to_fs(str(path))
+        parent = target.rsplit("/", 1)[0]
+        filesystem.makedirs(parent, exist_ok=True)
+        with filesystem.open(target, "wt", encoding="utf-8") as stream:
+            stream.write(xml)
+    else:
+        local_path = Path(path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_text(xml, encoding="utf-8")

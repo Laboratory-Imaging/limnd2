@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, wait
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from threading import Lock
 import math
@@ -11,7 +13,10 @@ import re
 import numpy as np
 
 import limnd2
+from limnd2.attributes import ImageAttributes
+from limnd2.experiment import ExperimentLevel
 from limnd2.experiment_factory import ExperimentFactory
+from limnd2.metadata import PictureMetadata
 
 from limnd2.tools.conversion.LimConvertUtils import ConvertSequenceArgs, ProgressPrinter, logprint
 from contextlib import ExitStack, contextmanager
@@ -46,6 +51,28 @@ def _effective_multiprocessing_for_source(sample_file: "LimImageSource", request
         return False
 
     return True
+
+
+def _sidecar_metadata_overrides(sample_file, attr, experiment, metadata, sequence_count: int):
+    """Restore compatible limnd2 models supplied by an OME-Zarr source."""
+    getter = getattr(sample_file, "native_nd2_metadata", None)
+    if not callable(getter):
+        return attr, experiment, metadata, {}
+    models = getter() or {}
+    if not isinstance(models, dict):
+        return attr, experiment, metadata, {}
+    picture_metadata_restored = False
+    for model in models.values():
+        if isinstance(model, ImageAttributes):
+            candidate = replace(model, uiSequenceCount=sequence_count)
+            if candidate.componentCount == attr.componentCount and candidate.shape == attr.shape:
+                attr = candidate
+        elif isinstance(model, ExperimentLevel):
+            experiment = deepcopy(model)
+        elif isinstance(model, PictureMetadata) and not picture_metadata_restored:
+            metadata = deepcopy(model)
+            picture_metadata_restored = True
+    return attr, experiment, metadata, models
 
 
 def _wellplate_debug_enabled() -> bool:
@@ -208,6 +235,17 @@ def _build_auto_wellplate_chunks(
         return None
     if not grouped_files:
         return None
+
+    # OME-Zarr plate metadata explicitly maps every image field to its well.
+    # Prefer it over filename/multipoint inference whenever it is available.
+    explicit_wellplate = getattr(sample_file, "ome_zarr_wellplate", None)
+    if callable(explicit_wellplate):
+        try:
+            result = explicit_wellplate(grouped_files)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            result = None
+        if result is not None:
+            return result
 
     multipoint_indexes = [
         idx for idx, name in enumerate(dimension_names) if _dimension_base_name(str(name)) == "multipoint"
@@ -392,6 +430,9 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
 
     # get image experiments
     nd2_experiment = LIMND2Utils.create_experiment(dimensions, parsed_args.time_step, parsed_args.z_step)
+    nd2_attributes, nd2_experiment, nd2_metadata, native_models = _sidecar_metadata_overrides(
+        sample_file, nd2_attributes, nd2_experiment, nd2_metadata, len(grouped_files)
+    )
     outfile = Path(parsed_args.output_dir) / parsed_args.nd2_output
     auto_wellplate = _build_auto_wellplate_chunks(
         sample_file,
@@ -406,6 +447,12 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
     else:
         wellplate_desc, wellplate_frame_info = auto_wellplate
 
+    build_binary_layer_writer = getattr(sample_file, "binary_layer_writer", None)
+    binary_layer_writer = (
+        build_binary_layer_writer(grouped_files, nd2_attributes)
+        if callable(build_binary_layer_writer)
+        else None
+    )
     use_multiprocessing = _effective_multiprocessing_for_source(sample_file, parsed_args.multiprocessing)
     return LIMND2Utils.write_files_to_nd2(
         outfile,
@@ -416,6 +463,9 @@ def convert_to_nd2(sources: list[LimImageSource], sample_file: LimImageSource, p
         use_multiprocessing,
         wellplate_desc=wellplate_desc,
         wellplate_frame_info=wellplate_frame_info,
+        native_metadata_models=native_models,
+        binary_layer_writer=binary_layer_writer,
+        generate_downsamples=bool(getattr(parsed_args, "generate_downsamples", False)),
     )
 
 
@@ -678,6 +728,9 @@ class LIMND2Utils:
         multiprocessing: bool = True,
         wellplate_desc: Any | None = None,
         wellplate_frame_info: Any | None = None,
+        native_metadata_models: dict[bytes, Any] | None = None,
+        binary_layer_writer: Any | None = None,
+        generate_downsamples: bool = False,
     ) -> bool:
 
         if nd2_path.is_file():
@@ -692,7 +745,53 @@ class LIMND2Utils:
             nd2.imageAttributes = attr
             nd2.experiment = exp
             nd2.pictureMetadata = metadata
-            if wellplate_desc is not None or wellplate_frame_info is not None:
+            from limnd2.custom_data import (
+                RecordedDataSidecar,
+                encode_recorded_data_descriptor,
+                encode_recorded_data_values,
+            )
+            from limnd2.binary import BinaryRasterMetadata, BinaryRleMetadata
+            from limnd2.base import (
+                ND2_CHUNK_NAME_CustomDataVar,
+                ND2_CHUNK_NAME_AcqTimesCache,
+                ND2_CHUNK_NAME_AcqTimes2Cache,
+                ND2_CHUNK_NAME_AcqFramesCache,
+                ND2_CHUNK_NAME_BinaryMetadata_v1,
+            )
+            exact_wellplate_written = False
+            for name, model in (native_metadata_models or {}).items():
+                if isinstance(model, RecordedDataSidecar):
+                    columns = list(model.columns)
+                    if columns:
+                        nd2.setChunk(ND2_CHUNK_NAME_CustomDataVar, encode_recorded_data_descriptor(columns))
+                        for item in columns:
+                            nd2.setChunk(
+                                f"CustomData|{item.ID}!".encode("utf-8"),
+                                encode_recorded_data_values(item),
+                            )
+                    if model.acq_times is not None:
+                        nd2.setChunk(ND2_CHUNK_NAME_AcqTimesCache, model.acq_times.astype("<f8").tobytes())
+                    if model.acq_times2 is not None:
+                        nd2.setChunk(ND2_CHUNK_NAME_AcqTimes2Cache, model.acq_times2.astype("<f8").tobytes())
+                    if model.acq_frames is not None:
+                        nd2.setChunk(ND2_CHUNK_NAME_AcqFramesCache, model.acq_frames.astype("<u4").tobytes())
+                    continue
+                if isinstance(model, BinaryRleMetadata):
+                    nd2.setChunk(ND2_CHUNK_NAME_BinaryMetadata_v1, model.to_var())
+                    continue
+                if isinstance(model, BinaryRasterMetadata):
+                    nd2.binaryRasterMetadata = model
+                    continue
+                if name == b"limnd2:wellplate" and isinstance(model, dict):
+                    nd2.setWellplate(desc=model.get("desc"), frame_info=model.get("frameInfo"))
+                    exact_wellplate_written = True
+                    continue
+                if not isinstance(name, bytes) or not name.startswith(b"ImageTextInfo"):
+                    continue
+                encoder = getattr(model, "to_lv" if b"LV" in name else "to_var", None)
+                if callable(encoder):
+                    nd2.setChunk(name, encoder())
+            if not exact_wellplate_written and (wellplate_desc is not None or wellplate_frame_info is not None):
                 nd2.setWellplate(desc=wellplate_desc, frame_info=wellplate_frame_info)
 
             # Avoid assuming grouped_files[0] exists
@@ -737,6 +836,15 @@ class LIMND2Utils:
                         progress,
                         nd2_file_lock=None,
                     )
+
+            if callable(binary_layer_writer):
+                binary_layer_writer(nd2)
+
+        # Generate pyramid chunks only after the initial ND2 writer has
+        # finalized the imported file. This keeps the behavior consistent
+        # across the different conversion entry points.
+        if generate_downsamples:
+            limnd2.generate_downsamples(nd2_path)
 
         return True
 
@@ -2374,6 +2482,12 @@ def convert_to_nd2_flatten(
     else:
         wellplate_desc, wellplate_frame_info = auto_wellplate
 
+    build_binary_layer_writer = getattr(sample_file, "binary_layer_writer", None)
+    binary_layer_writer = (
+        build_binary_layer_writer(grouped_files, nd2_attributes)
+        if callable(build_binary_layer_writer)
+        else None
+    )
     use_multiprocessing = _effective_multiprocessing_for_source(sample_file, parsed_args.multiprocessing)
     return LIMND2Utils.write_files_to_nd2(
         outfile,
@@ -2384,4 +2498,6 @@ def convert_to_nd2_flatten(
         use_multiprocessing,
         wellplate_desc=wellplate_desc,
         wellplate_frame_info=wellplate_frame_info,
+        binary_layer_writer=binary_layer_writer,
+        generate_downsamples=bool(getattr(parsed_args, "generate_downsamples", False)),
     )

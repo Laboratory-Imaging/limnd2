@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
+import numpy as np
 
 if TYPE_CHECKING:
     from .nd2 import Nd2Reader
@@ -75,6 +77,12 @@ def _metadata_from_json(kind: str, payload: Any) -> Any:
     from .experiment import ExperimentLevel
     from .metadata import PictureMetadata
     from .textinfo import ImageTextInfo
+    from .custom_data import RecordedDataSidecar
+
+    if kind == "wellplateMetadata":
+        if not isinstance(payload, dict):
+            raise ValueError("Wellplate metadata payload must be an object")
+        return payload
 
     models = {
         "imageAttributes": ImageAttributes,
@@ -83,11 +91,14 @@ def _metadata_from_json(kind: str, payload: Any) -> Any:
         "binaryRleMetadata": BinaryRleMetadata,
         "binaryRasterMetadata": BinaryRasterMetadata,
         "pictureMetadata": PictureMetadata,
+        "recordedData": RecordedDataSidecar,
     }
     try:
         model = models[kind]
     except KeyError as exc:
         raise ValueError(f"Unsupported ND2 metadata kind: {kind!r}") from exc
+    if kind == "recordedData":
+        return model.from_dict(payload)
     return model.fromDict(payload)
 
 
@@ -108,7 +119,15 @@ def _local_or_s3_destination(output_dir: str | Path) -> tuple[bool, Any, str | P
 
 def export_nd2_metadata_json(nd2_reader: "Nd2Reader", output_dir: str | Path) -> str | Path:
     """Export decoded metadata as the versioned ND2 JSON sidecar format."""
-    from .base import BaseChunker
+    from .base import (
+        BaseChunker,
+        ND2_CHUNK_NAME_AcqFramesCache,
+        ND2_CHUNK_NAME_AcqTimes2Cache,
+        ND2_CHUNK_NAME_AcqTimesCache,
+        ND2_CHUNK_NAME_ImageMetadata,
+        ND2_CHUNK_NAME_ImageMetadataLV,
+    )
+    from .custom_data import RecordedDataSidecar
 
     is_s3, fs, destination = _local_or_s3_destination(output_dir)
     if is_s3:
@@ -137,6 +156,14 @@ def export_nd2_metadata_json(nd2_reader: "Nd2Reader", output_dir: str | Path) ->
             continue
         raw_bytes = raw.tobytes() if isinstance(raw, memoryview) else raw
         kind, payload = _metadata_json_value(chunk_name, raw_bytes)
+        # Nd2Reader.experiment enriches the base experiment chunk with the
+        # spectral plane/filter information exposed by the reader. Export that
+        # public model instead of decoding the raw chunk in isolation, or the
+        # spectral loop survives but its plane calibration and filter data do not.
+        if chunk_name in (ND2_CHUNK_NAME_ImageMetadataLV, ND2_CHUNK_NAME_ImageMetadata):
+            experiment = nd2_reader.experiment
+            if experiment is not None:
+                kind, payload = "experiment", experiment.toDict()
         if payload is None:
             continue
         local_destination = Path(".") if is_s3 else destination
@@ -155,6 +182,57 @@ def export_nd2_metadata_json(nd2_reader: "Nd2Reader", output_dir: str | Path) ->
             "nd2ChunkName": chunk_name.decode("utf-8", errors="surrogateescape"),
             "path": relative_path.as_posix(),
             "kind": kind,
+        })
+
+    recorded = nd2_reader.recordedData
+    if len(recorded) > 1:
+        def cache_array(name: bytes, dtype: Any) -> Any:
+            raw = nd2_reader.chunk(name)
+            if raw is None:
+                return None
+            raw_bytes = raw.tobytes() if isinstance(raw, memoryview) else raw
+            return np.frombuffer(raw_bytes, dtype=dtype).copy()
+
+        payload = RecordedDataSidecar(
+            columns=recorded,
+            acq_times=cache_array(ND2_CHUNK_NAME_AcqTimesCache, np.float64),
+            acq_times2=cache_array(ND2_CHUNK_NAME_AcqTimes2Cache, np.float64),
+            acq_frames=cache_array(ND2_CHUNK_NAME_AcqFramesCache, np.uint32),
+        ).to_dict()
+        relative_path = "recordedData.json"
+        contents = json.dumps(payload, ensure_ascii=False, indent=2)
+        if is_s3:
+            target_key = f"{str(destination).rstrip('/')}/{relative_path}"
+            with fs.open(target_key, "wt", encoding="utf-8") as file:
+                file.write(contents)
+        else:
+            (destination / relative_path).write_text(contents, encoding="utf-8")
+        records.append({
+            "nd2ChunkName": "limnd2:recordedData",
+            "path": relative_path,
+            "kind": "recordedData",
+        })
+
+    wellplate_desc = nd2_reader.wellplateDesc
+    wellplate_frame_info = nd2_reader.wellplateFrameInfo
+    if wellplate_desc is not None or wellplate_frame_info is not None:
+        payload = {
+            "desc": asdict(wellplate_desc) if wellplate_desc is not None else None,
+            "frameInfo": [asdict(item) for item in wellplate_frame_info]
+            if wellplate_frame_info is not None else None,
+        }
+        relative_path = "wellplate.json"
+        contents = json.dumps(payload, ensure_ascii=False, indent=2)
+        if is_s3:
+            target_key = f"{str(destination).rstrip('/')}/{relative_path}"
+            with fs.open(target_key, "wt", encoding="utf-8") as file:
+                file.write(contents)
+        else:
+            (destination / relative_path).write_text(contents, encoding="utf-8")
+        records.append({
+            "nd2ChunkName": "limnd2:wellplate",
+            "path": relative_path,
+            "kind": "wellplateMetadata",
         })
 
     manifest = {
@@ -197,9 +275,8 @@ def _import_v1(input_dir: str | Path) -> dict[bytes, Any]:
         kind = record.get("kind")
         if not all(isinstance(value, str) for value in (chunk_name, relative_path, kind)):
             raise ValueError("ND2 metadata chunk records require name, path, and kind")
-        result[chunk_name.encode("utf-8", errors="surrogateescape")] = _metadata_from_json(
-            kind, read_json(relative_path)
-        )
+        key = chunk_name.encode("utf-8", errors="surrogateescape")
+        result[key] = _metadata_from_json(kind, read_json(relative_path))
     return result
 
 

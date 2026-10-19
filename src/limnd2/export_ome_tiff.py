@@ -228,6 +228,7 @@ def to_ome_types(
             size_z=nz,
             size_c=nc,
             size_t=nt,
+            significant_bits=nd2_reader.imageAttributes.uiBpcSignificant,
             physical_size_x=physical_size_xy,
             physical_size_x_unit=om.UnitsLength.MICROMETER,
             physical_size_y=physical_size_xy,
@@ -829,7 +830,7 @@ def _full_metadata_annotations(nd2_reader: "Nd2Reader") -> list[om.MapAnnotation
             _make_map_annotation(
                 annotation_id="Annotation:ND2ExperimentFull",
                 name="nd2.experiment.full",
-                mapping={"json": nd2_reader.experiment.to_serializable_dict()},
+                mapping={"json": nd2_reader.experiment.toDict()},
             )
         )
     annotations.append(

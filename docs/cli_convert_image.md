@@ -13,11 +13,11 @@ limnd2-convert-file-to-nd2 <arguments>
 
 - **`input`**
 
-    Input image file to be converted.
+    Input image file or OME-Zarr store folder to be converted. For OME-Zarr, pass the store folder itself; both current (`zarr.json`) and legacy (`.zattrs`) root metadata are recognized.
 
 - `output`
 
-    File name of the converted `.nd2` file. If not specified, script will use same name as input file with `.nd2` extension.
+    File name of the converted `.nd2` file. If not specified, the script uses the input file name with `.nd2`; for an `.ome.zarr` folder, it uses the store name with `.nd2`.
 
 - `-f`
 
@@ -27,6 +27,10 @@ limnd2-convert-file-to-nd2 <arguments>
 
     Specify which dimension to use if there is an unknown dimension in the input file (e.g., multipage TIFF). Choices: `multipoint`, `timeloop`, `zstack`. Default: `multipoint`.
 
+- `--generate-downsamples`
+
+    Generate stored image pyramid chunks after the image has been imported into the ND2 file. By default, downsample chunks are not generated.
+
 ## Examples
 
 Here are some example usages of the `limnd2-convert-file-to-nd2` command:
@@ -34,6 +38,11 @@ Here are some example usages of the `limnd2-convert-file-to-nd2` command:
 ??? example "Convert a single image to ND2"
     ```sh
     limnd2-convert-file-to-nd2 ./image.tif
+    ```
+
+??? example "Convert an OME-Zarr store folder to ND2"
+    ```sh
+    limnd2-convert-file-to-nd2 ./image.ome.zarr ./image.nd2
     ```
 
 ??? example "Convert a single image and specify the output file name"

@@ -185,6 +185,10 @@ This script uses multiple required and optional arguments to specify the input f
 
     Use multiple threads to write the ND2 file.
 
+- `--generate-downsamples` (alias: `--generate_downsamples`)
+
+    Generate stored image pyramid chunks after all sequence images have been imported into the ND2 file. By default, downsample chunks are not generated.
+
 - `--flatten_duplicates`
 
     Flatten duplicate logical dimensions into one output axis.

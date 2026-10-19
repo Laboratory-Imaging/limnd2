@@ -93,8 +93,27 @@ def open_lim_image_source(filename: str | Path) -> LimImageSource:
         filename = Path(filename)
     if not filename.exists():
         raise FileNotFoundError(f"File {filename} does not exist.")
+    if filename.is_dir():
+        # OME-Zarr stores are folders. Resolve their root metadata so the
+        # ordinary image-source implementation can keep using a file entry
+        # point while callers can pass the store itself.
+        zarr_json = filename / "zarr.json"
+        legacy_zattrs = filename / ".zattrs"
+        if zarr_json.is_file():
+            filename = zarr_json
+        elif legacy_zattrs.is_file():
+            filename = legacy_zattrs
+        else:
+            raise ValueError(
+                f"Input folder {filename} is not a supported OME-Zarr store: "
+                "expected root zarr.json or .zattrs."
+            )
     if not filename.is_file():
         raise FileNotFoundError(f"{filename} is not a file.")
+
+    if filename.name in {"zarr.json", ".zattrs"}:
+        from ._omezarr_reader import LimImageSourceOmeZarr
+        return LimImageSourceOmeZarr(filename)
 
     extension = filename.suffix.lower()
     if extension in EXTENSION_TO_FORMAT:

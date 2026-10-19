@@ -14,7 +14,7 @@ import struct
 from typing import Any
 from xml.etree import ElementTree as ET
 
-from .metadata import PictureMetadata
+from .metadata import PictureMetadata, SampleSettings
 from .metadata_factory import MetadataFactory, Plane
 
 NIS_PICTURE_METADATA_TAG = 65331
@@ -197,7 +197,39 @@ def _variant_component_count(record: ET.Element) -> int:
         return 1
 
 
-def picture_metadata_from_ome_xml(ome_xml: str | bytes) -> PictureMetadata | None:
+def _is_packed_rgb(pixels: ET.Element) -> bool:
+    """Whether OME describes one logical channel containing RGB samples."""
+    channels = list(_children(pixels, "Channel"))
+    return (
+        len(channels) == 1
+        and _positive_int(channels[0].get("SamplesPerPixel"), 1) == 3
+    )
+
+
+def _mark_picture_metadata_as_rgb(metadata: PictureMetadata) -> PictureMetadata:
+    """Preserve a parsed plane's metadata while marking its three samples RGB."""
+    picture_planes = metadata.sPicturePlanes
+    planes = list(picture_planes.sPlaneNew)
+    if len(planes) != 1:
+        return metadata
+
+    plane = planes[0]
+    object.__setattr__(plane, "uiCompCount", 3)
+    object.__setattr__(picture_planes, "uiCount", 1)
+    object.__setattr__(picture_planes, "uiCompCount", 3)
+    object.__setattr__(picture_planes, "uiSampleCount", 1)
+    settings = list(picture_planes.sSampleSetting)
+    object.__setattr__(
+        picture_planes,
+        "sSampleSetting",
+        settings[:1] if settings else [SampleSettings()],
+    )
+    return metadata
+
+
+def picture_metadata_from_ome_xml(
+    ome_xml: str | bytes, *, image_index: int = 0
+) -> PictureMetadata | None:
     """Convert OME-XML directly into the closest representable ND2 metadata.
 
     A ``nd2.picture_metadata.full`` annotation emitted by :func:`to_ome_xml`
@@ -212,7 +244,10 @@ def picture_metadata_from_ome_xml(ome_xml: str | bytes) -> PictureMetadata | Non
         return None
 
     native_metadata = _full_picture_metadata_annotation(root)
-    image = _first(root, "Image")
+    images = list(_iter(root, "Image"))
+    if image_index < 0 or image_index >= len(images):
+        return None
+    image = images[image_index]
     pixels = _first(image, "Pixels") if image is not None else None
     if pixels is None:
         return None
@@ -260,6 +295,8 @@ def picture_metadata_from_ome_xml(ome_xml: str | bytes) -> PictureMetadata | Non
         _apply_ome_picture_values(
             picture_metadata, image, pixels, z_step_um, time_step_seconds
         )
+    if _is_packed_rgb(pixels):
+        picture_metadata = _mark_picture_metadata_as_rgb(picture_metadata)
     return picture_metadata
 
 

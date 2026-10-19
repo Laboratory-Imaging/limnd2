@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -230,6 +231,7 @@ def test_to_ome_zarr_single_position_rgb_roundtrip(
         root_meta = _load_json(dest / "zarr.json")
         ome = root_meta["attributes"]["ome"]
         assert "multiscales" in ome
+        assert (dest / "XML" / "METADATA.ome.xml").is_file()
         nd2_chunks_manifest = _load_json(dest / "nd2_chunks" / "manifest.json")
         assert nd2_chunks_manifest["sourceFormat"] == "nd2"
         assert nd2_chunks_manifest["chunkCount"] > 0
@@ -274,7 +276,7 @@ def test_to_ome_zarr_multi_position_layout_and_pixels(
         child_groups = sorted(
             item.name
             for item in dest.iterdir()
-            if item.is_dir() and item.name not in {"OME", "nd2_chunks"}
+            if item.is_dir() and item.name not in {"OME", "XML", "nd2_chunks"}
         )
         assert series_paths == child_groups
         assert len(child_groups) == nm
@@ -314,6 +316,21 @@ def test_to_ome_zarr_selected_position_at_root(
         _assert_roundtrip_plane(nd2_reader, dest, position_index=3)
 
     _assert_no_custom_attrs(dest)
+
+
+def test_to_ome_zarr_can_omit_optional_metadata_sidecars(
+    rgb_nd2_path: Path, tmp_path: Path
+) -> None:
+    dest = tmp_path / "without-sidecars.ome.zarr"
+    with limnd2.Nd2Reader(rgb_nd2_path) as nd2_reader:
+        nd2_reader.to_ome_zarr(
+            dest, include_nd2_chunks=False, include_ome_xml=False
+        )
+    assert not (dest / "nd2_chunks").exists()
+    assert not (dest / "XML").exists()
+    # Native OME-NGFF display metadata remains part of the standard group attrs.
+    root = _load_json(dest / "zarr.json")
+    assert root["attributes"]["ome"]["omero"]["channels"]
 
 
 def test_to_ome_zarr_selected_position_at_root_with_dask(
@@ -634,7 +651,7 @@ def test_to_ome_zarr_float_dtype_and_pixels(
             child_groups = sorted(
                 item.name
                 for item in dest.iterdir()
-                if item.is_dir() and item.name != "OME"
+                if item.is_dir() and item.name not in {"OME", "XML", "nd2_chunks"}
             )
             image_group = dest / child_groups[0]
 
@@ -685,7 +702,11 @@ def test_to_ome_zarr_binary_mask_labels(
         assert values == {0, 1}
         label_meta = _label_group_json(dest, label_names[0])
         image_label = label_meta["attributes"]["ome"]["image-label"]
-        assert "colors" not in image_label
+        assert image_label["colors"][0] == {
+            "label-value": 0,
+            "rgba": [0, 0, 0, 0],
+        }
+        assert image_label["colors"][1]["label-value"] == 1
 
         _assert_roundtrip_label_plane(nd2_reader, dest, position_index=0)
 
@@ -752,7 +773,11 @@ def test_to_ome_zarr_integer_labels_from_results(
         assert any(value > 1 for value in values)
         label_meta = _label_group_json(dest, label_names[0])
         image_label = label_meta["attributes"]["ome"]["image-label"]
-        assert "colors" not in image_label
+        assert image_label["colors"][0] == {
+            "label-value": 0,
+            "rgba": [0, 0, 0, 0],
+        }
+        assert any(item["label-value"] > 1 for item in image_label["colors"])
 
         _assert_roundtrip_label_plane(nd2_reader, dest, position_index=0)
 
@@ -775,6 +800,15 @@ def test_to_ome_zarr_smoke_all_nd2_fixtures(
         nt, nm, nz, ny, nx, nc = nd2_reader.imageDataShape
 
         nd2_reader.to_ome_zarr(dest)
+
+        ome_xml = ET.parse(dest / "XML" / "METADATA.ome.xml").getroot()
+        xml_namespace = ome_xml.tag.partition("}")[0].lstrip("{")
+        pixels_tag = f"{{{xml_namespace}}}Pixels" if xml_namespace else "Pixels"
+        pixels = ome_xml.find(f".//{pixels_tag}")
+        assert pixels is not None
+        assert int(pixels.attrib["SignificantBits"]) == int(
+            nd2_reader.imageAttributes.uiBpcSignificant
+        )
 
         image_groups = _image_groups_for_export(dest)
         assert len(image_groups) == nm

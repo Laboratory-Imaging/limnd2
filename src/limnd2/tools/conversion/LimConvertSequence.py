@@ -146,7 +146,8 @@ def convert_sequence_to_nd2(
     output_path: Path | str,
     attributes: limnd2.ImageAttributes | None = None,
     experiment: limnd2.ExperimentLevel | str | None = None,
-    metadata: limnd2.PictureMetadata | None = None) -> bool:
+    metadata: limnd2.PictureMetadata | None = None,
+    generate_downsamples: bool = False) -> bool:
     """
     Convert a sequence of images to ND2 format.
     This function takes a sequence of images (either as file paths or [`LimImageSource`](convert_image_source.md#limnd2.tools.conversion.LimImageSource.LimImageSource)  objects) and converts them to ND2 file.
@@ -237,7 +238,14 @@ def convert_sequence_to_nd2(
     if metadata is None:
         metadata = limnd2.metadata_factory.MetadataFactory().createMetadata(number_of_channels_fallback=channel_count, is_rgb_fallback=source.is_rgb)
 
-    return LIMND2Utils.write_files_to_nd2(output_path, sources, attributes, experiment, metadata)
+    return LIMND2Utils.write_files_to_nd2(
+        output_path,
+        sources,
+        attributes,
+        experiment,
+        metadata,
+        generate_downsamples=generate_downsamples,
+    )
 
 
 def convert_sequence_to_nd2_cli(args: list[str] | None = None) -> int:

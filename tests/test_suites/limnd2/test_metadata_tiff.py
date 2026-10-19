@@ -32,3 +32,21 @@ def test_ome_xml_maps_standard_metadata_to_picture_metadata():
     assert picture_metadata.dTimeAxisCalibration == 2000.0
     assert picture_metadata.dXPos == 10.0
     assert picture_metadata.channelNames == ["GFP", "RFP"]
+
+
+def test_ome_xml_samples_per_pixel_marks_packed_rgb():
+    xml = """<OME xmlns="http://www.openmicroscopy.org/Schemas/OME/2016-06">
+      <Image ID="Image:0"><Pixels ID="Pixels:0" DimensionOrder="XYZCT"
+        Type="uint8" SizeX="5" SizeY="4" SizeZ="1" SizeC="3" SizeT="1">
+        <Channel ID="Channel:0" Name="RGB" SamplesPerPixel="3" Color="-1"/>
+      </Pixels></Image>
+    </OME>"""
+
+    picture_metadata = limnd2.picture_metadata_from_ome_xml(xml)
+
+    assert picture_metadata is not None
+    assert picture_metadata.isRgb
+    assert picture_metadata.sPicturePlanes.uiCount == 1
+    assert picture_metadata.sPicturePlanes.uiCompCount == 3
+    assert picture_metadata.channelNames == ["RGB"]
+    assert picture_metadata.componentNames == ["Blue", "Green", "Red"]
