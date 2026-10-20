@@ -4,7 +4,12 @@ pytest.importorskip("h5py")
 pytest.importorskip("pandas")
 
 from limnd2.nd2 import Nd2Reader
-from limnd2.results import ResultPanesConfiguration, create_table_data_from_h5, read_results_from_h5
+from limnd2.results import (
+    ResultPanesConfiguration,
+    create_table_data_from_h5,
+    read_result_binary_data,
+    read_results_from_h5,
+)
 
 
 def test_nd2_reader_exposes_pivot_table_results(nd2_with_result_path):
@@ -54,3 +59,42 @@ def test_create_table_data_from_h5_produces_dataframe(nd2_with_result_path, monk
     assert table_data.column_lookup["_ObjId"] == "RoiId"
     assert set(table_data.df["Entity"].unique()) == {"Bin"}
     assert str(table_data.df["BinMeanOf340"].dtype) == "Float64"
+
+
+def test_read_results_lists_and_reads_binary_layers(tmp_path):
+    import h5py
+    import numpy as np
+
+    h5_path = tmp_path / "result.h5"
+    with h5py.File(h5_path, "w") as h5:
+        result = h5.create_group("Segmentation")
+        variant = result.create_group("latest")
+        variant.attrs["Creation_time"] = 1
+        binary = variant.create_group("Binary_Cell")
+        binary.attrs.update({
+            "Object": "Binary",
+            "Id": "Cell",
+            "binName": "Cell labels",
+            "width": 4,
+            "height": 3,
+            "bpc": 32,
+        })
+        binary.create_group("0").create_group("2").create_dataset(
+            "image", data=np.arange(12, dtype=np.uint32).reshape(3, 4)
+        )
+        binary.create_group("1").create_group("2").create_dataset(
+            "image", data=np.arange(4, dtype=np.uint32).reshape(2, 2)
+        )
+
+    binary_item = read_results_from_h5(h5_path)["Segmentation"].binaries[0]
+    assert binary_item.result_name == "Segmentation"
+    assert binary_item.name == "Cell labels"
+    assert binary_item.location.endswith("/Binary_Cell")
+    assert binary_item.dtype == "uint32"
+    assert binary_item.shape == (3, 4)
+    assert binary_item.levels == {0: (2,), 1: (2,)}
+    assert binary_item.metadata["width"] == 4
+    np.testing.assert_array_equal(
+        read_result_binary_data(h5_path, binary_item, frame_index=2, rect=(1, 1, 2, 2)),
+        np.array([[5, 6], [9, 10]], dtype=np.uint32),
+    )

@@ -56,7 +56,21 @@ class TableData:
 
 @dataclass(frozen=True, kw_only=True)
 class BinaryResultItem:
-    pass
+    """A binary label layer stored in an analysis-result HDF5 file.
+
+    The pixel data remains in the HDF5 file and is loaded on demand by
+    :func:`read_result_binary_data`.  ``location`` is the absolute HDF5 group
+    path of the layer; levels map pyramid levels to the available frame
+    indices.
+    """
+
+    result_name: str
+    name: str
+    location: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    dtype: str | None = None
+    shape: tuple[int, ...] = ()
+    levels: dict[int, tuple[int, ...]] = field(default_factory=dict)
 
 @dataclass(kw_only=True)
 class ResultPane:
@@ -159,6 +173,93 @@ def create_table_data_from_h5(h5_filename: str|Path, tbl_location : str) -> Tabl
     except Exception as e:
         print(e)
 
+
+def _h5_value_to_python(value: Any) -> Any:
+    """Convert HDF5 attribute scalars into ordinary, displayable values."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if hasattr(value, "item") and getattr(value, "shape", ()) == ():
+        return _h5_value_to_python(value.item())
+    if hasattr(value, "tolist"):
+        return value.tolist()
+    return value
+
+
+def _read_binary_result_item(
+    result_name: str, group_name: str, binary: h5py.Group
+) -> BinaryResultItem:
+    """Read a result binary's catalog metadata without loading its pixels."""
+    h5py = _require_h5py()
+    metadata = {key: _h5_value_to_python(value) for key, value in binary.attrs.items()}
+    levels: dict[int, tuple[int, ...]] = {}
+    dtype: str | None = None
+    shape: tuple[int, ...] = ()
+
+    for level_name, level_group in binary.items():
+        try:
+            level = int(level_name)
+        except ValueError:
+            continue
+        if not isinstance(level_group, h5py.Group):
+            continue
+
+        frames: list[int] = []
+        for frame_name, frame_group in level_group.items():
+            try:
+                frame = int(frame_name)
+            except ValueError:
+                continue
+            if not isinstance(frame_group, h5py.Group) or "image" not in frame_group:
+                continue
+            image = frame_group["image"]
+            if not isinstance(image, h5py.Dataset):
+                continue
+            frames.append(frame)
+            if not shape:
+                shape = tuple(image.shape)
+                dtype = str(image.dtype)
+        if frames:
+            levels[level] = tuple(sorted(frames))
+
+    return BinaryResultItem(
+        result_name=result_name,
+        name=str(metadata.get("binName") or metadata.get("Id") or group_name),
+        location=binary.name,
+        metadata=metadata,
+        dtype=dtype,
+        shape=shape,
+        levels=levels,
+    )
+
+
+def read_result_binary_data(
+    h5_filename: str | Path,
+    binary: BinaryResultItem,
+    *,
+    frame_index: int,
+    downsample_level: int = 0,
+    rect: tuple[int, int, int, int] | None = None,
+):
+    """Load one result-binary frame, optionally cropped to ``(x, y, w, h)``."""
+    h5py = _require_h5py()
+    try:
+        with h5py.File(h5_filename, "r") as h5:
+            path = f"{binary.location}/{downsample_level}/{frame_index}/image"
+            image = h5[path]
+            if not isinstance(image, h5py.Dataset):
+                raise ValueError(f"Result binary data at {path} is not a dataset.")
+            if rect is None:
+                return image[:]
+            x, y, width, height = rect
+            if x < 0 or y < 0 or width < 0 or height < 0:
+                raise ValueError("Result binary crop values must be non-negative.")
+            return image[y:y + height, x:x + width]
+    except KeyError as exc:
+        raise KeyError(
+            f"Result binary {binary.name!r} has no level {downsample_level}, "
+            f"frame {frame_index}."
+        ) from exc
+
 def read_result_item(name: str, result: h5py.Group) -> ResultItem:
     bins = []
     panes = {}
@@ -167,7 +268,8 @@ def read_result_item(name: str, result: h5py.Group) -> ResultItem:
     for table_name in result.keys():
         try:
             table = result[table_name]
-            if table.attrs["Object"] == "Table":
+            object_type = _h5_value_to_python(table.attrs["Object"])
+            if object_type == "Table":
                 meta = json.loads(table.attrs["Metadata"])
                 sys_flags = meta.get("_systemFlags", [])
                 if "main-left" in sys_flags:
@@ -182,8 +284,8 @@ def read_result_item(name: str, result: h5py.Group) -> ResultItem:
                 else:
                     all_panes.append((table, meta))
 
-            elif table.attrs["Object"] == "BinaryLayer":
-                pass
+            elif object_type in ("Binary", "BinaryLayer"):
+                bins.append(_read_binary_result_item(name, table_name, table))
 
             elif table_name == "_FileContent":
                 pass

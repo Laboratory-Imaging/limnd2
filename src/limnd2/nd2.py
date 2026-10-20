@@ -43,9 +43,11 @@ from .file_modern import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
 from .results import (
+    BinaryResultItem,
     ResultItem,
     ResultPane,
     TableData,
+    read_result_binary_data,
     create_table_data_from_h5,
     read_results_from_h5,
 )
@@ -489,6 +491,16 @@ class Nd2Reader:
             return {}
         return read_results_from_h5(filename.replace(".nd2", ".h5"))
 
+    @property
+    def resultBinaries(self) -> list[BinaryResultItem]:
+        """List binary layers stored in the accompanying results HDF5 file.
+
+        Each item identifies the result it came from, its HDF5 location,
+        metadata, pixel type, image shape, pyramid levels, and available frames.
+        Pixel data is loaded only through :meth:`resultBinaryData`.
+        """
+        return [binary for result in self.results.values() for binary in result.binaries]
+
     @functools.cached_property
     def imageDataShape(self) -> tuple[int, int, int, int, int, int]:
         """
@@ -835,10 +847,32 @@ class Nd2Reader:
         raise NotImplementedError()
 
     def resultBinaryData(
-        self, bin_id: int, seqindex: int, rect: tuple[int, int, int, int] | None = None
+        self,
+        result_name: str,
+        binary_name: str,
+        frame_index: int,
+        *,
+        downsample_level: int = 0,
+        rect: tuple[int, int, int, int] | None = None,
     ) -> NumpyArrayLike:
-        pass
-        return np.array([])
+        """Return one binary-label frame from an accompanying results HDF5 file."""
+        try:
+            result = self.results[result_name]
+        except KeyError as exc:
+            raise KeyError(f"Result {result_name!r} not found in H5.") from exc
+        binary = next((item for item in result.binaries if item.name == binary_name), None)
+        if binary is None:
+            raise KeyError(f"Binary layer {binary_name!r} not found in result {result_name!r}.")
+        filename = self.store.filename
+        if filename is None:
+            raise ValueError("Cannot read result binary data, ND2 filename is None.")
+        return read_result_binary_data(
+            filename.replace(".nd2", ".h5"),
+            binary,
+            frame_index=frame_index,
+            downsample_level=downsample_level,
+            rect=rect,
+        )
 
     def resultPrivateTable(
         self, result_name: str, pane: str, table_name: str
