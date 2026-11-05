@@ -63,3 +63,18 @@ def test_plan_sequence_reports_wellplate_settings_for_multipoint_xy(tmp_path: Pa
         "G6",
         "G11",
     }
+
+
+def test_plan_sequence_previews_explicit_wellplate_range(tmp_path: Path) -> None:
+    for position in range(4):
+        _write_tiff(tmp_path / f"position_{position}.tif")
+    result = plan_sequence([
+        str(tmp_path), r"position_(\d+)\.tif", "--extension", "tif", "-m", "1",
+        "--wellplate-start", "B2", "--wellplate-end", "C3",
+        "--wellplate-rows", "8", "--wellplate-columns", "12",
+    ])
+    assert result["error"] is False
+    settings = result["wellplate_settings"]
+    assert (settings["rows"], settings["columns"]) == (8, 12)
+    assert settings["frame_count"] == 4
+    assert _canonical_well_tokens(settings["wells_preview"]) == {"B2", "B3", "C2", "C3"}

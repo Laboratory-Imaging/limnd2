@@ -139,9 +139,9 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--wellplate-rows", type=int, default=None, help="Override wellplate row count when wellplate is inferred.")
     parser.add_argument("--wellplate-columns", type=int, default=None, help="Override wellplate column count when wellplate is inferred.")
+    parser.add_argument("--wellplate-start", type=str, default=None, help="First well of an explicit row-major multipoint range, e.g. B2 (requires --wellplate-end).")
+    parser.add_argument("--wellplate-end", type=str, default=None, help="Last well of an explicit row-major multipoint range, e.g. G11 (requires --wellplate-start).")
     parser.add_argument("--wellplate-name", type=str, default=None, help="Override wellplate descriptor name.")
-    parser.add_argument("--wellplate-row-naming", type=str, default="letter", help="Wellplate row naming mode (for descriptor).")
-    parser.add_argument("--wellplate-column-naming", type=str, default="number", help="Wellplate column naming mode (for descriptor).")
 
     parser.add_argument("--logs_to_json", action="store_true", help=argparse.SUPPRESS)      # used to print log messages as JSON over strings for parsing is NIS Express
 
@@ -355,6 +355,13 @@ def check_parsed_args(parsed_args: argparse.Namespace, parser: argparse.Argument
         print("ERROR: --wellplate-columns must be a positive integer.")
         return False
 
+    if bool(parsed_args.wellplate_start) != bool(parsed_args.wellplate_end):
+        print("ERROR: --wellplate-start and --wellplate-end must be provided together.")
+        return False
+    if parsed_args.wellplate_start and parsed_args.wellplate_mode == "off":
+        print("ERROR: A wellplate range cannot be used with --wellplate-mode off.")
+        return False
+
     return True
 
 
@@ -447,6 +454,6 @@ def convert_sequence_parse(args: list[str] | None = None, require_output: bool =
                           wellplate_mode = parsed_args.wellplate_mode,
                           wellplate_rows = parsed_args.wellplate_rows,
                           wellplate_columns = parsed_args.wellplate_columns,
-                          wellplate_name = parsed_args.wellplate_name,
-                          wellplate_row_naming = parsed_args.wellplate_row_naming,
-                          wellplate_column_naming = parsed_args.wellplate_column_naming)
+                          wellplate_start = parsed_args.wellplate_start,
+                          wellplate_end = parsed_args.wellplate_end,
+                          wellplate_name = parsed_args.wellplate_name)

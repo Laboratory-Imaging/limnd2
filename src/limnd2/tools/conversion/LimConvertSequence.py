@@ -146,7 +146,8 @@ def convert_sequence_to_nd2(
     output_path: Path | str,
     attributes: limnd2.ImageAttributes | None = None,
     experiment: limnd2.ExperimentLevel | str | None = None,
-    metadata: limnd2.PictureMetadata | None = None) -> bool:
+    metadata: limnd2.PictureMetadata | None = None,
+    wellplate: limnd2.Wellplate | None = None) -> bool:
     """
     Convert a sequence of images to ND2 format.
     This function takes a sequence of images (either as file paths or [`LimImageSource`](convert_image_source.md#limnd2.tools.conversion.LimImageSource.LimImageSource)  objects) and converts them to ND2 file.
@@ -185,6 +186,10 @@ def convert_sequence_to_nd2(
         !!! warning
             ND2 metadata must also be correctly set, number of channels in the metadata must match the number of channels in the input data.
 
+    wellplate : limnd2.Wellplate | None
+        Optional wellplate description and frame mappings. Frame indexes must
+        correspond to the sequence order of ``input_data``.
+
     Returns
     -------
     Path
@@ -198,6 +203,10 @@ def convert_sequence_to_nd2(
         raise ValueError("ERROR: No imput source files were provided.")
     sources = parse_image_sequence(input_data)
     source = sources[0][0]
+
+    if wellplate is not None and wellplate.frames is not None:
+        if any(item.seqIndex < 0 or item.seqIndex >= len(sources) for item in wellplate.frames):
+            raise ValueError("Wellplate frame index is outside the output sequence.")
 
     channel_count = validate_channel_consistency(sources)
     if channel_count > 1 and source.is_rgb:
@@ -237,6 +246,11 @@ def convert_sequence_to_nd2(
     if metadata is None:
         metadata = limnd2.metadata_factory.MetadataFactory().createMetadata(number_of_channels_fallback=channel_count, is_rgb_fallback=source.is_rgb)
 
+    if wellplate is not None:
+        return LIMND2Utils.write_files_to_nd2(
+            output_path, sources, attributes, experiment, metadata,
+            wellplate=wellplate,
+        )
     return LIMND2Utils.write_files_to_nd2(output_path, sources, attributes, experiment, metadata)
 
 

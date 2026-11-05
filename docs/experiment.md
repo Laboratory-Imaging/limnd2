@@ -13,3 +13,6 @@
         - ZStackType
         - ExperimentZStackLoop
         - ExperimentSpectralLoop
+        - WellplateDesc
+        - WellplateFrameInfoItem
+        - WellplateFrameInfo

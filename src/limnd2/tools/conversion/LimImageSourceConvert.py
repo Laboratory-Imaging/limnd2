@@ -12,6 +12,7 @@ import numpy as np
 
 import limnd2
 from limnd2.experiment_factory import ExperimentFactory
+from limnd2.wellplate_factory import _index_to_row_label
 
 from limnd2.tools.conversion.LimConvertUtils import ConvertSequenceArgs, ProgressPrinter, logprint
 from contextlib import ExitStack, contextmanager
@@ -202,7 +203,14 @@ def _build_auto_wellplate_chunks(
     dimension_names: list[str],
     parsed_args: ConvertSequenceArgs | None = None,
 ) -> tuple[Any, Any] | None:
+    range_start = getattr(parsed_args, "wellplate_start", None) if parsed_args is not None else None
+    range_end = getattr(parsed_args, "wellplate_end", None) if parsed_args is not None else None
+    if bool(range_start) != bool(range_end):
+        raise ValueError("Both wellplate range endpoints must be provided.")
+    use_range = bool(range_start and range_end)
     if parsed_args is not None and str(getattr(parsed_args, "wellplate_mode", "auto")).lower() == "off":
+        if use_range:
+            raise ValueError("A wellplate range cannot be used with wellplate mode off.")
         return None
     if not _auto_wellplate_supported(sample_file):
         return None
@@ -213,10 +221,13 @@ def _build_auto_wellplate_chunks(
         idx for idx, name in enumerate(dimension_names) if _dimension_base_name(str(name)) == "multipoint"
     ]
     if not multipoint_indexes:
+        if use_range:
+            raise ValueError("A wellplate range requires a multipoint dimension.")
         return None
 
     frame_wells: list[str] = []
     frame_well_labels: list[str] = []
+    position_keys: list[tuple[str, ...]] = []
     for frame_sources in grouped_files:
         representative = None
         representative_values = None
@@ -230,12 +241,19 @@ def _build_auto_wellplate_chunks(
                 break
 
         if representative is None or representative_values is None:
+            if use_range:
+                raise ValueError("Cannot determine multipoint values for a frame in the wellplate range.")
             return None
 
         if max(multipoint_indexes, default=-1) >= len(representative_values):
+            if use_range:
+                raise ValueError("A frame is missing its multipoint dimension values.")
             return None
 
         multipoint_values = [representative_values[idx] for idx in multipoint_indexes]
+        if use_range:
+            position_keys.append(tuple(_flatten_multipoint_tokens(multipoint_values)))
+            continue
         inferred = _infer_well_from_multipoint_values(multipoint_values)
         if inferred is None:
             return None
@@ -243,10 +261,29 @@ def _build_auto_wellplate_chunks(
         frame_wells.append(well)
         frame_well_labels.append(label)
 
+    if use_range:
+        start = _well_row_col_from_token(str(range_start))
+        end = _well_row_col_from_token(str(range_end))
+        if start is None or end is None:
+            raise ValueError("Wellplate range endpoints must be well names such as B2 or G11.")
+        if start[0] > end[0] or start[1] > end[1]:
+            raise ValueError("Wellplate range end must not precede its start.")
+        range_wells = [f"{_index_to_row_label(row)}{col + 1}"
+                       for row in range(start[0], end[0] + 1)
+                       for col in range(start[1], end[1] + 1)]
+        positions = list(dict.fromkeys(position_keys))
+        if len(positions) > len(range_wells):
+            raise ValueError(f"Wellplate range has {len(range_wells)} wells but the input has "
+                             f"{len(positions)} distinct multipoint positions.")
+        well_for_position = dict(zip(positions, range_wells))
+        frame_wells = [well_for_position[key] for key in position_keys]
+        frame_well_labels = list(frame_wells)
+
     if not frame_wells:
         return None
 
-    inferred_geometry = _infer_plate_geometry_from_wells(frame_wells)
+    # The entire requested rectangle must fit, even when it is only partly filled.
+    inferred_geometry = _infer_plate_geometry_from_wells(range_wells if use_range else frame_wells)
     if inferred_geometry is None:
         return None
     inferred_rows, inferred_cols = inferred_geometry
@@ -283,6 +320,8 @@ def _build_auto_wellplate_chunks(
             pass
 
     if rows < inferred_rows:
+        if use_range and parsed_args is not None and getattr(parsed_args, "wellplate_rows", None):
+            raise ValueError("Wellplate range extends beyond the requested number of rows.")
         logprint(
             f"Requested wellplate rows ({rows}) smaller than inferred rows ({inferred_rows}). "
             f"Expanding to {inferred_rows}.",
@@ -290,6 +329,8 @@ def _build_auto_wellplate_chunks(
         )
         rows = inferred_rows
     if cols < inferred_cols:
+        if use_range and parsed_args is not None and getattr(parsed_args, "wellplate_columns", None):
+            raise ValueError("Wellplate range extends beyond the requested number of columns.")
         logprint(
             f"Requested wellplate columns ({cols}) smaller than inferred columns ({inferred_cols}). "
             f"Expanding to {inferred_cols}.",
@@ -303,20 +344,13 @@ def _build_auto_wellplate_chunks(
     plate_name = default_plate_name
     if parsed_args is not None and getattr(parsed_args, "wellplate_name", None):
         plate_name = str(parsed_args.wellplate_name)
-    row_naming = "letter"
-    if parsed_args is not None and getattr(parsed_args, "wellplate_row_naming", None):
-        row_naming = str(parsed_args.wellplate_row_naming)
-    column_naming = "number"
-    if parsed_args is not None and getattr(parsed_args, "wellplate_column_naming", None):
-        column_naming = str(parsed_args.wellplate_column_naming)
-
     # Match wellplate descriptor style commonly used by baseline ND2 files.
     factory = limnd2.WellplateFactory(
         name=plate_name,
         rows=rows,
         columns=cols,
-        rowNaming=row_naming,
-        columnNaming=column_naming,
+        rowNaming="letter",
+        columnNaming="number",
     )
     for seq_index, (well, well_label) in enumerate(zip(frame_wells, frame_well_labels)):
         row_col = _well_row_col_from_token(well)
@@ -327,7 +361,7 @@ def _build_auto_wellplate_chunks(
         absolute_well_index = row_idx * cols + col_idx
         factory.addItem(
             seqIndex=seq_index,
-            well=well,
+            well=(row_idx, col_idx),
             wellName=well_label,
             wellIndex=absolute_well_index,
         )
@@ -338,7 +372,8 @@ def _build_auto_wellplate_chunks(
     if len(unique_wells) > preview_count:
         preview = f"{preview}, ..."
     logprint(
-        "Auto-wellplate inferred from multipoint dimensions: "
+        ("Wellplate range mapped from multipoint dimensions: " if use_range else
+         "Auto-wellplate inferred from multipoint dimensions: ") +
         f"plate={rows}x{cols} ({rows * cols} wells), "
         f"frames={len(frame_wells)}, "
         f"wells=[{preview}]"
@@ -678,6 +713,7 @@ class LIMND2Utils:
         multiprocessing: bool = True,
         wellplate_desc: Any | None = None,
         wellplate_frame_info: Any | None = None,
+        wellplate: Any | None = None,
     ) -> bool:
 
         if nd2_path.is_file():
@@ -692,7 +728,9 @@ class LIMND2Utils:
             nd2.imageAttributes = attr
             nd2.experiment = exp
             nd2.pictureMetadata = metadata
-            if wellplate_desc is not None or wellplate_frame_info is not None:
+            if wellplate is not None:
+                nd2.wellplate = wellplate
+            elif wellplate_desc is not None or wellplate_frame_info is not None:
                 nd2.setWellplate(desc=wellplate_desc, frame_info=wellplate_frame_info)
 
             # Avoid assuming grouped_files[0] exists

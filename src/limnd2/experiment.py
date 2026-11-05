@@ -657,6 +657,22 @@ class ExperimentXYPosLoop(ExperimentLoop, LVSerializable):
 
 @dataclass(frozen=True, kw_only=True)
 class WellplateDesc:
+    """
+    Description of a wellplate's geometry and naming conventions.
+
+    Attributes
+    ----------
+    name : str
+        Plate name, which may be empty.
+    rows : int
+        Number of plate rows.
+    columns : int
+        Number of plate columns.
+    rowNaming : str
+        Row naming convention, normally ``letter`` or ``number``.
+    columnNaming : str
+        Column naming convention, normally ``number`` or ``letter``.
+    """
     name: str = ""
     rows: int = 0
     columns: int = 0
@@ -670,6 +686,26 @@ class WellplateDesc:
 
 @dataclass(init=False, frozen=True)
 class WellplateFrameInfoItem:
+    """
+    Association between one ND2 sequence frame and a well.
+
+    Attributes
+    ----------
+    plateIndex : int
+        Zero-based index of the plate described by the mapping.
+    plateUuid : str
+        Plate identifier from the frame metadata; it may be empty.
+    seqIndex : int
+        Zero-based ND2 sequence frame index.
+    wellIndex : int
+        Zero-based well slot within the plate.
+    wellName : str
+        Well name from the metadata; some files store an empty name.
+    wellColIndex : int
+        Zero-based column index of the well.
+    wellRowIndex : int
+        Zero-based row index of the well.
+    """
     plateIndex: int = 0
     plateUuid: str = ""
     seqIndex: int = 0
@@ -701,11 +737,19 @@ class WellplateFrameInfoItem:
 
 
 class WellplateFrameInfo(collections.UserList):
+    """
+    List of [`WellplateFrameInfoItem`][limnd2.experiment.WellplateFrameInfoItem]
+    mappings from sequence frames to wells.
+
+    Multiple entries may refer to the same well. The ``nwells`` property counts
+    distinct well indexes in the list.
+    """
     def __init__(self, iterable):
         super().__init__(WellplateFrameInfoItem(**item) if type(item) == dict else item  for item in iterable)
 
     @property
     def nwells(self) -> int:
+        """Number of distinct well indexes in the mapping."""
         return len(set([item.wellIndex for item in self.data]))
 
     @staticmethod

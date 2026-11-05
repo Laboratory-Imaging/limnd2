@@ -42,6 +42,7 @@ from .export import ExportProgressCallback
 from .file_modern import LimBinaryIOChunker
 from .file_legacy import LimJpeg2000Chunker, is_legacy_jpeg2000_source
 from .metadata import PictureMetadata
+from .wellplate import Wellplate
 from .results import (
     BinaryResultItem,
     ResultItem,
@@ -218,6 +219,16 @@ class Nd2Reader:
 
         data = self.chunk(ND2_CHUNK_NAME_WellPlateFrameInfo)
         return WellplateFrameInfo.from_json(data) if data is not None else None
+
+    @functools.cached_property
+    def wellplate(self) -> Wellplate | None:
+        """
+        Combined wellplate metadata, or ``None`` when no wellplate chunks exist.
+
+        !!! info
+            See [Wellplate metadata](wellplate.md) for usage examples.
+        """
+        return Wellplate.from_reader(self)
 
     @functools.cached_property
     def appInfo(self) -> AppInfo:
@@ -1167,6 +1178,28 @@ class Nd2Writer:
             self.setWellplateDesc(desc)
         if frame_info is not None:
             self.setWellplateFrameInfo(frame_info)
+
+    @property
+    def wellplate(self) -> Wellplate:
+        """Wellplate metadata is write-only on an ND2 writer."""
+        raise AttributeError("Wellplate metadata is write-only on Nd2Writer.")
+
+    @wellplate.setter
+    def wellplate(self, value: Wellplate) -> None:
+        """Write a [`Wellplate`](wellplate.md) using the existing chunk APIs."""
+        from .base import ND2_CHUNK_NAME_WellPlateDescJson
+        if not isinstance(value, Wellplate):
+            raise TypeError("wellplate must be a Wellplate instance")
+        if value.description is not None and value.frames is not None:
+            desc = value.description
+            for item in value.frames:
+                if (item.plateIndex != 0 or not 0 <= item.wellRowIndex < desc.rows
+                        or not 0 <= item.wellColIndex < desc.columns
+                        or item.wellIndex != item.wellRowIndex * desc.columns + item.wellColIndex):
+                    raise ValueError("Wellplate frame has an invalid plate or well index.")
+        self.setWellplate(desc=value.description, frame_info=value.frames)
+        if value.definition is not None:
+            self.setChunk(ND2_CHUNK_NAME_WellPlateDescJson, value.definition)
 
     def setImage(self, seq_index: int, data: NumpyArrayLike) -> None:
         """

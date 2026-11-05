@@ -15,7 +15,7 @@ __all__ = [
     "BinaryItemStateFlags", "BinaryItemColorMode", "BinaryRleMetadataItem", "BinaryRleMetadata", "BinaryRasterMetadataItem", "BinaryRasterMetadata", "BinaryRasterMetadataFactory", "rle_chunk_to_downsampled_array",
     "CustomDescription", "RecordedData", "RecordedDataItem", "RecordedDataType",
     "ExperimentLoopType", "ExperimentTimeLoop", "ExperimentNETimeLoop", "ZStackType", "ExperimentZStackLoop", "ExperimentSpectralLoop", "ExperimentXYPosLoop", "WellplateDesc", "WellplateFrameInfoItem", "ExperimentLevel",
-    "ExperimentFactory", "WellplateFactory",
+    "ExperimentFactory", "WellplateFactory", "Wellplate",
     "frameExport", "seriesExport", "metadataAsJSON", "frameToRGB", "frame_to_rgb",
     "to_ome_zarr", "to_ome_types", "to_ome_xml", "to_ome_tiff",
     "NIS_PICTURE_METADATA_TAG", "picture_metadata_from_tiff_tag", "picture_metadata_from_tiff_file", "picture_metadata_from_ome_xml", "picture_metadata_from_ome_tiff_file", "nd2_metadata_to_ome_xml",
@@ -35,6 +35,7 @@ from .binary import BinaryItemStateFlags, BinaryItemColorMode, BinaryRleMetadata
 from .custom_data import CustomDescription, RecordedData, RecordedDataItem, RecordedDataType
 from .experiment import ExperimentLoopType, ExperimentTimeLoop, ExperimentNETimeLoop, ZStackType, ExperimentZStackLoop, ExperimentSpectralLoop, ExperimentXYPosLoop, WellplateDesc, WellplateFrameInfoItem, ExperimentLevel
 from .experiment_factory import ExperimentFactory
+from .wellplate import Wellplate
 from .wellplate_factory import WellplateFactory
 from .export import frameExport, frameToRGB, frame_to_rgb, seriesExport, metadataAsJSON
 from .export_ome_tiff import to_ome_tiff, to_ome_types, to_ome_xml

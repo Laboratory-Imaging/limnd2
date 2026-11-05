@@ -6,7 +6,7 @@ site_author: Laboratory Imaging s.r.o.
 repo_name: limnd2
 repo_url: https://github.com/Laboratory-Imaging/limnd2
 site_description: A pure Python ND2 file reader and writer.
-copyright: '&copy; 2025 Laboratory Imaging s.r.o.'
+copyright: '&copy; 2026 Laboratory Imaging s.r.o.'
 site_dir: docs_build
 
 watch:
@@ -85,13 +85,13 @@ markdown_extensions:
 
 nav:
   - QuickStart: index.md
-  - Development:
-    - ADR 0001 - Release, Versioning, and CI Strategy: adr/0001-release-versioning-ci.md
   - API Reference:
     - nd2.py: nd2.md
     - attributes.py: attributes.md
     - experiment.py: experiment.md
     - experiment_factory.py: experiment_factory.md
+    - wellplate.py: wellplate.md
+    - wellplate_factory.py: wellplate_factory.md
     - metadata.py: metadata.md
     - metadata_factory.py: metadata_factory.md
 

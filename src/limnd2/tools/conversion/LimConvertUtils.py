@@ -93,9 +93,9 @@ class ConvertSequenceArgs:
     wellplate_mode: str = "auto"
     wellplate_rows: int | None = None
     wellplate_columns: int | None = None
+    wellplate_start: str | None = None
+    wellplate_end: str | None = None
     wellplate_name: str | None = None
-    wellplate_row_naming: str | None = "letter"
-    wellplate_column_naming: str | None = "number"
 
 class ProgressPrinter:
     # Progress class for storing and printing progress of the conversion

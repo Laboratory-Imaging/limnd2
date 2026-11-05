@@ -58,3 +58,18 @@ changes = [
   "FEATURE: Downsample generation now processes large uncompressed ND2 images in memory-bounded stripes, with tiled pyramid writes and progress updates.",
 ]
 
+[releases."0.4.4"]
+title = "Wellplate metadata and conversion improvements"
+message = "This release simplifies reading, creating, and writing wellplate metadata, and expands wellplate support in image-sequence conversion."
+prerelease = false
+changes = [
+  "FEATURE: Added a combined Wellplate object and Nd2Reader.wellplate and Nd2Writer.wellplate properties.",
+  "FEATURE: WellplateFactory now calculates physical well indexes and supports automatic frame numbering, lists of wells, and rectangular well regions.",
+  "FEATURE: convert_sequence_to_nd2 now accepts a wellplate object directly.",
+  "FEATURE: The sequence conversion CLI can map multipoint positions to an explicit wellplate range, including partially filled ranges and time or Z dimensions.",
+  "FEATURE: Added methods to read binary layers from associated H5 result files.",
+  "API CHANGE: Removed WellplateFactory.addGrid; use addWell with a list or addWellRect for a rectangular region.",
+  "API CHANGE: Removed the sequence conversion CLI row and column naming options; CLI-generated wellplates use lettered rows and numbered columns.",
+  "FEATURE: Added wellplate documentation and reader, factory, and CLI conversion tests.",
+]
+

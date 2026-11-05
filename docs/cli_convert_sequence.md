@@ -202,7 +202,7 @@ This script uses multiple required and optional arguments to specify the input f
 - `--wellplate-mode <mode>`
 
     Control automatic wellplate chunk generation from filename multipoint values. Supported values:
-    - `auto`: infer wellplate layout and frame-to-well mapping when well-like tokens are detected.
+    - `auto` (default): infer wellplate layout and frame-to-well mapping when well-like tokens are detected, or use an explicitly supplied well range.
     - `off`: disable automatic wellplate generation.
 
 - `--wellplate-rows <count>`
@@ -213,17 +213,36 @@ This script uses multiple required and optional arguments to specify the input f
 
     Override inferred wellplate column count.
 
+- `--wellplate-start <well>` and `--wellplate-end <well>`
+
+    Assign multipoint positions to an inclusive rectangular region, such as
+    `--wellplate-start B2 --wellplate-end G11`. These options must be supplied
+    together and require a multipoint dimension. They explicitly set the
+    mapping instead of inferring well names from filename tokens.
+
+    The first distinct multipoint position in conversion order maps to the
+    first well, and subsequent positions map row by row. All time points and
+    Z planes for a position map to the same well. If there are fewer positions
+    than wells, the remaining wells are left empty. For example, 55 positions
+    in B2–G11 fill B2–G6 in row order, leaving G7–G11 empty. More positions
+    than wells cause an error. This assumes row-major acquisition order, not a
+    snake pattern. If rows or columns are explicitly supplied, the entire
+    requested range must fit, including any empty wells.
+
+    For example, ten ordered multipoint positions can fill B2–B11 on an
+    8 × 12 plate:
+
+    ```sh
+    limnd2-convert-sequence-to-nd2 ./images 'image_p([0-9]+)[.]tif' \
+      --extension tif -m 1 --wellplate-rows 8 --wellplate-columns 12 \
+      --wellplate-start B2 --wellplate-end B11 -n output.nd2
+    ```
+
 - `--wellplate-name <name>`
 
     Override generated wellplate descriptor name.
 
-- `--wellplate-row-naming <value>`
-
-    Override row naming mode written to the wellplate descriptor.
-
-- `--wellplate-column-naming <value>`
-
-    Override column naming mode written to the wellplate descriptor.
+Wellplate names use lettered rows and numbered columns, such as `B2`.
 
 ## Planner output
 
@@ -313,3 +332,27 @@ Below are some example commands for `limnd2-convert-sequence-to-nd2`.
     | Excitation (nm)                     | 620                           | 495                        |
     | Emission (nm)                       | 750                           | 570                        |
     | Color                               | #FF0000 (red)               | Green                      |
+
+??? example "Create wellplate metadata"
+
+    Suppose the input folder contains four images in multipoint order:
+
+    ```text
+    position_1.tif
+    position_2.tif
+    position_3.tif
+    position_4.tif
+    ```
+
+    Map those positions to wells B2–C3 on an 8 × 12 plate:
+
+    ```sh
+    limnd2-convert-sequence-to-nd2 ./tiffs 'position_([0-9]+)[.]tif' \
+      --extension tif --multipoint 1 \
+      --wellplate-rows 8 --wellplate-columns 12 \
+      --wellplate-start B2 --wellplate-end C3 \
+      -n wellplate.nd2
+    ```
+
+    The positions map in order to B2, B3, C2, and C3. The range is inclusive
+    and visits wells row by row; the other wells on the plate remain empty.
