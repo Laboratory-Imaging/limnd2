@@ -22,6 +22,15 @@ class _GenericSampleSource:
     pass
 
 
+def test_explicit_well_list_requires_multipoint_dimension() -> None:
+    source = _DummySource("only-frame")
+    with pytest.raises(ValueError, match="requires a multipoint dimension"):
+        _build_auto_wellplate_chunks(
+            _GenericSampleSource(), [[source]], {source: [1]}, ["timeloop"],
+            ConvertSequenceArgs(wellplate_wells="B2"),
+        )
+
+
 def test_wellplate_range_maps_multipoint_positions_across_time_and_z() -> None:
     sources = [_DummySource(str(i)) for i in range(8)]
     # Output order includes two time points and two Z planes per position.

@@ -75,6 +75,26 @@ def test_cli_partial_range_across_time_and_z(tmp_path: Path):
         assert [int(reader.image(i)[0, 0, 0]) for i in range(12)] == [0, 1, 10, 11, 20, 21, 100, 101, 110, 111, 120, 121]
 
 
+def test_cli_sparse_well_list_with_repeated_wells_across_time_and_z(tmp_path: Path):
+    folder = tmp_path / "inputs"
+    folder.mkdir()
+    for time in range(2):
+        for position in range(3):
+            for z in range(2):
+                tifffile.imwrite(folder / f"T{time}_P{position}_Z{z}.tif",
+                                 np.full((4, 4), time * 100 + position * 10 + z, dtype=np.uint8))
+    output = tmp_path / "sparse.nd2"
+    result = _run_cli(folder, r"T(\d+)_P(\d+)_Z(\d+)\.tif", output,
+                      "-t", "1", "-m", "2", "-z", "3", "--wellplate-wells", " b2, B2, g11 ",
+                      "--wellplate-rows", "8", "--wellplate-columns", "12")
+    assert result.returncode == 0, result.stdout + result.stderr
+    with limnd2.Nd2Reader(output) as reader:
+        plate = reader.wellplate
+        assert [item.wellName for item in plate.frames] == ["B2", "B2", "B2", "B2", "G11", "G11"] * 2
+        assert [item.wellIndex for item in plate.frames] == [13, 13, 13, 13, 82, 82] * 2
+        assert [int(reader.image(i)[0, 0, 0]) for i in range(12)] == [0, 1, 10, 11, 20, 21, 100, 101, 110, 111, 120, 121]
+
+
 @pytest.mark.parametrize("options,error", [
     (["--wellplate-row-naming", "number"], "unrecognized arguments"),
     (["--wellplate-column-naming", "letter"], "unrecognized arguments"),
@@ -82,6 +102,14 @@ def test_cli_partial_range_across_time_and_z(tmp_path: Path):
     (["--wellplate-start", "B2", "--wellplate-end", "C3", "--wellplate-mode", "off"], "cannot be used"),
     (["--wellplate-start", "B2", "--wellplate-end", "B3"], "2 wells"),
     (["--wellplate-start", "B2", "--wellplate-end", "C3", "--wellplate-rows", "2"], "beyond"),
+    (["--wellplate-wells", "B2,B3,C2", "--wellplate-start", "B2", "--wellplate-end", "C3"], "cannot be combined"),
+    (["--wellplate-wells", "B2,B3,C2", "--wellplate-mode", "off"], "cannot be used"),
+    (["--wellplate-wells", "B2,,C2"], "Invalid well"),
+    (["--wellplate-wells", "B2,B0,C2"], "Invalid well"),
+    (["--wellplate-wells", "B2,B3"], "counts must match"),
+    (["--wellplate-wells", "B2,B3,C2,D3"], "counts must match"),
+    (["--wellplate-wells", "B2,B3,C2", "--wellplate-rows", "2"], "beyond"),
+    (["--wellplate-wells", "B2,B3,C2", "--wellplate-columns", "2"], "beyond"),
 ])
 def test_cli_rejects_invalid_wellplate_options(named_wells: Path, tmp_path: Path, options, error):
     output = tmp_path / "invalid.nd2"

@@ -73,3 +73,10 @@ changes = [
   "FEATURE: Added wellplate documentation and reader, factory, and CLI conversion tests.",
 ]
 
+[releases."0.4.5"]
+title = "Further wellplate enhancements"
+prerelease = false
+changes = [
+  "FEATURE: Further wellplate enhancements.",
+]
+

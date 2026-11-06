@@ -95,6 +95,7 @@ class ConvertSequenceArgs:
     wellplate_columns: int | None = None
     wellplate_start: str | None = None
     wellplate_end: str | None = None
+    wellplate_wells: str | None = None
     wellplate_name: str | None = None
 
 class ProgressPrinter:

@@ -238,6 +238,20 @@ This script uses multiple required and optional arguments to specify the input f
       --wellplate-start B2 --wellplate-end B11 -n output.nd2
     ```
 
+- `--wellplate-wells <wells>`
+
+    Assign distinct multipoint positions to a comma-separated list of wells in
+    conversion order, for example `--wellplate-wells B2,B6,G11`. There must be
+    exactly one list entry for each distinct multipoint position. The mapping
+    repeats across time and Z; channels belong to the same frame. A well may
+    appear more than once to assign multiple positions to it, for example
+    `--wellplate-wells B2,B2,G11`.
+
+    This option requires a multipoint dimension and cannot be combined with
+    `--wellplate-start` or `--wellplate-end`, or with `--wellplate-mode off`.
+    All listed wells must fit within any explicitly specified plate dimensions.
+    Surround the list with quotes if it contains spaces.
+
 - `--wellplate-name <name>`
 
     Override generated wellplate descriptor name.

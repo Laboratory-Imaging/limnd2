@@ -205,12 +205,24 @@ def _build_auto_wellplate_chunks(
 ) -> tuple[Any, Any] | None:
     range_start = getattr(parsed_args, "wellplate_start", None) if parsed_args is not None else None
     range_end = getattr(parsed_args, "wellplate_end", None) if parsed_args is not None else None
+    well_list = getattr(parsed_args, "wellplate_wells", None) if parsed_args is not None else None
     if bool(range_start) != bool(range_end):
         raise ValueError("Both wellplate range endpoints must be provided.")
     use_range = bool(range_start and range_end)
+    use_list = well_list is not None
+    if use_list and (range_start or range_end):
+        raise ValueError("A wellplate well list cannot be combined with a wellplate range.")
+    explicit_wells: list[str] = []
+    if use_list:
+        for token in well_list.split(","):
+            well = _canonical_well_token(token)
+            if well is None:
+                raise ValueError(f"Invalid well {token!r} in --wellplate-wells; use names such as B2.")
+            explicit_wells.append(well)
+    use_explicit = use_range or use_list
     if parsed_args is not None and str(getattr(parsed_args, "wellplate_mode", "auto")).lower() == "off":
-        if use_range:
-            raise ValueError("A wellplate range cannot be used with wellplate mode off.")
+        if use_explicit:
+            raise ValueError("A wellplate range or well list cannot be used with wellplate mode off.")
         return None
     if not _auto_wellplate_supported(sample_file):
         return None
@@ -221,8 +233,8 @@ def _build_auto_wellplate_chunks(
         idx for idx, name in enumerate(dimension_names) if _dimension_base_name(str(name)) == "multipoint"
     ]
     if not multipoint_indexes:
-        if use_range:
-            raise ValueError("A wellplate range requires a multipoint dimension.")
+        if use_explicit:
+            raise ValueError("A wellplate range or well list requires a multipoint dimension.")
         return None
 
     frame_wells: list[str] = []
@@ -241,17 +253,17 @@ def _build_auto_wellplate_chunks(
                 break
 
         if representative is None or representative_values is None:
-            if use_range:
-                raise ValueError("Cannot determine multipoint values for a frame in the wellplate range.")
+            if use_explicit:
+                raise ValueError("Cannot determine multipoint values for a frame in the wellplate mapping.")
             return None
 
         if max(multipoint_indexes, default=-1) >= len(representative_values):
-            if use_range:
+            if use_explicit:
                 raise ValueError("A frame is missing its multipoint dimension values.")
             return None
 
         multipoint_values = [representative_values[idx] for idx in multipoint_indexes]
-        if use_range:
+        if use_explicit:
             position_keys.append(tuple(_flatten_multipoint_tokens(multipoint_values)))
             continue
         inferred = _infer_well_from_multipoint_values(multipoint_values)
@@ -271,7 +283,13 @@ def _build_auto_wellplate_chunks(
         range_wells = [f"{_index_to_row_label(row)}{col + 1}"
                        for row in range(start[0], end[0] + 1)
                        for col in range(start[1], end[1] + 1)]
+    if use_explicit:
         positions = list(dict.fromkeys(position_keys))
+        if use_list:
+            if len(positions) != len(explicit_wells):
+                raise ValueError(f"Wellplate list has {len(explicit_wells)} entries but the input has "
+                                 f"{len(positions)} distinct multipoint positions; counts must match.")
+            range_wells = explicit_wells
         if len(positions) > len(range_wells):
             raise ValueError(f"Wellplate range has {len(range_wells)} wells but the input has "
                              f"{len(positions)} distinct multipoint positions.")
@@ -283,7 +301,7 @@ def _build_auto_wellplate_chunks(
         return None
 
     # The entire requested rectangle must fit, even when it is only partly filled.
-    inferred_geometry = _infer_plate_geometry_from_wells(range_wells if use_range else frame_wells)
+    inferred_geometry = _infer_plate_geometry_from_wells(range_wells if use_explicit else frame_wells)
     if inferred_geometry is None:
         return None
     inferred_rows, inferred_cols = inferred_geometry
@@ -320,8 +338,8 @@ def _build_auto_wellplate_chunks(
             pass
 
     if rows < inferred_rows:
-        if use_range and parsed_args is not None and getattr(parsed_args, "wellplate_rows", None):
-            raise ValueError("Wellplate range extends beyond the requested number of rows.")
+        if use_explicit and parsed_args is not None and getattr(parsed_args, "wellplate_rows", None):
+            raise ValueError("Wellplate mapping extends beyond the requested number of rows.")
         logprint(
             f"Requested wellplate rows ({rows}) smaller than inferred rows ({inferred_rows}). "
             f"Expanding to {inferred_rows}.",
@@ -329,8 +347,8 @@ def _build_auto_wellplate_chunks(
         )
         rows = inferred_rows
     if cols < inferred_cols:
-        if use_range and parsed_args is not None and getattr(parsed_args, "wellplate_columns", None):
-            raise ValueError("Wellplate range extends beyond the requested number of columns.")
+        if use_explicit and parsed_args is not None and getattr(parsed_args, "wellplate_columns", None):
+            raise ValueError("Wellplate mapping extends beyond the requested number of columns.")
         logprint(
             f"Requested wellplate columns ({cols}) smaller than inferred columns ({inferred_cols}). "
             f"Expanding to {inferred_cols}.",
@@ -372,7 +390,8 @@ def _build_auto_wellplate_chunks(
     if len(unique_wells) > preview_count:
         preview = f"{preview}, ..."
     logprint(
-        ("Wellplate range mapped from multipoint dimensions: " if use_range else
+        ("Wellplate list mapped from multipoint dimensions: " if use_list else
+         "Wellplate range mapped from multipoint dimensions: " if use_range else
          "Auto-wellplate inferred from multipoint dimensions: ") +
         f"plate={rows}x{cols} ({rows * cols} wells), "
         f"frames={len(frame_wells)}, "
