@@ -95,6 +95,60 @@ def test_cli_sparse_well_list_with_repeated_wells_across_time_and_z(tmp_path: Pa
         assert [int(reader.image(i)[0, 0, 0]) for i in range(12)] == [0, 1, 10, 11, 20, 21, 100, 101, 110, 111, 120, 121]
 
 
+@pytest.mark.parametrize("x_count,y_count,wells", [
+    # A 10 x 2 suggested layout uses columns for X and rows for Y.
+    (10, 2, [f"{row}{column}" for column in range(1, 11) for row in "AB"]),
+    # A 2 x 10 suggested layout uses rows for X and columns for Y.
+    (2, 10, [f"{row}{column}" for row in "AB" for column in range(1, 11)]),
+    # An explicit sparse layout uses the supplied order, not plate order.
+    (3, 2, ["D6", "B2", "G11", "A1", "C4", "F9"]),
+])
+def test_cli_explicit_wells_match_two_multipoint_axes_across_time_and_z(
+    tmp_path: Path, x_count: int, y_count: int, wells: list[str],
+):
+    folder = tmp_path / "inputs"
+    folder.mkdir()
+    for time in range(2):
+        for x in range(x_count):
+            for y in range(y_count):
+                for z in range(2):
+                    # Encode each coordinate independently so placement can be
+                    # checked against the actual image in the resulting ND2.
+                    value = time * 1000 + x * 100 + y * 10 + z
+                    tifffile.imwrite(folder / f"T{time}_X{x:02}_Y{y:02}_Z{z}.tif",
+                                     np.full((4, 4), value, dtype=np.uint16))
+
+    output = tmp_path / "two_axes.nd2"
+    result = _run_cli(
+        folder, r"T(\d+)_X(\d+)_Y(\d+)_Z(\d+)\.tif", output,
+        "-t", "1", "-mx", "2", "-my", "3", "-z", "4",
+        "--wellplate-mode", "auto", "--wellplate-rows", "8", "--wellplate-columns", "12",
+        "--wellplate-name", "Express test plate", "--wellplate-wells", ",".join(wells),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    with limnd2.Nd2Reader(output) as reader:
+        plate = reader.wellplate
+        assert (plate.description.name, plate.description.rows, plate.description.columns) == (
+            "Express test plate", 8, 12,
+        )
+        assert len(plate.frames) == 2 * x_count * y_count * 2
+        seen = set()
+        for item in plate.frames:
+            value = int(reader.image(item.seqIndex)[0, 0, 0])
+            time, remainder = divmod(value, 1000)
+            x, remainder = divmod(remainder, 100)
+            y, z = divmod(remainder, 10)
+            seen.add((time, x, y, z))
+            expected = wells[x * y_count + y]
+            row, column = ord(expected[0]) - ord("A"), int(expected[1:]) - 1
+            assert (item.wellName, item.wellRowIndex, item.wellColIndex, item.wellIndex) == (
+                expected, row, column, row * 12 + column,
+            )
+        assert seen == {(t, x, y, z) for t in range(2) for x in range(x_count)
+                        for y in range(y_count) for z in range(2)}
+
+
 @pytest.mark.parametrize("options,error", [
     (["--wellplate-row-naming", "number"], "unrecognized arguments"),
     (["--wellplate-column-naming", "letter"], "unrecognized arguments"),

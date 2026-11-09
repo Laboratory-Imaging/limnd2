@@ -267,6 +267,7 @@ When wellplate inference is available, planner output now includes:
 - `has_wellplate_settings`: boolean flag indicating whether inferred wellplate settings are present.
 - `wellplate_settings`: object with inferred settings and preview values.
   Typical keys include `name`, `rows`, `columns`, `row_naming`, `column_naming`, `frame_count`, `unique_well_count`, and `wells_preview`.
+  `position_wells` contains the full well mapping in multipoint order, including repeated wells for multiple positions in one well. It is empty if a consistent position-to-well mapping cannot be determined.
 
 ??? example "Plan sequence with wellplate inference preview"
     ```sh

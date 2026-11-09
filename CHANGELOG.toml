@@ -80,3 +80,10 @@ changes = [
   "FEATURE: Further wellplate enhancements.",
 ]
 
+[releases."0.4.6"]
+title = "Wellplate import improvements"
+prerelease = false
+changes = [
+  "FEATURE: Further wellplate import improvements.",
+]
+

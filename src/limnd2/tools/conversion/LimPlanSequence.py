@@ -335,12 +335,14 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
     result["qml_settings"] = _build_qml_settings(parsed_args, channel_labels, channel_original_labels)
     result["has_qml_settings"] = bool(result["qml_settings"])
 
+    position_wells: list[str] = []
     auto_wellplate = _build_auto_wellplate_chunks(
         sample_file,
         grouped_files,
         wellplate_sources,
         wellplate_dimension_names,
         parsed_args=parsed_args,
+        position_wells_out=position_wells,
     )
     if auto_wellplate is None:
         result["wellplate_settings"] = {}
@@ -348,6 +350,7 @@ def plan_sequence(args: list[str] | None = None) -> dict[str, Any]:
     else:
         wp_desc, wp_info = auto_wellplate
         result["wellplate_settings"] = _build_wellplate_plan_summary(wp_desc, wp_info)
+        result["wellplate_settings"]["position_wells"] = position_wells
         result["has_wellplate_settings"] = True
 
     result["error"] = False

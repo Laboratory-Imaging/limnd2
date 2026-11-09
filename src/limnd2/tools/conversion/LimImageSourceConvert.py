@@ -202,6 +202,7 @@ def _build_auto_wellplate_chunks(
     source_dimension_values: dict[Any, list[Any]],
     dimension_names: list[str],
     parsed_args: ConvertSequenceArgs | None = None,
+    position_wells_out: list[str] | None = None,
 ) -> tuple[Any, Any] | None:
     range_start = getattr(parsed_args, "wellplate_start", None) if parsed_args is not None else None
     range_end = getattr(parsed_args, "wellplate_end", None) if parsed_args is not None else None
@@ -263,8 +264,8 @@ def _build_auto_wellplate_chunks(
             return None
 
         multipoint_values = [representative_values[idx] for idx in multipoint_indexes]
+        position_keys.append(tuple(_flatten_multipoint_tokens(multipoint_values)))
         if use_explicit:
-            position_keys.append(tuple(_flatten_multipoint_tokens(multipoint_values)))
             continue
         inferred = _infer_well_from_multipoint_values(multipoint_values)
         if inferred is None:
@@ -299,6 +300,18 @@ def _build_auto_wellplate_chunks(
 
     if not frame_wells:
         return None
+
+    if position_wells_out is not None:
+        # Preserve conversion order, including multiple positions in the same well.
+        # Do not report a mapping if a position resolves to different wells in
+        # different frames.
+        position_mapping: dict[tuple[str, ...], str] = {}
+        for key, well in zip(position_keys, frame_wells):
+            previous = position_mapping.setdefault(key, well)
+            if previous != well:
+                position_mapping.clear()
+                break
+        position_wells_out[:] = position_mapping.values()
 
     # The entire requested rectangle must fit, even when it is only partly filled.
     inferred_geometry = _infer_plate_geometry_from_wells(range_wells if use_explicit else frame_wells)

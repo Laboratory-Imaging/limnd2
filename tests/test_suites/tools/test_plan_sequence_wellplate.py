@@ -55,6 +55,7 @@ def test_plan_sequence_reports_wellplate_settings_for_multipoint_xy(tmp_path: Pa
     assert settings["columns"] == 11
     assert settings["frame_count"] == 6
     assert settings["unique_well_count"] == 6
+    assert settings["position_wells"] == ["B2", "B6", "B11", "G2", "G6", "G11"]
     assert _canonical_well_tokens(settings["wells_preview"]) == {
         "B2",
         "B6",
@@ -91,4 +92,21 @@ def test_plan_sequence_previews_explicit_sparse_wells(tmp_path: Path) -> None:
     assert (settings["rows"], settings["columns"]) == (8, 12)
     assert settings["frame_count"] == 3
     assert settings["unique_well_count"] == 2
+    assert settings["position_wells"] == ["B2", "B2", "G11"]
     assert _canonical_well_tokens(settings["wells_preview"]) == {"B2", "G11"}
+
+
+def test_plan_sequence_reports_all_wells_across_time_and_z(tmp_path: Path) -> None:
+    for t in range(2):
+        for row in "BCDEFG":
+            for col in range(2, 12):
+                for z in range(2):
+                    _write_tiff(tmp_path / f"T{t}_{row}{col:02}_Z{z}.tif")
+    result = plan_sequence([
+        str(tmp_path), r"T(\d+)_([A-Z]\d+)_Z(\d+)\.tif",
+        "--extension", "tif", "-t", "1", "-m", "2", "-z", "3",
+    ])
+    settings = result["wellplate_settings"]
+    assert settings["frame_count"] == 240
+    assert settings["position_wells"] == [f"{row}{col}" for row in "BCDEFG" for col in range(2, 12)]
+    assert len(settings["wells_preview"]) == 20
