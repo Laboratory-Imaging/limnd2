@@ -149,51 +149,121 @@ def convert_sequence_to_nd2(
     metadata: limnd2.PictureMetadata | None = None,
     wellplate: limnd2.Wellplate | None = None) -> bool:
     """
-    Convert a sequence of images to ND2 format.
-    This function takes a sequence of images (either as file paths or [`LimImageSource`](convert_image_source.md#limnd2.tools.conversion.LimImageSource.LimImageSource)  objects) and converts them to ND2 file.
-    User can also provide custom attributes, experiment, and metadata for the ND2 file, if they are not provided, default values will be used.
+    Convert an ordered sequence of images to an ND2 file.
+
+    The outer list in `input_data` defines the ND2 sequence order: its first
+    entry becomes frame 0, its second entry becomes frame 1, and so on. The
+    caller must sort the images to match the `experiment`'s nested dimension
+    order, and provide a matching `experiment` for multidimensional sequences.
+    See the examples below.
 
     Parameters
     ----------
-    input_data : str | Path | LimImageSource
-        1D or 2D list of file paths or [`LimImageSource`](convert_image_source.md#limnd2.tools.conversion.LimImageSource.LimImageSource)
-        objects representing the images to be converted.
-        If the input list is one dimensional, each image will be treated as a separate frame,
-        if the input list is two dimensional, each sublist is treated as several channels in the same frame.
+    input_data : list[str | Path | LimImageSource] | list[list[str | Path | LimImageSource]]
+        A non-empty list of file paths or
+        [`LimImageSource`](convert_image_source.md#limnd2.tools.conversion.LimImageSource.LimImageSource)
+        objects. For a flat list, each item supplies one frame. For a nested
+        list, each inner list or tuple groups the channel images for one frame.
+        Every group must have the same number of channels, in the same order.
+        Use paths throughout the input or use `LimImageSource` objects
+        throughout; do not mix the two forms.
+
+        The outer list must follow the sequence order of `experiment`. In a
+        standard experiment, the loop order is time, multipoint, then Z; Z
+        changes fastest when all three loops are present.
+
+        The caller must supply the correct ordering and number of frames.
+        This function does not check filenames against the experiment or
+        explicitly validate the experiment's frame count against the input.
 
     output_path : str | Path
-        Path where the resulting ND2 file will be saved.
+        Path where the resulting ND2 file will be saved. An existing file at
+        this path is replaced.
 
-    attributes : limnd2.ImageAttributes
-        ND2 file atributes
+    attributes : limnd2.ImageAttributes | None
+        ND2 image attributes. If omitted, they are calculated from the input.
 
         !!! warning
             ND2 attributes must be correctly set, or the data may be shown incorrectly when viewing the ND2 file.
             If you are unsure about the attributes, omit the argument and they will be calculated automatically based on the input data.
 
-    experiment : limnd2.ExperimentLevel | str
-        Experiment level for the ND2 file or a string describing what type of experiment to create `["timeloop", "zstack", "multipoint"]`.
+    experiment : limnd2.ExperimentLevel | str | None
+        Experiment describing the dimensions and loop order of `input_data`.
+        Use an `ExperimentLevel` for a sequence with multiple dimensions. Its
+        loop counts must match the input, and its loop order determines how
+        each frame index is interpreted. `experiment.generateLoopIndexes(named=True)`
+        can be used to inspect the expected coordinates in sequence order.
+
+        For a single dimension, a string can create a `"timeloop"`, `"zstack"`,
+        or `"multipoint"` experiment; `"t"`, `"z"`, and `"m"` are also accepted.
+        If omitted, a multipoint experiment with one point per frame is created.
 
         !!! warning
-            ND2 experiment must also be correctly set (to match dimensions of the input data), if the experiment is omitted,
-            the function will creare multipoint experiment with the number of points equal to the number of frames in the input data.
+            The function writes the supplied experiment and frames without
+            checking that their dimensions and order agree. An incorrect
+            experiment or input order can associate images with the wrong
+            time point, position, or Z plane.
 
-            It is also important that the files are ordered correctly with respect to the set experiment. In ideal case, files will be ordered
-            by timeloop first, then multipoint, then zstack.
+    metadata : limnd2.PictureMetadata | None
+        Metadata for the ND2 file. If omitted, default metadata is created
+        based on the number of channels.
 
-    metadata : limnd2.PictureMetadata
-        Metadata for the ND2 file. If not provided, default metadata will be used (those are calulated based on number of channels).
         !!! warning
-            ND2 metadata must also be correctly set, number of channels in the metadata must match the number of channels in the input data.
+            The number and order of channels in the metadata must match the
+            channel images in `input_data`.
 
     wellplate : limnd2.Wellplate | None
-        Optional wellplate description and frame mappings. Frame indexes must
-        correspond to the sequence order of ``input_data``.
+        Optional wellplate description and frame mappings. Each `seqIndex`
+        refers to an outer-list index in `input_data`, so the mappings must
+        match both the input frame order and the experiment.
 
     Returns
     -------
-    Path
-        Path to the written ND2 file.
+    bool
+        `True` after the ND2 file is written successfully.
+
+    Examples
+    --------
+    The following example has one image per frame and an experiment with two
+    time points, two multipoint positions, and two Z planes. The filenames are
+    illustrative; replace them with paths to your images. With the time →
+    multipoint → Z order, Z changes fastest:
+
+    ```python
+    import limnd2
+    from limnd2.tools import convert_sequence_to_nd2
+
+    experiment = limnd2.ExperimentFactory(t=2, m=2, z=2).createExperiment()
+    images = [
+        "t0_m0_z0.tif",  # frame 0
+        "t0_m0_z1.tif",  # frame 1
+        "t0_m1_z0.tif",  # frame 2
+        "t0_m1_z1.tif",  # frame 3
+        "t1_m0_z0.tif",  # frame 4
+        "t1_m0_z1.tif",  # frame 5
+        "t1_m1_z0.tif",  # frame 6
+        "t1_m1_z1.tif",  # frame 7
+    ]
+    convert_sequence_to_nd2(images, "single_channel.nd2", experiment=experiment)
+    ```
+
+    To combine separate channel images into the same frame, use one inner
+    list per time/Z combination. Here every frame has a green channel followed
+    by a red channel; the experiment has two time points and two Z planes:
+
+    ```python
+    import limnd2
+    from limnd2.tools import convert_sequence_to_nd2
+
+    experiment = limnd2.ExperimentFactory(t=2, z=2).createExperiment()
+    images = [
+        ["t0_z0_green.tif", "t0_z0_red.tif"],  # frame 0
+        ["t0_z1_green.tif", "t0_z1_red.tif"],  # frame 1
+        ["t1_z0_green.tif", "t1_z0_red.tif"],  # frame 2
+        ["t1_z1_green.tif", "t1_z1_red.tif"],  # frame 3
+    ]
+    convert_sequence_to_nd2(images, "two_channels.nd2", experiment=experiment)
+    ```
     """
 
     if isinstance(output_path, str):
