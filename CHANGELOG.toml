@@ -87,3 +87,10 @@ changes = [
   "FEATURE: Further wellplate import improvements.",
 ]
 
+[releases."0.4.8"]
+title = "OME-TIFF channel metadata improvements"
+prerelease = false
+changes = [
+  "FIX: Improved OME-TIFF channel detection and preserved channel order.",
+]
+
