@@ -239,7 +239,8 @@ def get_file_dimensions_as_json(file_path: Path | None = None):
             if hasattr(image_source, "metadata_as_pattern_settings"):
                 try:
                     result["qml_settings"] = image_source.metadata_as_pattern_settings() or {}
-                    result["qml_settings"] = _sort_single_file_qml_channels(result["qml_settings"])
+                    if not getattr(image_source, "preserve_channel_metadata_order", False):
+                        result["qml_settings"] = _sort_single_file_qml_channels(result["qml_settings"])
                 except Exception:
                     result["qml_settings"] = {}
             else:

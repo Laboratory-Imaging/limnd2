@@ -1688,6 +1688,18 @@ def reorder_grouped_files_by_auto_channel_labels(
     if component_count <= 1 or not grouped_files:
         return grouped_files, None
 
+    # Preserve a single OME image's declared channel order. Reordering by
+    # channel label would unnecessarily change the original image plane order.
+    first_frame = grouped_files[0]
+    if len(first_frame) == component_count:
+        inner = [_unwrap_source(source) for source in first_frame]
+        if (
+            all(getattr(source, "preserve_channel_metadata_order", False) for source in inner)
+            and len({str(getattr(source, "filename", "")) for source in inner}) == 1
+            and [getattr(source, "channel_index", None) for source in inner] == list(range(component_count))
+        ):
+            return grouped_files, None
+
     channel_labels, _ = _derive_channel_labels_and_templates(grouped_files, component_count)
     if len(channel_labels) != component_count:
         return grouped_files, None

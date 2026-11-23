@@ -22,6 +22,61 @@ if TYPE_CHECKING:
 class LimImageSourceTiffOmeTiff(LimImageSourceTiffBase):
     """TIFF source with OME metadata parsing."""
 
+    # OME channel order describes the channels in the image; sorting channel
+    # names independently of the pixel planes can associate the wrong data.
+    preserve_channel_metadata_order = True
+
+    def _calculate_additional_information(self) -> dict:
+        result = super()._calculate_additional_information()
+        if result.get("axis_parsed") != ["unknown"] or result.get("is_rgb"):
+            return result
+
+        # Some OME-TIFFs omit TiffData, causing tifffile to expose their pages
+        # as an unknown I/Q axis even though the OME XML declares channels.
+        # Only resolve a consistent single-image, channel-only layout. When
+        # TiffData is absent, assume pages follow the declared channel order.
+        try:
+            ome = _require_ome_types().from_tiff(self.filename)
+            if len(ome.images) != 1:
+                return result
+            pixels = ome.images[0].pixels
+            count = int(pixels.size_c)
+            if (
+                count <= 1
+                or pixels.size_z != 1
+                or pixels.size_t != 1
+                or pixels.tiff_data_blocks
+                or pixels.bin_data_blocks
+                or pixels.metadata_only is not None
+                or len(pixels.channels) != count
+                or any(int(channel.samples_per_pixel or 1) != 1 for channel in pixels.channels)
+                or result.get("shape") != [count]
+            ):
+                return result
+
+            with tifffile.TiffFile(self.filename) as tiff:
+                if len(tiff.series) != 1 or len(tiff.pages) != count:
+                    return result
+                series = tiff.series[0]
+                if series.axes not in ("IYX", "QYX") or tuple(series.shape) != (
+                    count, int(pixels.size_y), int(pixels.size_x)
+                ):
+                    return result
+                if any(
+                    page.shape != (int(pixels.size_y), int(pixels.size_x))
+                    or int(page.samplesperpixel) != 1
+                    or page.dtype != series.dtype
+                    for page in tiff.pages
+                ):
+                    return result
+        except Exception:
+            # This is an optional fallback; malformed or unreadable metadata
+            # must not make an otherwise readable TIFF fail dimension detection.
+            return result
+
+        result["axis_parsed"] = ["channel"]
+        return result
+
     @classmethod
     def has_ome_metadata(cls, path: str | Path) -> bool:
         return super().has_ome_metadata(path)
@@ -271,7 +326,7 @@ class LimImageSourceTiffOmeTiff(LimImageSourceTiffBase):
 
         channels = []
         if getattr(image, "pixels", None) and getattr(image.pixels, "channels", None):
-            chs = sorted(image.pixels.channels, key=lambda x: x.id)
+            chs = image.pixels.channels
 
             pinhole_vals = []
             for ch in chs:
@@ -480,7 +535,7 @@ class OMEUtils:
 
         channels: dict[int, Plane] = {}
         if getattr(image, "pixels", None) and getattr(image.pixels, "channels", None):
-            for index, channel in enumerate(sorted(image.pixels.channels, key=lambda x: x.id)):
+            for index, channel in enumerate(image.pixels.channels):
                 channels[index] = OMEUtils.channel_from_ome(channel)
 
         return new_factory, channels

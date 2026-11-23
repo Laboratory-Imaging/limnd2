@@ -1404,16 +1404,22 @@ class PictureMetadataPicturePlanes(LVSerializable):
     sStimulationSetting: dict                                   = LV_field(dict,                                                    LVType.ENCODING_NOT_IMPLEMENTED)
 
     def __post_init__(self):
+        def index_key(value):
+            # ND2 stores indexed entries as a0, a1, ..., a10. Sorting these
+            # as strings puts a10 before a2 and breaks channel associations.
+            text = str(value)
+            number = text[1:] if text.startswith("a") else text
+            return (0, int(number), text) if number.isdecimal() else (1, 0, text)
 
         if self.sPlaneNew and isinstance(self.sPlaneNew, dict):
             planes = []
-            for key in sorted(self.sPlaneNew.keys(), key=str):
+            for key in sorted(self.sPlaneNew.keys(), key=index_key):
                 planes.append(PicturePlaneDesc(**self.sPlaneNew[key]))
             object.__setattr__(self, "sPlaneNew", planes)
 
         if "sPlane" in self._unknown_fields and isinstance(self._unknown_fields["sPlane"], dict):
             planes = []
-            for key in sorted(self._unknown_fields["sPlane"]):
+            for key in sorted(self._unknown_fields["sPlane"], key=index_key):
                 planes.append(PicturePlaneDesc(**self._unknown_fields["sPlane"][key]))
             object.__setattr__(self, "sPlaneNew", planes)
             self._unknown_fields.pop("sPlane")
@@ -1424,8 +1430,8 @@ class PictureMetadataPicturePlanes(LVSerializable):
 
         if isinstance(self.sSampleSetting, dict):
             ssettings = []
-            for setting in self.sSampleSetting.values():
-                ssettings.append(SampleSettings(**setting))
+            for key in sorted(self.sSampleSetting, key=index_key):
+                ssettings.append(SampleSettings(**self.sSampleSetting[key]))
             object.__setattr__(self, "sSampleSetting", ssettings)
 
         elif isinstance(self.sSampleSetting, list):
